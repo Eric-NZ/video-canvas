@@ -125,10 +125,7 @@ func (s *DramaService) finishTx(ctx context.Context, tx repository.DramaTx, j *m
 	if !dramaActive(j.Status) {
 		return nil
 	}
-	if status != "succeeded" {
-		cost = 0
-	}
-	cost = min(max(cost, 0), j.FrozenCredits)
+	cost = min(max(cost, 0), j.FrozenCredits) // 失败或取消时 cost 是已写入画布部分的费用，没有就是 0
 	if e := finishStoryboardStatus(ctx, tx, j, status); e != nil {
 		return e
 	}
@@ -168,15 +165,17 @@ func settleDramaCredit(ctx context.Context, tx repository.DramaTx, j *model.Dram
 	if _, e := tx.LockCredit(ctx, j.UserID); e != nil {
 		return e
 	}
+	// 成功，或失败 / 取消前已有部分写入画布：结算这部分、退回其余；否则全额退回
+	settle := status == "succeeded" || cost > 0
 	kind, amount := model.LedgerRefund, j.FrozenCredits
-	if status == "succeeded" {
+	if settle {
 		kind, amount = model.LedgerSettle, cost
 	}
 	inserted, e := tx.InsertLedger(ctx, &model.CreditLedger{UserID: j.UserID, DramaJobID: &j.ID, Type: kind, Amount: amount})
 	if e != nil {
 		return e
 	}
-	if status == "succeeded" && j.FrozenCredits > cost {
+	if settle && j.FrozenCredits > cost {
 		if _, e := tx.InsertLedger(ctx, &model.CreditLedger{UserID: j.UserID, DramaJobID: &j.ID, Type: model.LedgerRefund, Amount: j.FrozenCredits - cost}); e != nil {
 			return e
 		}
@@ -187,7 +186,7 @@ func settleDramaCredit(ctx context.Context, tx repository.DramaTx, j *model.Dram
 	return tx.AddCredit(ctx, j.UserID, -cost, -j.FrozenCredits)
 }
 
-// failDrama 业务失败原子退款；画布已提交则留给队列恢复结算。
+// failDrama 业务失败原子结算：已写入画布的部分按检查点费用扣除，其余退回。
 func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -207,10 +206,7 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 			j = current
 			return nil
 		}
-		if dramaCanvasCommitted(current) {
-			return cause
-		}
-		if e := s.finishTx(ctx, tx, current, "failed", code, message, 0, nil); e != nil {
+		if e := s.finishTx(ctx, tx, current, "failed", code, message, committedCost(current), nil); e != nil {
 			return e
 		}
 		j = current
@@ -233,7 +229,7 @@ func (s *DramaService) failDrama(ctx context.Context, j *model.DramaJob, cause e
 		// 失败只在这里记一次（E7）：给用户的文案、完整原因、分类；提示词和模型回复在 payload.log，按 last_call_id 找
 		_, run := dramaJobRun(ctx, j)
 		run.End(logger.StatusFailed, zap.Int("error_code", code), zap.String("error_message", message), zap.String("error_type", dramaErrorType(cause)),
-			zap.String("error", cause.Error()), zap.Int("refunded", j.FrozenCredits), zap.Bool("paused", paused),
+			zap.String("error", cause.Error()), zap.Int("credits", j.Credits), zap.Int("refunded", j.FrozenCredits-j.Credits), zap.Bool("paused", paused),
 			zap.Bool(logger.FieldNeedsAttention, strings.HasPrefix(dramaErrorType(cause), "compose_")))
 	}
 	return nil

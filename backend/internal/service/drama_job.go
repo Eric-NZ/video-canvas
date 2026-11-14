@@ -222,10 +222,8 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 		if pipelineJob(*job) {
 			return errcode.ErrDramaPhase.WithMsg("自动规划请使用暂停接口")
 		}
-		if dramaCanvasCommitted(job) {
-			return errcode.ErrTaskNotCancelable.WithMsg("画布已写入，任务正在完成结算")
-		}
-		if e := s.finishTx(ctx, tx, job, "canceled", 0, "", 0, nil); e != nil {
+		// 已写入画布的批次保留，按检查点费用结算，其余退回
+		if e := s.finishTx(ctx, tx, job, "canceled", 0, "", committedCost(job), nil); e != nil {
 			return e
 		}
 		canceled = true
@@ -237,7 +235,7 @@ func (s *DramaService) CancelJob(ctx context.Context, userID, dramaID, jobID uin
 	s.publish(ctx, job)
 	if canceled {
 		_, run := dramaJobRun(ctx, job)
-		run.End(logger.StatusCanceled, append(dramaFields(job), zap.String("by", "user"), zap.Int("refunded", job.FrozenCredits))...)
+		run.End(logger.StatusCanceled, append(dramaFields(job), zap.String("by", "user"), zap.Int("credits", job.Credits), zap.Int("refunded", job.FrozenCredits-job.Credits))...)
 	}
 	v := jobView(*job)
 	return &v, nil
@@ -469,7 +467,8 @@ func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, sn
 			for _, u := range batch {
 				size += u.Chars
 			}
-			total += modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: size, Params: map[string]any{}})
+			// 每批一次拆解，再为这批新资产写一次提示词
+			total += 2 * modelcfg.Quote(snap.Model.Pricing, snap.Model.Capabilities, modelcfg.Spec{PromptChars: size, Params: map[string]any{}})
 		}
 		return total
 	case "storyboard":

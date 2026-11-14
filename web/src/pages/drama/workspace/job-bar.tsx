@@ -20,6 +20,7 @@ import {
   jobTitle,
   planningEtaMinutes,
   planningRow,
+  retryEpisodes,
   userJobs,
   type InPlaceView,
   type PlanningAction,
@@ -67,12 +68,16 @@ function JobRow({ job }: { job: DramaJob }) {
   const active = isActiveJob(job);
 
   const retry = async () => {
+    const episodes = retryEpisodes(job, drama.episodes);
+    // 拆解失败前已把所选集全部写入：没有剩下要拆的，关掉这条即可
+    if (job.step === "breakdown" && episodes.length === 0) {
+      useDramaJobsStore.getState().dismiss(drama.id, job.id);
+      void refresh();
+      return;
+    }
     setBusy(true);
     try {
-      const next = await submitJob(drama.id, {
-        step: job.step,
-        episodes: job.episodes,
-      });
+      const next = await submitJob(drama.id, { step: job.step, episodes });
       useDramaJobsStore.getState().dismiss(drama.id, job.id);
       useDramaJobsStore.getState().applyJob(drama.id, next);
       void refresh();

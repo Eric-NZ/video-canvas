@@ -71,8 +71,17 @@ func (s *DramaService) dramaAttempt(ctx context.Context, j *model.DramaJob, snap
 	}
 	callCtx, callID := logger.WithCall(ctx, "drama."+step, callFields...)
 	logger.RunOf(ctx).NoteCall(callID)
+	if d := snap.Model.Deadline.D(); d > 0 {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(callCtx, d)
+		defer cancel()
+	}
 	result, err := s.streamDramaText(callCtx, j, snap, prompt)
 	if err != nil {
+		// 单次调用超时：任务本身没被打断，按业务失败收尾退款，不交给队列重试同样会超时的调用
+		if ctx.Err() == nil && errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			return nil, 0, nil, withCause(errcode.ErrDramaModelCall.WithMsg("文本模型响应超时，请稍后重试"), err, "timeout")
+		}
 		var business *errcode.Error
 		if !errors.As(err, &business) {
 			err = &dramaCallFailure{err: err} // 上游、网络、超时：保留原始错误给日志，给用户的文案仍由 dramaFailure 决定
@@ -86,6 +95,10 @@ func (s *DramaService) dramaAttempt(ctx context.Context, j *model.DramaJob, snap
 	if invalid != nil {
 		logger.Ctx(ctx).Warn("短剧模型输出不合格", append([]zap.Field{logger.Event(logger.EventRunStep), zap.String("call_id", callID),
 			zap.String("error_type", "invalid_output"), zap.String("validation_error", invalid.Error()), zap.String("finish_reason", result.FinishReason)}, callFields...)...)
+		// 上游按安全策略截断了输出：同样的输入重试还会被截，直接以安全过滤失败
+		if result.FinishReason == "content_filter" {
+			return nil, 0, nil, withCause(errcode.ErrDramaContentFiltered, invalid, "content_filter")
+		}
 		return nil, 0, invalid, nil
 	}
 	var usage *modelcfg.Usage
@@ -181,25 +194,30 @@ func (s *DramaService) ensureDramaActive(ctx context.Context, j *model.DramaJob)
 	return nil
 }
 
-// dramaRetryAssets 从最近同范围任务恢复本次新建节点，不扩展到旧资产。
+// contentFiltered 判断错误是不是上游安全过滤截断了输出。
+func contentFiltered(err error) bool {
+	return err != nil && dramaErrorType(err) == "content_filter"
+}
+
+// dramaRetryAssets 从最近同范围任务恢复还没写提示词的新建节点，不扩展到旧资产。
 func dramaRetryAssets(jobs []model.DramaJob, scope []int) ([]DramaCanvasAsset, error) {
 	slices.SortFunc(jobs, func(a, b model.DramaJob) int { return cmp.Compare(b.ID, a.ID) })
 	for _, j := range jobs {
 		if !dramaSameScope(j.Episodes, scope) {
 			continue
 		}
-		var assets []DramaCanvasAsset
-		if j.Step == "asset_prompts" {
-			if jsonErr := decodeDramaAssets(j.InputJSON, &assets); jsonErr == nil {
-				return assets, nil
-			}
+		// 有没写成提示词的资产（被安全过滤、中途失败）只重试这些；都写过了就和以前一样整组重新生成
+		cp := readDramaCheckpoint(j.Output)
+		if j.Step == "asset_prompts" && decodeDramaAssets(j.InputJSON, &cp.NewAssets) != nil {
+			continue
 		}
-		if j.Step == "breakdown" {
-			var checkpoint dramaCheckpoint
-			if json.Unmarshal(j.Output, &checkpoint) == nil && checkpoint.CanvasCommitted && len(checkpoint.NewAssets) > 0 {
-				return checkpoint.NewAssets, nil
-			}
+		if (j.Step != "asset_prompts" && j.Step != "breakdown") || len(cp.NewAssets) == 0 {
+			continue
 		}
+		if pending := cp.pendingPrompts(); len(pending) > 0 {
+			return pending, nil
+		}
+		return cp.NewAssets, nil
 	}
 	return nil, errcode.ErrDramaStepNotReady.WithMsg("没有待生成提示词的新资产")
 }
