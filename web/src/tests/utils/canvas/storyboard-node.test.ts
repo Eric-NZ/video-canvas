@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import { ADD_NODE_MENU, DOWNSTREAM_KINDS, NODE_META } from "@/constants/canvas";
+import { NODE_TOOLBAR } from "@/constants/node-toolbar";
 import type { CanvasNode, NodeKind } from "@/types";
 import {
   deserializeGraph,
@@ -65,8 +67,22 @@ describe("分镜表节点注册", () => {
     expect(DOWNSTREAM_KINDS.storyboard).toEqual([]);
   });
 
-  test("选中分镜表不出生成功能区", () => {
-    expect(toolbarGate(storyboard().data).visible).toBe(false);
+  test("选中分镜表走公共功能区：显示、按钮可点，配置里只有「编辑分镜」", () => {
+    expect(toolbarGate(storyboard().data)).toEqual({ visible: true, actionsDisabled: false });
+    expect(toolbarGate(storyboard({ storyboard: { shots: [] } }).data).visible).toBe(true);
+    expect(NODE_TOOLBAR.storyboard.actions.map((a) => [a.id, a.label])).toEqual([
+      ["edit-storyboard", "编辑分镜"],
+    ]);
+    expect(NODE_TOOLBAR.storyboard.tail).toEqual([]);
+  });
+
+  test("分镜表节点不再自己摆功能区：功能区只由公共 NodeOverlays 摆放", () => {
+    const src = readFileSync(
+      new URL("../../../components/canvas-editor/storyboard-node.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).not.toContain("NodeToolbar");
+    expect(src).toContain("<NodeOverlays");
   });
 });
 
