@@ -3,27 +3,26 @@ package canvasgraph
 import (
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"video-canvas/internal/storyboard"
 )
 
-// ShotSizes 是景别的可选值，和前端 web/src/constants/storyboard.ts 的 SHOT_SIZES 是同一份（测试比对）。
-var ShotSizes = []string{"大远景", "远景", "全景", "中景", "中近景", "近景", "特写", "大特写"}
+// ShotSizes、CameraMoves 是景别、运镜的可选值，规则在 storyboard 包里（和前端同一份）。
+var (
+	ShotSizes   = storyboard.ShotSizes
+	CameraMoves = storyboard.CameraMoves
+)
 
-// CameraMoves 是运镜的可选值，和前端 CAMERA_MOVES 是同一份（测试比对）。
-var CameraMoves = []string{"固定", "推", "拉", "摇", "移", "跟", "升", "降", "环绕", "变焦", "甩镜", "手持", "航拍"}
-
-// 新镜头的默认值和镜头字段的限制，和前端 constants/storyboard.ts 一致。
+// 镜头字段的默认值和限制，取自 storyboard 包。
 const (
-	defaultShotSize   = "中景"
-	defaultCameraMove = "固定"
-	defaultDuration   = 3.0
-	minDuration       = 1.0
-	maxDuration       = 60.0
-	shotTextMax       = 1000 // 画面、动作、对白各自的字数上限
-	maxShots          = 200  // 一张分镜表最多几镜
+	defaultShotSize   = storyboard.DefaultShotSize
+	defaultCameraMove = storyboard.DefaultCameraMove
+	defaultDuration   = storyboard.DefaultDuration
+	shotTextMax       = storyboard.ShotTextMax
+	maxShots          = storyboard.MaxShots
 )
 
 // StoryboardOp 是 Agent 对分镜表镜头的修改，对应节点的 data.storyboard。
@@ -246,19 +245,11 @@ func (e *storyboardEditor) write(s map[string]any, f ShotFields, isNew bool) err
 		s["camera"] = *f.Camera
 	}
 	if f.Duration != nil {
-		d := clampShotDuration(*f.Duration)
+		d := storyboard.ClampDuration(*f.Duration)
 		e.clamped = e.clamped || d != *f.Duration
 		s["duration"] = d
 	}
 	return nil
-}
-
-// clampShotDuration 把时长修正到 1–60 秒、保留 1 位小数；不是有限数字时取默认值。
-func clampShotDuration(v float64) float64 {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return defaultDuration
-	}
-	return math.Round(math.Min(maxDuration, math.Max(minDuration, v))*10) / 10
 }
 
 // storyboardSummary 是目录里分镜表的摘要：「N 镜」加首镜画面。

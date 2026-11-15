@@ -356,6 +356,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
 		})),
+		// 分镜表拆分镜：和营销环节共用文本模型调用，模型取后台发布的 Agent 模型
+		Storyboard: handler.NewStoryboardHandler(service.NewStoryboardService(service.StoryboardDeps{
+			Repo: repository.NewStoryboardRepository(db), Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc,
+		})),
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),
