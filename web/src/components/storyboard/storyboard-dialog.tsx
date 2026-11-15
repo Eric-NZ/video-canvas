@@ -7,6 +7,8 @@ import { ChromePill } from "@/components/canvas/chrome/chrome";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NODE_META } from "@/constants/canvas";
+import { useShotImageUpload } from "@/hooks/use-shot-image-upload";
+import { useStoryboardShotGeneration } from "@/hooks/use-storyboard-shot-generation";
 import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { cn } from "@/lib/utils";
 import { useStoryboardSplit } from "@/store/storyboard-split";
@@ -18,6 +20,7 @@ import {
   emptyStoryboard,
   formatDuration,
   insertShot,
+  pruneShotLinks,
   removeShot,
   totalDuration,
   updateShot,
@@ -120,6 +123,8 @@ export function StoryboardDialog({
   const highlights = useStoryboardSplit((s) => s.highlights[id]);
   const clearHighlights = useStoryboardSplit((s) => s.clearHighlights);
   const running = split.phase === "running";
+  const { generateImage, locate } = useStoryboardShotGeneration(id);
+  const { upload, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
 
   // 刚拆进来的行：滚到第一条新行，停留一会儿后清掉高亮（设计 §6.4）。
   // 滚动要读最新的表和弹窗开关，但它们变化时不该重置高亮定时器，所以放进 effect event
@@ -166,6 +171,11 @@ export function StoryboardDialog({
       onInsert: (shotId, side) => addAndFocus((b, newId) => insertShot(b, shotId, side, newId)),
       onDuplicate: (shotId) => commit((b) => duplicateShot(b, shotId)),
       onRemove: (shotId) => commit((b) => removeShot(b, shotId)),
+      onGenerateImage: (shotId) => void generateImage(shotId),
+      onPickImage: pickFile,
+      onDropFiles: dropFiles,
+      onRemoveImage: removeImage,
+      onLocate: locate,
       onDragEnd: () => {
         const order = dragOrderRef.current;
         dragOrderRef.current = null;
@@ -179,8 +189,13 @@ export function StoryboardDialog({
           );
       },
     }),
-    [addAndFocus, commit],
+    [addAndFocus, commit, dropFiles, generateImage, locate, pickFile, removeImage],
   );
+
+  // 打开时把关联的节点已经不在画布上的行解除关联：删掉图片节点后，这一行恢复成未生成（AC8），导出也不带过期的 id
+  useEffect(() => {
+    if (open) commit((b) => pruneShotLinks(b, (nodeId) => !!getNode(nodeId)));
+  }, [open, commit, getNode]);
 
   const shots = dragOrder ?? board.shots;
 
@@ -270,6 +285,7 @@ export function StoryboardDialog({
                       number={i + 1}
                       autoFocus={shot.id === focusId}
                       highlight={highlights?.has(shot.id)}
+                      uploading={upload?.shotId === shot.id ? upload.progress : undefined}
                       actions={actions}
                     />
                   ))}

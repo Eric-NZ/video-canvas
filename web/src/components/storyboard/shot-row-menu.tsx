@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { ArrowDownToLine, ArrowUpToLine, Copy, Ellipsis, Trash2 } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpToLine,
+  Copy,
+  Ellipsis,
+  Image,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,11 +26,17 @@ export function ShotRowMenu({
   onInsert,
   onDuplicate,
   onRemove,
+  onGenerateImage,
+  hasImageNode,
 }: {
   number: number;
   onInsert: (side: "before" | "after") => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** 生成分镜图 / 重新生成：给不靠悬停的键盘用户一条路径 */
+  onGenerateImage: () => void;
+  /** 这一行已经关联了图片节点：菜单项叫「重新生成分镜图」 */
+  hasImageNode: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -70,6 +84,11 @@ export function ShotRowMenu({
           </div>
         ) : (
           <>
+            <button type="button" className={ITEM_CLASS} onClick={run(onGenerateImage)}>
+              {hasImageNode ? <RefreshCw /> : <Image />}
+              {hasImageNode ? "重新生成分镜图" : "生成分镜图"}
+            </button>
+            <div role="separator" className="bg-chrome-border mx-2 my-1 h-px" />
             <button type="button" className={ITEM_CLASS} onClick={run(() => onInsert("before"))}>
               <ArrowUpToLine />
               在上方插入

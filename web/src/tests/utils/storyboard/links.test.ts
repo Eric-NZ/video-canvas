@@ -3,11 +3,14 @@ import { describe, expect, test } from "bun:test";
 import type { StoryboardShot } from "@/types";
 import { pickDefaultModel } from "@/utils/canvas/default-model";
 import { shotImagePrompt } from "@/utils/storyboard/prompt";
+import { firstImageFile, takeShotImageFile } from "@/utils/storyboard/upload";
 import {
+  applyShotUpload,
   duplicateShot,
   linkShot,
   normalizeStoryboard,
   pruneShotLinks,
+  removeShotImage,
 } from "@/utils/storyboard/shots";
 
 const shot = (id: string, patch: Partial<StoryboardShot> = {}): StoryboardShot => ({
@@ -130,5 +133,65 @@ describe("新建分镜图节点的默认模型", () => {
     expect(pickDefaultModel("gone", models)).toBeUndefined();
     expect(pickDefaultModel(undefined, models)).toBeUndefined();
     expect(pickDefaultModel("i1", [])).toBeUndefined();
+  });
+});
+
+describe("分镜图上传的文件检查", () => {
+  const file = (name: string, type: string, size = 1024) =>
+    new File([new Uint8Array(size)], name, { type });
+
+  test("图片可以传；别的种类给分镜图专属的提示", () => {
+    expect(takeShotImageFile(file("a.png", "image/png"))).toEqual({ ok: true });
+    expect(takeShotImageFile(file("a.mp4", "video/mp4"))).toEqual({
+      ok: false,
+      reason: "分镜图只能上传图片",
+    });
+    expect(takeShotImageFile(file("a.mp3", "audio/mpeg"))).toEqual({
+      ok: false,
+      reason: "分镜图只能上传图片",
+    });
+    expect(takeShotImageFile(file("a.txt", "text/plain"))).toEqual({
+      ok: false,
+      reason: "分镜图只能上传图片",
+    });
+  });
+
+  test("超过大小上限：说明上限", () => {
+    const big = file("a.png", "image/png", 200 * 1024 * 1024);
+    const res = takeShotImageFile(big);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toMatch(/超过 \d+MB/);
+  });
+
+  test("拖进来的一批文件里取第一张图片，别的忽略；一张图片都没有就是 null", () => {
+    const list = [
+      file("a.txt", "text/plain"),
+      file("b.png", "image/png"),
+      file("c.png", "image/png"),
+    ];
+    expect(firstImageFile(list)?.name).toBe("b.png");
+    expect(firstImageFile([file("a.txt", "text/plain")])).toBeNull();
+    expect(firstImageFile([])).toBeNull();
+  });
+});
+
+describe("上传成功写回", () => {
+  test("手传分镜图记素材 id 和地址；节点出图的关联同时解除（AC9）", () => {
+    const board = linkShot({ shots: [shot("a")] }, "a", { imageNodeId: "img1" });
+    const next = applyShotUpload(board, "a", { id: "9", url: "/files/9.png" });
+    expect(next.shots[0].image).toEqual({ assetId: "9", src: "/files/9.png" });
+    expect(next.shots[0].imageNodeId).toBeUndefined();
+  });
+
+  test("行在上传期间被删了：不写回，原样返回", () => {
+    const board = { shots: [shot("a")] };
+    expect(applyShotUpload(board, "gone", { id: "9", url: "/f/9.png" })).toBe(board);
+  });
+
+  test("移除手传的图：回到空", () => {
+    const board = linkShot({ shots: [shot("a")] }, "a", {
+      image: { assetId: "9", src: "/f/9.png" },
+    });
+    expect(removeShotImage(board, "a").shots[0].image).toBeUndefined();
   });
 });

@@ -1,12 +1,13 @@
 import { memo, useState } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
-import { GripVertical, Image } from "lucide-react";
+import { GripVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { StoryboardShot } from "@/types";
 import { formatShotNumber } from "@/utils/storyboard/shots";
 
 import { DurationInput } from "./duration-input";
+import { ShotImageCell } from "./shot-image-cell";
 import { ShotRowMenu } from "./shot-row-menu";
 import { CameraMoveSelect, ShotSizeSelect } from "./shot-select";
 
@@ -40,6 +41,16 @@ export type ShotRowActions = {
   onRemove: (id: string) => void;
   /** 拖拽松手：把眼下的顺序提交到节点 */
   onDragEnd: () => void;
+  /** 生成分镜图 / 重新生成（复用这一行已关联的图片节点） */
+  onGenerateImage: (id: string) => void;
+  /** 点上传：选一张图作为这一行的分镜图 */
+  onPickImage: (id: string) => void;
+  /** 拖进来的文件：取第一张图片上传 */
+  onDropFiles: (id: string, files: Iterable<File>) => void;
+  /** 移除手传的分镜图 */
+  onRemoveImage: (id: string) => void;
+  /** 关掉弹窗，把画布飞到这个节点 */
+  onLocate: (nodeId: string) => void;
 };
 
 /**
@@ -102,17 +113,26 @@ export const ShotRow = memo(function ShotRow({
   number,
   autoFocus,
   highlight,
+  uploading,
   actions,
 }: {
   shot: StoryboardShot;
   number: number;
   autoFocus: boolean;
+  /** 这一行正在上传分镜图的进度；没在上传为 undefined */
+  uploading?: number;
   /** 刚由拆分镜写进来：底色短暂高亮，标出哪些是新来的 */
   highlight?: boolean;
   actions: ShotRowActions;
 }) {
   const drag = useDragControls();
   const change = (patch: ShotPatch) => actions.onChange(shot.id, patch);
+  // 拖着图片文件经过这一行：整行都是命中区，分镜图格画出虚线框；非图片文件不高亮、不接收
+  const [fileOver, setFileOver] = useState(false);
+  const hasImageFile = (event: React.DragEvent) =>
+    Array.from(event.dataTransfer.items ?? []).some(
+      (item) => item.kind === "file" && item.type.startsWith("image/"),
+    ) || Array.from(event.dataTransfer.files ?? []).some((f) => f.type.startsWith("image/"));
 
   return (
     <Reorder.Item
@@ -122,6 +142,21 @@ export const ShotRow = memo(function ShotRow({
       dragListener={false}
       dragControls={drag}
       onDragEnd={actions.onDragEnd}
+      onDragOver={(event) => {
+        if (!hasImageFile(event)) return;
+        event.preventDefault();
+        setFileOver(true);
+      }}
+      onDragLeave={(event) => {
+        // 在行内子元素之间移动也会触发 leave：只在真正离开整行时才取消高亮
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileOver(false);
+      }}
+      onDrop={(event) => {
+        setFileOver(false);
+        if (!hasImageFile(event)) return;
+        event.preventDefault();
+        actions.onDropFiles(shot.id, Array.from(event.dataTransfer.files));
+      }}
       whileDrag={{ scale: 1.01, boxShadow: "0 24px 48px -12px rgb(0 0 0 / 0.35)", zIndex: 10 }}
       className={cn(
         SHOT_GRID_CLASS,
@@ -152,9 +187,16 @@ export const ShotRow = memo(function ShotRow({
         </motion.span>
       </div>
       <div className={STICKY_CELLS[2]}>
-        <div className="bg-muted text-muted-foreground/50 grid h-[54px] w-24 place-items-center rounded-md">
-          <Image className="size-5" />
-        </div>
+        <ShotImageCell
+          shot={shot}
+          number={number}
+          uploading={uploading}
+          dragging={fileOver}
+          onGenerate={() => actions.onGenerateImage(shot.id)}
+          onUpload={() => actions.onPickImage(shot.id)}
+          onRemove={() => actions.onRemoveImage(shot.id)}
+          onLocate={actions.onLocate}
+        />
       </div>
       <TextCell
         label={`第 ${number} 镜的画面描述`}
@@ -185,6 +227,8 @@ export const ShotRow = memo(function ShotRow({
           onInsert={(side) => actions.onInsert(shot.id, side)}
           onDuplicate={() => actions.onDuplicate(shot.id)}
           onRemove={() => actions.onRemove(shot.id)}
+          onGenerateImage={() => actions.onGenerateImage(shot.id)}
+          hasImageNode={!!shot.imageNodeId}
         />
       </div>
     </Reorder.Item>
