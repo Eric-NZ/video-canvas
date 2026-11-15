@@ -119,7 +119,9 @@ func catalogRow(g *Graph, n Node, promptRunes int) CatalogNode {
 	d := n.Data()
 	row.Kind, row.Status = n.Kind(), str(d["status"])
 	row.HasOutput = hasMedia(d)
-	if t := str(d["text"]); n.Kind() == KindScript && t != "" {
+	if n.Kind() == KindStoryboard {
+		row.Prompt = storyboardSummary(n, promptRunes)
+	} else if t := str(d["text"]); n.Kind() == KindScript && t != "" {
 		// 文本节点的内容在正文里，没有提示词；没有正文的旧节点回退到下面的提示词
 		row.Prompt = truncate(t, promptRunes)
 	} else if p := str(d["prompt"]); p != "" {

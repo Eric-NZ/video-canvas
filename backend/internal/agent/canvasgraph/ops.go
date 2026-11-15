@@ -30,18 +30,19 @@ const (
 	KindCharacter = "character" // 角色卡（数据内嵌在 data.character）：生成、参考、连线按图片节点处理；短剧里的由拆解创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
-	// KindStoryboard 是分镜表（镜头数据内嵌在 data.storyboard）：迭代 1 只在画布上手动建和编辑，
-	// Agent 能读到但不能建、不能改、不能连线；读写放到迭代 2。
+	// KindStoryboard 是分镜表（镜头数据内嵌在 data.storyboard）：不调模型，Agent 用 storyboard 字段建表、逐行改镜头；
+	// 只接文本节点，暂时不能连出去。
 	KindStoryboard = "storyboard"
 )
 
 // downstream 是每种节点能直接驱动生成的下游种类，与前端 constants/canvas 的 DOWNSTREAM_KINDS 一致。
 var downstream = map[string][]string{
-	KindScript:   {KindImage, KindVideo, KindAudio}, // 文本节点没有输入口，也就没有任何节点能连进它
-	KindImage:    {KindImage, KindVideo, KindAudio}, // 接音频节点要音频模型开了图片参考，前端按模型能力把关，这里只看种类
-	KindVideo:    {KindVideo},
-	KindAudio:    {KindVideo},
-	KindDirector: {},
+	KindScript:     {KindImage, KindVideo, KindAudio, KindStoryboard}, // 文本节点没有输入口，也就没有任何节点能连进它
+	KindImage:      {KindImage, KindVideo, KindAudio},                 // 接音频节点要音频模型开了图片参考，前端按模型能力把关，这里只看种类
+	KindVideo:      {KindVideo},
+	KindAudio:      {KindVideo},
+	KindDirector:   {},
+	KindStoryboard: {},
 }
 
 // kindLabel 是节点的默认标题。
@@ -77,6 +78,7 @@ type Op struct {
 	Source        string         `json:"source,omitempty"`        // connect：起点
 	Target        string         `json:"target,omitempty"`        // connect：终点
 	Character     *CharacterOp   `json:"character,omitempty"`     // 角色卡的人物数据：create_node 必填（至少有名字），update_node 只改给了的字段
+	Storyboard    *StoryboardOp  `json:"storyboard,omitempty"`    // 分镜表的镜头：create_node 可选（不给是空表），update_node 整表替换或逐行改
 }
 
 // CharacterOp 是角色卡的人物数据，对应节点的 data.character；字段为 nil 表示不改。

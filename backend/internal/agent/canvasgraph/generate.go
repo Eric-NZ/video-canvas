@@ -59,7 +59,7 @@ func Generation(g *Graph, nodeID string) (*GenSource, error) {
 	}
 	d := n.Data()
 	src := &GenSource{NodeID: nodeID, Kind: generationKind(n.Kind()), Label: n.Label(), Model: str(d["model"]), Status: str(d["status"]), HasOutput: hasMedia(d)}
-	if !validKind(src.Kind) || src.Kind == KindDirector {
+	if !validKind(src.Kind) || src.Kind == KindDirector || src.Kind == KindStoryboard {
 		return nil, fmt.Errorf("%w：节点 %q 的种类不能生成", ErrInvalid, nodeID)
 	}
 	params, _ := d["params"].(map[string]any)

@@ -3,6 +3,7 @@ import {
   Box,
   Clapperboard,
   FileText,
+  GalleryHorizontalEnd,
   Group,
   Image as ImageIcon,
   Music,
@@ -49,8 +50,8 @@ export type NodeOption = {
   id: string;
   /** 标题 */
   label: string;
-  /** 节点种类（导演台 Agent 读不懂；分镜表要到迭代 2 才接 Agent，都不在这里） */
-  kind: Exclude<NodeKind, "director" | "storyboard">;
+  /** 节点种类（导演台 Agent 读不懂，不在这里） */
+  kind: Exclude<NodeKind, "director">;
 };
 
 /** 编辑器对外的操作 */
@@ -80,6 +81,7 @@ const KIND_ICON = {
   video: Clapperboard,
   audio: Music,
   character: UserRound,
+  storyboard: GalleryHorizontalEnd,
 } as const;
 
 /** 行内 chip：不可编辑的原子节点，退格整个删除 */
@@ -96,7 +98,9 @@ function ChipView({ node }: NodeViewProps) {
             ? Group
             : node.attrs.nodeKind === "character"
               ? UserRound
-              : FileText;
+              : node.attrs.nodeKind === "storyboard"
+                ? GalleryHorizontalEnd
+                : FileText;
   return (
     <NodeViewWrapper as="span" className="inline-block align-baseline">
       <span

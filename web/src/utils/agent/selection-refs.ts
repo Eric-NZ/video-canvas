@@ -5,12 +5,10 @@ import type { NodeOption } from "@/pages/canvas/agent/agent-editor";
 export type RefNode = { id: string; label: string; kind: NodeOption["kind"] | "group" };
 
 /**
- * 这种节点能不能被引用（@ 候选、选中后的浅色占位）：导演台 Agent 读不懂，不引用；分镜表的
- * Agent 读写放在迭代 2，先不引用。文本、图片、视频、音频和角色卡都可以（后端按节点 id 校验，
- * 目录和详情对种类是通用的）。
+ * 这种节点能不能被引用（@ 候选、选中后的浅色占位）：导演台 Agent 读不懂，不引用；
+ * 文本、图片、视频、音频、角色卡和分镜表都可以（后端按节点 id 校验，目录和详情对种类是通用的）。
  */
-export const isReferableKind = (kind: NodeKind): kind is NodeOption["kind"] =>
-  kind !== "director" && kind !== "storyboard";
+export const isReferableKind = (kind: NodeKind): kind is NodeOption["kind"] => kind !== "director";
 
 /** 一条消息最多直接显示几个引用的节点，超过的折成「+N」 */
 export const SELECTION_SHOWN = 3;
@@ -23,6 +21,7 @@ const KIND_NAME: Record<RefNode["kind"], string> = {
   video: "视频节点",
   audio: "音频节点",
   character: "角色卡节点",
+  storyboard: "分镜表节点",
 };
 
 /** 消息里的一个引用：id 已经解析成当前画布上的标题；节点被删了 missing 为 true，不能再点 */
