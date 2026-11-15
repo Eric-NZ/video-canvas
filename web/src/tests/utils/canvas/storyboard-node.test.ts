@@ -93,6 +93,16 @@ describe("分镜表节点注册", () => {
     expect(src).not.toMatch(/width=\{\s*\d+\s*\}|CARD_WIDTH/);
   });
 
+  test("节点功能栏里没有拆分镜按钮：拆分镜只在弹窗标题栏和空状态", () => {
+    const src = readFileSync(
+      new URL("../../../components/canvas-editor/storyboard-node.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).not.toContain("kindExtra");
+    expect(src).not.toContain("<SplitControls");
+    expect(NODE_TOOLBAR.storyboard.actions).toHaveLength(1);
+  });
+
   test("分镜表节点不再自己摆功能区：功能区只由公共 NodeOverlays 摆放", () => {
     const src = readFileSync(
       new URL("../../../components/canvas-editor/storyboard-node.tsx", import.meta.url),

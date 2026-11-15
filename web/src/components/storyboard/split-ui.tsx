@@ -15,6 +15,7 @@ import { useStoryboardSplitAction } from "@/hooks/use-storyboard-split";
 import { useStoryboardSplit } from "@/store/storyboard-split";
 
 import { SHOT_GRID_CLASS } from "./shot-row";
+import { StopDoubleClick } from "./stop-double-click";
 
 /** 拆分进行中的不确定进度条：表头下方 2px，左右往返（设计 §6.3） */
 export function SplitProgressBar() {
@@ -100,21 +101,23 @@ export function SplitOverwriteDialog({ id }: { id: string }) {
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={(next) => !next && close()}>
-      <AlertDialogContent size="sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>分镜表里已有 {intent?.existingCount ?? 0} 个镜头</AlertDialogTitle>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction variant="outline" autoFocus onClick={() => choose("append")}>
-            追加到末尾
-          </AlertDialogAction>
-          <AlertDialogAction variant="destructive" onClick={() => choose("replace")}>
-            覆盖
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <StopDoubleClick>
+      <AlertDialog open={open} onOpenChange={(next) => !next && close()}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>分镜表里已有 {intent?.existingCount ?? 0} 个镜头</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction variant="outline" autoFocus onClick={() => choose("append")}>
+              追加到末尾
+            </AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={() => choose("replace")}>
+              覆盖
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </StopDoubleClick>
   );
 }

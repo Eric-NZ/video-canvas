@@ -4,7 +4,6 @@ import { Loader2 } from "lucide-react";
 import { NodeCard, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SplitControls } from "@/components/storyboard/split-controls";
 import { SplitOverwriteDialog } from "@/components/storyboard/split-ui";
 import {
   StoryboardDialog,
@@ -101,14 +100,7 @@ export function StoryboardCanvasNode({
       width={STORYBOARD_FRAME.width}
     >
       <NodeOverlaysPresence multiSelected={multiSelected}>
-        {selected && !dragSelected && (
-          <NodeOverlays
-            key="overlays"
-            id={id}
-            data={data}
-            kindExtra={<SplitControls id={id} compact withModel={false} />}
-          />
-        )}
+        {selected && !dragSelected && <NodeOverlays key="overlays" id={id} data={data} />}
       </NodeOverlaysPresence>
       {/* 固定的 16:9 框（和图片节点一样大）：放不下的镜头少显示几行，不撑大卡片 */}
       <BaseNodeContent style={{ aspectRatio: DEFAULT_NODE_ASPECT }}>

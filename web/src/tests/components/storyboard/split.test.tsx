@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { useEffect } from "react";
 
 import type { StoryboardSplitRequest, StoryboardSplitResponse } from "@/api/storyboard/type";
@@ -27,7 +27,6 @@ let useSplit: typeof UseSplitStore;
 let useModels: typeof UseModelsStore;
 let ApiErrorCtor: typeof ApiErrorClass;
 let Harness: (props: { shots?: StoryboardShot[]; scripts?: string[] }) => React.ReactElement;
-let ActionBarHarness: () => React.ReactElement;
 let latest: () => StoryboardShot[];
 
 const apiShot = (scene: string) => ({
@@ -49,7 +48,6 @@ beforeAll(async () => {
   const { ReactFlowProvider, useNodes, useStoreApi } = await import("@xyflow/react");
   const { StoryboardDialog } = await import("@/components/storyboard/storyboard-dialog");
   const { SplitOverwriteDialog } = await import("@/components/storyboard/split-ui");
-  const { SplitControls } = await import("@/components/storyboard/split-controls");
   const { CanvasIdContext } = await import("@/utils/canvas/canvas-id");
   useSplit = (await import("@/store/storyboard-split")).useStoryboardSplit;
   useModels = (await import("@/store/models")).useModelsStore;
@@ -80,30 +78,6 @@ beforeAll(async () => {
       </>
     );
   }
-  /** 节点功能栏里的用法：compact 且不带模型下拉；剧本已连好、表是空的 */
-  ActionBarHarness = () => (
-    <CanvasIdContext.Provider value="c1">
-      <ReactFlowProvider
-        initialNodes={[
-          {
-            id: "sb",
-            type: "canvas",
-            position: { x: 700, y: 0 },
-            data: { kind: "storyboard", label: "分镜表", storyboard: { shots: [] } },
-          },
-          {
-            id: "s0",
-            type: "canvas",
-            position: { x: 0, y: 0 },
-            data: { kind: "script", label: "剧本", text: "第一段剧本" },
-          },
-        ]}
-        initialEdges={[{ id: "xy-edge__s0-sb", source: "s0", target: "sb" }]}
-      >
-        <SplitControls id="sb" compact withModel={false} />
-      </ReactFlowProvider>
-    </CanvasIdContext.Provider>
-  );
   Harness = ({ shots = [], scripts = ["第一段剧本"] }) => {
     const script = (i: number, text: string): CanvasNode => ({
       id: `s${i}`,
@@ -166,6 +140,23 @@ const shot = (id: string, scene: string): StoryboardShot => ({
   duration: 3,
 });
 
+/** 挂载并登记：用例中途断言失败也会在 afterEach 里卸载，免得残留的 DOM 让后面的查询命中旧弹窗 */
+const mounted: Array<() => Promise<void>> = [];
+async function mount(element: React.ReactElement) {
+  const m = await dom.mount(element);
+  let done = false;
+  const unmount = async () => {
+    if (done) return;
+    done = true;
+    await m.unmount();
+  };
+  mounted.push(unmount);
+  return { ...m, unmount };
+}
+afterEach(async () => {
+  for (const unmount of mounted.splice(0)) await unmount();
+});
+
 const body = () => dom.win.document.body;
 const buttons = () => Array.from(body().querySelectorAll<HTMLButtonElement>("button"));
 const buttonByText = (text: string) =>
@@ -185,7 +176,7 @@ function deferred() {
 
 describe("拆分镜入口", () => {
   test("没连剧本时按钮禁用，悬停提示「请先连接剧本节点」（AC4）", async () => {
-    const m = await dom.mount(<Harness scripts={[]} />);
+    const m = await mount(<Harness scripts={[]} />);
     await dom.flush();
     const btn = splitButton();
     expect(btn?.disabled).toBe(true);
@@ -194,7 +185,7 @@ describe("拆分镜入口", () => {
   });
 
   test("连了剧本但没内容：禁用并提示「剧本节点还没有内容」", async () => {
-    const m = await dom.mount(<Harness scripts={["  "]} />);
+    const m = await mount(<Harness scripts={["  "]} />);
     await dom.flush();
     expect(splitButton()?.disabled).toBe(true);
     expect(splitButton()?.closest("[title]")?.getAttribute("title")).toBe("剧本节点还没有内容");
@@ -203,7 +194,7 @@ describe("拆分镜入口", () => {
 
   test("空表：标题栏和空状态各有一个拆分镜入口，点任一个都直接开拆", async () => {
     impl = async () => reply("月夜瓜地", "闰土举叉");
-    const m = await dom.mount(<Harness />);
+    const m = await mount(<Harness />);
     await dom.flush();
     expect(
       buttons().filter((b) => b.textContent?.includes("从剧本拆分镜")).length,
@@ -216,24 +207,71 @@ describe("拆分镜入口", () => {
   });
 });
 
-describe("节点功能栏里的拆分镜按钮", () => {
-  test("只有 ✦ 拆分镜按钮，没有模型下拉（模型在弹窗标题栏里选）；点它用 store 里记住的模型", async () => {
-    useSplit.getState().setModel("agent-a");
-    const m = await dom.mount(<ActionBarHarness />);
+describe("拆分镜按钮的样子", () => {
+  test("弹窗标题栏里有模型下拉，「从剧本拆分镜」按钮只有文字、没有图标", async () => {
+    const m = await mount(<Harness />);
     await dom.flush();
-    expect(body().textContent).not.toContain("Agent A");
-    const btn = body().querySelector<HTMLButtonElement>('[aria-label="从剧本拆分镜"]');
-    expect(btn).not.toBeNull();
-    await dom.click(btn);
-    await dom.flush();
-    expect(calls[0].model).toBe("agent-a");
+    expect(body().textContent).toContain("Agent A");
+    const title = buttons().find((b) => b.getAttribute("aria-label") === "从剧本拆分镜");
+    expect(title).toBeTruthy();
+    expect(title!.querySelector("svg")).toBeNull();
+    // 空状态里的主按钮同样不带图标
+    const empty = buttons().find(
+      (b) =>
+        b !== title && b.textContent?.includes("从剧本拆分镜") && !b.getAttribute("aria-label"),
+    );
+    expect(empty).toBeTruthy();
+    expect(empty!.querySelector("svg")).toBeNull();
     await m.unmount();
   });
 
-  test("弹窗标题栏里有模型下拉", async () => {
-    const m = await dom.mount(<Harness />);
+  test("拆分中按钮换成转圈的图标，给出进行中的反馈", async () => {
+    const d = deferred();
+    impl = () => d.promise;
+    const m = await mount(<Harness />);
     await dom.flush();
-    expect(body().textContent).toContain("Agent A");
+    await dom.click(splitButton());
+    await dom.flush();
+    const busy = buttons().find((b) => b.getAttribute("aria-label") === "拆分中");
+    expect(busy?.querySelector("svg")).not.toBeNull();
+    d.resolve(reply("甲"));
+    await dom.flush();
+    await m.unmount();
+  });
+});
+
+describe("双击不能冒泡到画布（否则会弹出「添加节点」菜单）", () => {
+  /** 在画布外层放一个双击监听，等同画布的 onDoubleClick；点中弹窗里的东西后它不该收到 */
+  const withCanvasListener = async (shots: StoryboardShot[]) => {
+    const spy = mock(() => {});
+    const m = await mount(
+      <div onDoubleClick={spy}>
+        <Harness shots={shots} />
+      </div>,
+    );
+    await dom.flush();
+    return { spy, m };
+  };
+  const dblclick = (el: Element | null) =>
+    dom.act(async () => {
+      el?.dispatchEvent(new dom.win.MouseEvent("dblclick", { bubbles: true }));
+    });
+
+  test("双击弹窗里的文本框、表头、标题栏都不触发画布的双击", async () => {
+    const { spy, m } = await withCanvasListener([shot("a", "旧一")]);
+    await dblclick(body().querySelector('[aria-label="第 1 镜的画面描述"]'));
+    await dblclick(body().querySelector('[data-slot="dialog-content"]'));
+    await dblclick(buttons().find((b) => b.getAttribute("aria-label") === "从剧本拆分镜") ?? null);
+    expect(spy).not.toHaveBeenCalled();
+    await m.unmount();
+  });
+
+  test("双击覆盖确认框也不触发画布的双击", async () => {
+    const { spy, m } = await withCanvasListener([shot("a", "旧一")]);
+    await dom.click(splitButton());
+    await dom.flush();
+    await dblclick(body().querySelector('[data-slot="alert-dialog-content"]'));
+    expect(spy).not.toHaveBeenCalled();
     await m.unmount();
   });
 });
@@ -241,7 +279,7 @@ describe("节点功能栏里的拆分镜按钮", () => {
 describe("拆分结果写回", () => {
   test("多个剧本按连线先后拼接成一份正文，选的模型一起带上", async () => {
     useSplit.getState().setModel("agent-a");
-    const m = await dom.mount(<Harness scripts={["第一段", "第二段"]} />);
+    const m = await mount(<Harness scripts={["第一段", "第二段"]} />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.flush();
@@ -251,7 +289,7 @@ describe("拆分结果写回", () => {
 
   test("镜头在前端分配 id，字段原样；新行被标记高亮，状态回到空闲", async () => {
     impl = async () => reply("甲", "乙");
-    const m = await dom.mount(<Harness />);
+    const m = await mount(<Harness />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.flush();
@@ -267,7 +305,7 @@ describe("拆分结果写回", () => {
 
 describe("覆盖 / 追加 / 取消（AC3）", () => {
   const open = async () => {
-    const m = await dom.mount(<Harness shots={[shot("a", "旧一"), shot("b", "旧二")]} />);
+    const m = await mount(<Harness shots={[shot("a", "旧一"), shot("b", "旧二")]} />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.flush();
@@ -315,7 +353,7 @@ describe("拆分中", () => {
   test("显示进度条、表格锁住不能编辑、按钮变成「拆分中」且不可再点（追加模式末尾出骨架）", async () => {
     const d = deferred();
     impl = () => d.promise;
-    const m = await dom.mount(<Harness shots={[shot("a", "旧一")]} />);
+    const m = await mount(<Harness shots={[shot("a", "旧一")]} />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.click(buttonByText("追加到末尾"));
@@ -336,7 +374,7 @@ describe("拆分中", () => {
   test("空表拆分中：显示「正在拆分镜」和骨架行", async () => {
     const d = deferred();
     impl = () => d.promise;
-    const m = await dom.mount(<Harness />);
+    const m = await mount(<Harness />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.flush();
@@ -353,7 +391,7 @@ describe("拆分失败（AC2 的失败路径）", () => {
     impl = async () => {
       throw new ApiErrorCtor("文本模型调用失败：rate limited", 30016, 502);
     };
-    const m = await dom.mount(<Harness shots={[shot("a", "旧一")]} />);
+    const m = await mount(<Harness shots={[shot("a", "旧一")]} />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.click(buttonByText("覆盖"));
@@ -377,7 +415,7 @@ describe("拆分失败（AC2 的失败路径）", () => {
     impl = async () => {
       throw new ApiErrorCtor("积分不足", 40001, 402);
     };
-    const m = await dom.mount(<Harness />);
+    const m = await mount(<Harness />);
     await dom.flush();
     await dom.click(splitButton());
     await dom.flush();
