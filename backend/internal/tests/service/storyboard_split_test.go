@@ -3,8 +3,10 @@ package service_test
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,9 +14,11 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 	"video-canvas/internal/service/stepfake"
+	"video-canvas/internal/stepkit"
 )
 
 // sbRepo 是拆分镜用的内存仓储：积分原语复用 stepfake.Repo，画布归属按 owned 判断。
@@ -205,5 +209,80 @@ func TestStoryboardSplit_BusyWhileRunning(t *testing.T) {
 	close(slow.release)
 	if err := <-done; err != nil {
 		t.Fatalf("第一次应成功：%v", err)
+	}
+}
+
+// ctxCaller 阻塞到 ctx 结束，模拟一个一直不出字的模型；记下它拿到的截止时间。
+type ctxCaller struct {
+	deadline atomic.Pointer[time.Time]
+}
+
+func (c *ctxCaller) Complete(ctx context.Context, _ *provider.Snapshot, _ []llmgateway.Message) (*llmgateway.Result, error) {
+	if d, ok := ctx.Deadline(); ok {
+		c.deadline.Store(&d)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// splitEnvWithCaller 用给定的调用方和模型截止时间搭一个服务，账户 100 积分。
+func splitEnvWithCaller(deadline time.Duration, caller stepkit.Caller) (*service.StoryboardService, *sbRepo) {
+	e := newSBEnv()
+	e.models.Snapshots["agent-a"].Model.Deadline = modelcfg.Duration(deadline)
+	svc := service.NewStoryboardService(service.StoryboardDeps{Repo: e.repo, Models: e.models, Caller: caller, Credits: stepfake.Policy{Initial: 100}})
+	return svc, e.repo
+}
+
+// TestStoryboardSplit_TimesOutByModelDeadline 超时按后台给这个模型配的截止时间来：到点就按超时失败，不扣积分。
+func TestStoryboardSplit_TimesOutByModelDeadline(t *testing.T) {
+	c := &ctxCaller{}
+	svc, repo := splitEnvWithCaller(150*time.Millisecond, c)
+	start := time.Now()
+	_, err := svc.Split(context.Background(), sbUser, sbCanvas, sbReq("剧本"))
+	if !sameCode(err, errcode.ErrStoryboardModelCall) || !strings.Contains(err.Error(), "超时") {
+		t.Fatalf("应报模型响应超时，实际 %v", err)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Errorf("应在配置的截止时间附近失败，实际等了 %v", took)
+	}
+	if repo.Credits[sbUser].Balance != 100 || len(repo.Ledger) != 0 {
+		t.Error("超时失败不扣费")
+	}
+}
+
+// TestStoryboardSplit_NoFixedCeiling 不再有写死的 50 秒上限：模型配了多长的截止时间，调用就能等多长。
+func TestStoryboardSplit_NoFixedCeiling(t *testing.T) {
+	c := &ctxCaller{}
+	svc, _ := splitEnvWithCaller(10*time.Minute, c)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, _ = svc.Split(ctx, sbUser, sbCanvas, sbReq("剧本"))
+	d := c.deadline.Load()
+	if d == nil {
+		t.Fatal("调用方没有拿到截止时间")
+	}
+	// 外层 ctx 只给了 200ms，所以拿到的是它；关键是服务自己没有再套一层 50 秒的上限
+	if time.Until(*d) > time.Second {
+		t.Fatalf("截止时间应来自外层 ctx 或模型配置，不该多出别的上限：还剩 %v", time.Until(*d))
+	}
+	src, err := os.ReadFile("../../service/storyboard_split.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), "splitTimeout") || strings.Contains(string(src), "50 * time.Second") {
+		t.Error("不该再写死拆分镜的超时时间")
+	}
+}
+
+// TestStoryboardSplit_ZeroDeadlineMeansNoServiceLimit 模型没配截止时间（0）：服务不自己加限制，由网关的空闲超时兜底。
+func TestStoryboardSplit_ZeroDeadlineMeansNoServiceLimit(t *testing.T) {
+	c := &ctxCaller{}
+	svc, _ := splitEnvWithCaller(0, c)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, _ = svc.Split(ctx, sbUser, sbCanvas, sbReq("剧本"))
+	d := c.deadline.Load()
+	if d == nil || time.Until(*d) > time.Second {
+		t.Fatalf("截止时间只该来自外层 ctx")
 	}
 }

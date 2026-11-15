@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"go.uber.org/zap"
@@ -21,9 +20,6 @@ import (
 	"video-canvas/internal/stepkit"
 	"video-canvas/internal/storyboard"
 )
-
-// splitTimeout 是一次拆分镜（含重写一次）的最长等待；须小于服务端 write_timeout（默认 60s），否则响应会被连接超时截断。
-const splitTimeout = 50 * time.Second
 
 // StoryboardRepo 是拆分镜要的存储：确认画布归属，在事务里检查余额和扣费。
 type StoryboardRepo interface {
@@ -91,10 +87,20 @@ func (s *StoryboardService) Split(ctx context.Context, userID, canvasID uint64, 
 	// 拆分镜是一次同步运行：开始、每次模型调用、结束都进日志，run_id 是画布编号
 	ctx, run := logger.BeginRun(ctx, logger.RunRef{Kind: "storyboard_split", ID: idcodec.Encode(canvasID), UserID: userID})
 	run.Start(zap.String("node_id", req.NodeID), zap.String("model_key", snap.Model.Key), zap.Int("script_chars", utf8.RuneCountInString(script)))
-	callCtx, cancel := context.WithTimeout(ctx, splitTimeout)
-	defer cancel()
+	// 超时按后台给这个模型配的来，不在这里写死：截止时间（deadline）限制整次运行，
+	// 上游多久没出字（idle_timeout）由网关按模型配置判断，和短剧文本调用的做法一致。没配（0）就不另加限制
+	callCtx := ctx
+	if d := snap.Model.Deadline.D(); d > 0 {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, d)
+		defer cancel()
+	}
 	res, err := s.runner.Run(callCtx, step, method, snap, in)
 	if err != nil {
+		// 模型配的截止时间到了：这次运行就是超时失败；外层 ctx 自己取消（用户断开）不算超时，原样往外返回
+		if ctx.Err() == nil && errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			err = context.DeadlineExceeded
+		}
 		err = splitError(err)
 		run.End(logger.StatusFailed, zap.String("error", err.Error()))
 		return nil, err
