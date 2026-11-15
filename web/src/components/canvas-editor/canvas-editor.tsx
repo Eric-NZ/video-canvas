@@ -61,6 +61,7 @@ import { useTrimStore } from "@/store/trim";
 import { DirectorHost } from "@/components/director/director-host";
 import { openDirector } from "@/components/director/open-director";
 import { useCharacterDetail } from "@/store/character-detail";
+import { useStoryboardEditor } from "@/store/storyboard-editor";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
@@ -605,6 +606,11 @@ export const CanvasEditor = memo(function CanvasEditor({
       // 角色卡双击打开详情（角色名、形象名、补充图、音色），不进灯箱
       if (node.data.kind === "character") {
         useCharacterDetail.getState().open(node.id);
+        return;
+      }
+      // 分镜表双击打开表格编辑弹窗
+      if (node.data.kind === "storyboard") {
+        useStoryboardEditor.getState().open(node.id);
         return;
       }
       if (collectPreviewItems([node]).length === 0) return;

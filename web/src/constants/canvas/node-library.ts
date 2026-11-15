@@ -1,12 +1,21 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Clapperboard, Image, Music, TableProperties, Type, UserRound, Video } from "lucide-react";
+import {
+  Clapperboard,
+  GalleryHorizontalEnd,
+  Image,
+  Music,
+  Type,
+  UserRound,
+  Video,
+} from "lucide-react";
 
 import {
   AudioPlaceholderIcon,
   CharacterPlaceholderIcon,
   DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
+  StoryboardPlaceholderIcon,
   TextPlaceholderIcon,
   VideoPlaceholderIcon,
 } from "@/components/canvas";
@@ -83,10 +92,10 @@ export const NODE_LIBRARY = [
   {
     kind: "storyboard",
     label: "分镜表",
-    description: "把剧本拆成镜头，一行一个镜头",
+    description: "把剧本拆成镜头，逐镜出图出视频",
     placeholder: "连上剧本，逐行写镜头的画面、景别、运镜和时长。",
-    icon: TableProperties,
-    placeholderIcon: TextPlaceholderIcon,
+    icon: GalleryHorizontalEnd,
+    placeholderIcon: StoryboardPlaceholderIcon,
   },
 ] as const satisfies readonly NodeKindEntry[];
 
@@ -109,5 +118,5 @@ export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string
   { kind: "audio", title: "音频", description: "配乐、音效、配音" },
   { kind: "director", title: "导演台", description: "3D 摆位与运镜预演" },
   { kind: "character", title: "角色卡", description: "人物形象与声音，只属于当前画布" },
-  { kind: "storyboard", title: "分镜表", description: "把剧本拆成镜头，一行一个镜头" },
+  { kind: "storyboard", title: "分镜表", description: "把剧本拆成镜头，逐镜出图出视频" },
 ];

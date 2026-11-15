@@ -32,7 +32,7 @@ export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) => {
     case "character":
       return <CharacterCanvasNode id={id} data={data} selected={selected} />;
     case "storyboard":
-      return <StoryboardCanvasNode id={id} data={data} />;
+      return <StoryboardCanvasNode id={id} data={data} selected={selected} />;
   }
 }, sameNodeProps);
 CanvasNodeView.displayName = "CanvasNodeView";

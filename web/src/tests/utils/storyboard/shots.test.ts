@@ -3,15 +3,20 @@ import { describe, expect, test } from "bun:test";
 import type { StoryboardShot } from "@/types";
 import {
   addShot,
+  applyOrder,
   clampDuration,
   duplicateShot,
   emptyStoryboard,
+  commitDuration,
   formatDuration,
+  formatShotNumber,
   insertShot,
   moveShot,
   normalizeStoryboard,
   removeShot,
   shotNumbers,
+  stepDuration,
+  storyboardCardView,
   totalDuration,
   updateShot,
 } from "@/utils/storyboard/shots";
@@ -39,14 +44,14 @@ describe("新建与增删", () => {
     expect(emptyStoryboard()).toEqual({ shots: [] });
   });
 
-  test("末尾新增一行，默认时长 3 秒、字段为空", () => {
+  test("末尾新增一行：默认中景、固定、3 秒，文本为空", () => {
     const next = addShot(board(shot("a")), ids());
     expect(next.shots.map((s) => s.id)).toEqual(["a", "s1"]);
     expect(next.shots[1]).toEqual({
       id: "s1",
       scene: "",
-      shot: "",
-      camera: "",
+      shot: "中景",
+      camera: "固定",
       action: "",
       dialogue: "",
       duration: 3,
@@ -106,6 +111,19 @@ describe("拖拽排序与镜号", () => {
     expect(moveShot(start, "a", 99).shots.map((s) => s.id)).toEqual(["b", "c", "a"]);
   });
 
+  test("拖拽松手按拖出的顺序重排，行内容取最新的", () => {
+    const start = board(shot("a"), shot("b", { scene: "新" }), shot("c"));
+    const next = applyOrder(start, ["c", "a", "b"]);
+    expect(next.shots.map((s) => s.id)).toEqual(["c", "a", "b"]);
+    expect(next.shots[2].scene).toBe("新");
+  });
+
+  test("拖拽期间新加的行放到末尾；顺序没变时原样返回", () => {
+    const start = board(shot("a"), shot("b"), shot("n"));
+    expect(applyOrder(start, ["b", "a"]).shots.map((s) => s.id)).toEqual(["b", "a", "n"]);
+    expect(applyOrder(start, ["a", "b", "n"])).toBe(start);
+  });
+
   test("镜号按行序从 1 连续编号，增删排序后重排", () => {
     let next = board(shot("a"), shot("b"), shot("c"));
     next = removeShot(next, "b");
@@ -134,10 +152,11 @@ describe("时长", () => {
     expect(totalDuration(emptyStoryboard())).toBe(0);
   });
 
-  test("总时长显示成 mm:ss，不足 1 秒的部分向上取整", () => {
+  test("总时长显示成 mm:ss，按整秒四舍五入", () => {
     expect(formatDuration(0)).toBe("00:00");
     expect(formatDuration(65)).toBe("01:05");
-    expect(formatDuration(3.3)).toBe("00:04");
+    expect(formatDuration(3.3)).toBe("00:03");
+    expect(formatDuration(84.5)).toBe("01:25");
     expect(formatDuration(3600)).toBe("60:00");
   });
 });
@@ -175,5 +194,51 @@ describe("读档规整", () => {
   test("重复的 id 换成新的，镜号不会错位", () => {
     const next = normalizeStoryboard({ shots: [shot("a"), shot("a")] }, ids());
     expect(next.shots.map((s) => s.id)).toEqual(["a", "s1"]);
+  });
+});
+
+describe("时长输入框", () => {
+  test("失焦提交：范围内原样，越界修正并标记，小数保留 1 位", () => {
+    expect(commitDuration("4.5", 3)).toEqual({ value: 4.5, corrected: false });
+    expect(commitDuration(" 0.2 ", 3)).toEqual({ value: 1, corrected: true });
+    expect(commitDuration("75", 3)).toEqual({ value: 60, corrected: true });
+    expect(commitDuration("2.46", 3)).toEqual({ value: 2.5, corrected: true });
+  });
+
+  test("空或非数字恢复原值，不算修正", () => {
+    expect(commitDuration("", 4)).toEqual({ value: 4, corrected: false });
+    expect(commitDuration("abc", 4)).toEqual({ value: 4, corrected: false });
+  });
+
+  test("上下键每次 ±0.5 秒，不越界", () => {
+    expect(stepDuration(3, 1)).toBe(3.5);
+    expect(stepDuration(1.2, -1)).toBe(1);
+    expect(stepDuration(59.8, 1)).toBe(60);
+  });
+});
+
+describe("节点卡片", () => {
+  test("镜号补成两位", () => {
+    expect(formatShotNumber(1)).toBe("01");
+    expect(formatShotNumber(12)).toBe("12");
+    expect(formatShotNumber(120)).toBe("120");
+  });
+
+  test("缩略图取前 5 镜、多出来的计数；摘要取前 3 镜、剩下的计数", () => {
+    const list = Array.from({ length: 8 }, (_, i) => shot(`r${i}`));
+    const view = storyboardCardView(board(...list));
+    expect(view.thumbs.map((t) => t.number)).toEqual([1, 2, 3, 4, 5]);
+    expect(view.thumbs[0].shot).toBe(list[0]);
+    expect(view.moreThumbs).toBe(3);
+    expect(view.summary.map((t) => t.number)).toEqual([1, 2, 3]);
+    expect(view.moreSummary).toBe(5);
+  });
+
+  test("镜头少时不出溢出计数", () => {
+    const view = storyboardCardView(board(shot("a"), shot("b")));
+    expect(view.thumbs).toHaveLength(2);
+    expect(view.moreThumbs).toBe(0);
+    expect(view.summary).toHaveLength(2);
+    expect(view.moreSummary).toBe(0);
   });
 });

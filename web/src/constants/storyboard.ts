@@ -27,6 +27,24 @@ export const CAMERA_MOVES = [
   "航拍",
 ] as const;
 
+/** 景别的英文缩写，下拉选项右侧小字；近景是 CU，特写用 BCU 区分开 */
+export const SHOT_SIZE_ABBR: Record<(typeof SHOT_SIZES)[number], string> = {
+  大远景: "ELS",
+  远景: "LS",
+  全景: "FS",
+  中景: "MS",
+  中近景: "MCU",
+  近景: "CU",
+  特写: "BCU",
+  大特写: "ECU",
+};
+
+/** 新镜头的默认景别 */
+export const DEFAULT_SHOT_SIZE = "中景";
+
+/** 新镜头的默认运镜 */
+export const DEFAULT_CAMERA_MOVE = "固定";
+
 /** 新镜头的默认时长（秒） */
 export const DEFAULT_SHOT_DURATION = 3;
 
