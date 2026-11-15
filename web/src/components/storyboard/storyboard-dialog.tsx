@@ -1,12 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { motion, Reorder } from "motion/react";
-import { Plus } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 
+import { ChromePill } from "@/components/canvas/chrome/chrome";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NODE_META } from "@/constants/canvas";
+import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { cn } from "@/lib/utils";
+import { useStoryboardSplit } from "@/store/storyboard-split";
 import type { CanvasNode, NodeStoryboard, StoryboardShot } from "@/types";
 import {
   addShot,
@@ -21,6 +24,11 @@ import {
 } from "@/utils/storyboard/shots";
 
 import { SHOT_GRID_CLASS, ShotRow, STICKY_CELLS, type ShotRowActions } from "./shot-row";
+import { SplitControls } from "./split-controls";
+import { SplitErrorBanner, SplitProgressBar, SplitSkeletonRows } from "./split-ui";
+
+/** 新拆进来的行高亮停留多久（毫秒），之后淡出 */
+const HIGHLIGHT_MS = 1200;
 
 /** 表格最小宽度：各列宽 + 列间距 + 行内边距，弹窗比它窄时横向滚动 */
 const TABLE_MIN_WIDTH = "min-w-[1216px]";
@@ -28,17 +36,36 @@ const TABLE_MIN_WIDTH = "min-w-[1216px]";
 /** 表头文字；拖拽柄、行操作两列没有表头 */
 const HEADERS = ["", "镜号", "分镜图", "画面描述", "景别", "运镜", "动作/走位", "对白", "时长", ""];
 
-/** 空状态：图标 + 一句标题 + 添加按钮（编码规范 6.2） */
-export function StoryboardEmpty({ onAdd }: { onAdd: () => void }) {
+/** 空状态：图标 + 一句标题 + 按钮（编码规范 6.2）；有 split 时主按钮是「从剧本拆分镜」，「添加镜头」退成次按钮 */
+export function StoryboardEmpty({
+  onAdd,
+  split,
+  title = "还没有镜头",
+}: {
+  onAdd: () => void;
+  split?: { onSplit: () => void; reason: string };
+  title?: string;
+}) {
   const PlaceholderIcon = NODE_META.get("storyboard")?.placeholderIcon;
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-center">
       {PlaceholderIcon && <PlaceholderIcon className="text-muted-foreground size-10 opacity-60" />}
-      <p className="text-muted-foreground text-sm">还没有镜头</p>
-      <Button variant="outline" size="sm" className="nodrag" onClick={onAdd}>
-        <Plus />
-        添加镜头
-      </Button>
+      <p className="text-muted-foreground text-sm">{title}</p>
+      <div className="flex items-center gap-2">
+        {split && (
+          // 禁用的按钮不收鼠标事件，禁用原因的悬停提示挂在外面一层
+          <span title={split.reason || undefined} className="inline-flex">
+            <Button size="sm" className="nodrag" disabled={!!split.reason} onClick={split.onSplit}>
+              <Sparkles />
+              从剧本拆分镜
+            </Button>
+          </span>
+        )}
+        <Button variant="outline" size="sm" className="nodrag" onClick={onAdd}>
+          <Plus />
+          添加镜头
+        </Button>
+      </div>
     </div>
   );
 }
@@ -87,6 +114,31 @@ export function StoryboardDialog({
   const dragOrderRef = useRef<StoryboardShot[] | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
   const focusId = addedId ?? focusShotId;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { state: split, reason: splitReason, trigger, retry } = useStoryboardSplitUi(id);
+  const dismissSplit = useStoryboardSplit((s) => s.dismiss);
+  const highlights = useStoryboardSplit((s) => s.highlights[id]);
+  const clearHighlights = useStoryboardSplit((s) => s.clearHighlights);
+  const running = split.phase === "running";
+
+  // 刚拆进来的行：滚到第一条新行，停留一会儿后清掉高亮（设计 §6.4）。
+  // 滚动要读最新的表和弹窗开关，但它们变化时不该重置高亮定时器，所以放进 effect event
+  const scrollToFirstNew = useEffectEvent((fresh: Set<string>) => {
+    const first = board.shots.find((s) => fresh.has(s.id));
+    if (!open || !first) return;
+    // 等这一帧把新行渲染出来再滚
+    requestAnimationFrame(() =>
+      bodyRef.current
+        ?.querySelector(`[data-shot-id="${CSS.escape(first.id)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" }),
+    );
+  });
+  useEffect(() => {
+    if (!highlights || highlights.size === 0) return;
+    scrollToFirstNew(highlights);
+    const timer = setTimeout(() => clearHighlights(id), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlights, id, clearHighlights]);
 
   /** 以节点上最新的分镜表为底改一笔：行的回调引用不变，也不会拿到旧数据 */
   const commit = useCallback(
@@ -144,16 +196,46 @@ export function StoryboardDialog({
         <div className="flex shrink-0 items-center gap-3 border-b border-border/60 py-3 pr-12 pl-5">
           {KindIcon && <KindIcon className="text-muted-foreground size-4" />}
           <DialogTitle className="truncate text-sm font-semibold">{label}</DialogTitle>
-          <DialogDescription render={<div />} className="ml-auto text-xs">
+          <ChromePill className="ml-auto h-9">
+            <SplitControls id={id} />
+          </ChromePill>
+          <DialogDescription render={<div />} className="text-xs">
             <StoryboardStats board={board} />
           </DialogDescription>
         </div>
+        {running && <SplitProgressBar />}
+        {split.phase === "failed" && (
+          <SplitErrorBanner
+            reason={split.reason}
+            onRetry={retry}
+            onDismiss={() => dismissSplit(id)}
+          />
+        )}
         {board.shots.length === 0 ? (
           <div className="grid min-h-0 flex-1 place-items-center">
-            <StoryboardEmpty onAdd={() => addAndFocus(addShot)} />
+            {running ? (
+              <div className="w-full">
+                <p className="text-muted-foreground mb-3 text-center text-sm">正在拆分镜</p>
+                <SplitSkeletonRows />
+              </div>
+            ) : (
+              <StoryboardEmpty
+                onAdd={() => addAndFocus(addShot)}
+                split={{ onSplit: trigger, reason: splitReason }}
+              />
+            )}
           </div>
         ) : (
-          <motion.div layoutScroll className="min-h-0 flex-1 overflow-auto">
+          <motion.div
+            ref={bodyRef}
+            layoutScroll
+            // 拆分中锁住编辑，免得和即将写入的结果打架
+            inert={running}
+            className={cn(
+              "min-h-0 flex-1 overflow-auto transition-opacity",
+              running && "opacity-60",
+            )}
+          >
             <div className={TABLE_MIN_WIDTH}>
               <div
                 className={cn(
@@ -186,10 +268,13 @@ export function StoryboardDialog({
                     shot={shot}
                     number={i + 1}
                     autoFocus={shot.id === focusId}
+                    highlight={highlights?.has(shot.id)}
                     actions={actions}
                   />
                 ))}
               </Reorder.Group>
+              {/* 追加模式：新镜头会出现在表格末尾 */}
+              {running && split.mode === "append" && <SplitSkeletonRows />}
             </div>
             {/* 宽度跟可视区走，横向滚动时钉在左边 */}
             <div className="sticky left-0 px-3 pt-3 pb-4">

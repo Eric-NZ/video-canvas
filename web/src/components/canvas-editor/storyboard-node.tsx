@@ -1,13 +1,19 @@
 import { Position, useReactFlow } from "@xyflow/react";
+import { Loader2 } from "lucide-react";
 
 import { NodeCard, type NodeCardHandle } from "@/components/canvas";
 import { BaseNodeContent } from "@/components/canvas/base-node";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SplitControls } from "@/components/storyboard/split-controls";
+import { SplitOverwriteDialog } from "@/components/storyboard/split-ui";
 import {
   StoryboardDialog,
   StoryboardEmpty,
   StoryboardStats,
 } from "@/components/storyboard/storyboard-dialog";
 import { NODE_META } from "@/constants/canvas";
+import { cn } from "@/lib/utils";
+import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import {
@@ -58,6 +64,8 @@ export function StoryboardCanvasNode({
   const openEditor = () => useStoryboardEditor.getState().open(id);
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
+  const { state: split, reason: splitReason, trigger: triggerSplit } = useStoryboardSplitUi(id);
+  const running = split.phase === "running";
 
   /** 空状态的「添加镜头」：加第 1 行，打开弹窗并聚焦它的画面描述 */
   const addFirst = () => {
@@ -72,7 +80,21 @@ export function StoryboardCanvasNode({
       onRename={(label) => updateNodeData(id, { label })}
       icon={KindIcon ? <KindIcon /> : undefined}
       status={
-        board.shots.length > 0 ? (
+        running ? (
+          <span className="text-status-running inline-flex items-center gap-1">
+            <Loader2 className="size-3 animate-spin" />
+            拆分中
+          </span>
+        ) : split.phase === "failed" ? (
+          <button
+            type="button"
+            title={split.reason}
+            onClick={openEditor}
+            className="text-destructive nodrag cursor-pointer"
+          >
+            拆分失败
+          </button>
+        ) : board.shots.length > 0 ? (
           <StoryboardStats board={board} className="text-muted-foreground" />
         ) : undefined
       }
@@ -80,15 +102,34 @@ export function StoryboardCanvasNode({
       width={CARD_WIDTH}
     >
       <NodeOverlaysPresence multiSelected={multiSelected}>
-        {selected && !dragSelected && <NodeOverlays key="overlays" id={id} data={data} />}
+        {selected && !dragSelected && (
+          <NodeOverlays
+            key="overlays"
+            id={id}
+            data={data}
+            kindExtra={<SplitControls id={id} compact />}
+          />
+        )}
       </NodeOverlaysPresence>
       <BaseNodeContent>
-        {board.shots.length === 0 ? (
+        {board.shots.length === 0 && running ? (
+          // 拆分中：缩略图条换成闪烁的骨架，镜头出来后原地替换
+          <div className="flex flex-col gap-3 p-3" aria-busy>
+            <div className="grid grid-cols-5 gap-1.5">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} className="aspect-video rounded-sm" />
+              ))}
+            </div>
+          </div>
+        ) : board.shots.length === 0 ? (
           <div className="bg-muted grid aspect-video w-full place-items-center rounded-[inherit]">
-            <StoryboardEmpty onAdd={addFirst} />
+            <StoryboardEmpty
+              onAdd={addFirst}
+              split={{ onSplit: triggerSplit, reason: splitReason }}
+            />
           </div>
         ) : (
-          <div className="flex flex-col gap-3 p-3">
+          <div className={cn("flex flex-col gap-3 p-3", running && "animate-pulse")}>
             <div className="grid grid-cols-5 gap-1.5">
               {view.thumbs.map(({ number, shot }, i) => (
                 <div
@@ -133,6 +174,7 @@ export function StoryboardCanvasNode({
           </div>
         )}
       </BaseNodeContent>
+      <SplitOverwriteDialog id={id} />
       <StoryboardDialog
         id={id}
         label={data.label}

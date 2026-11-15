@@ -80,12 +80,15 @@ export function NodeOverlays({
   id,
   data,
   onOpenText,
+  kindExtra,
   children,
 }: {
   id: string;
   data: CanvasNodeData;
   /** 文本节点「放大」按钮：打开节点自己持有的编辑弹窗；不是文本节点用不到 */
   onOpenText?: () => void;
+  /** 这种节点在功能区末尾追加的控件（分镜表的「模型 + 拆分镜」），排在页面扩展之前 */
+  kindExtra?: ReactNode;
   /** 生成面板，拿到算好的宽度；不给就不摆面板（文本节点只有手写内容，不调模型） */
   children?: (width: number) => ReactNode;
 }) {
@@ -249,7 +252,14 @@ export function NodeOverlays({
               onAction={onAction}
               onTail={onTail}
               onGridPick={startGridSplit}
-              extra={toolbarExtra?.({ id, data })}
+              extra={
+                kindExtra || toolbarExtra ? (
+                  <>
+                    {kindExtra}
+                    {toolbarExtra?.({ id, data })}
+                  </>
+                ) : undefined
+              }
             />
           </motion.div>
         </NodeToolbar>

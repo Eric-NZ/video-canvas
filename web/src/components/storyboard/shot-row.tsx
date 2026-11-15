@@ -22,7 +22,7 @@ export const SHOT_GRID_CLASS =
  * 底色用实心的弹窗底盖住滚过来的格子，悬停时再叠一层行的悬停色，和整行一致。
  */
 const STICKY_BG =
-  "bg-popover group-hover/row:bg-[image:linear-gradient(var(--chrome-hover),var(--chrome-hover))]";
+  "bg-popover group-hover/row:bg-[image:linear-gradient(var(--chrome-hover),var(--chrome-hover))] group-data-[highlight=true]/row:bg-[image:linear-gradient(color-mix(in_oklab,var(--status-running)_10%,transparent),color-mix(in_oklab,var(--status-running)_10%,transparent))]";
 export const STICKY_CELLS = [
   `sticky left-0 z-[1] ${STICKY_BG}`,
   `sticky left-8 z-[1] ${STICKY_BG}`,
@@ -101,11 +101,14 @@ export const ShotRow = memo(function ShotRow({
   shot,
   number,
   autoFocus,
+  highlight,
   actions,
 }: {
   shot: StoryboardShot;
   number: number;
   autoFocus: boolean;
+  /** 刚由拆分镜写进来：底色短暂高亮，标出哪些是新来的 */
+  highlight?: boolean;
   actions: ShotRowActions;
 }) {
   const drag = useDragControls();
@@ -114,13 +117,16 @@ export const ShotRow = memo(function ShotRow({
   return (
     <Reorder.Item
       value={shot}
+      data-shot-id={shot.id}
+      data-highlight={highlight || undefined}
       dragListener={false}
       dragControls={drag}
       onDragEnd={actions.onDragEnd}
       whileDrag={{ scale: 1.01, boxShadow: "0 24px 48px -12px rgb(0 0 0 / 0.35)", zIndex: 10 }}
       className={cn(
         SHOT_GRID_CLASS,
-        "group/row bg-popover hover:bg-chrome-hover relative min-h-[72px] border-b border-border/60 px-2 py-2.5",
+        "group/row hover:bg-chrome-hover relative min-h-[72px] border-b border-border/60 px-2 py-2.5 transition-colors duration-700",
+        highlight ? "bg-status-running/10" : "bg-popover",
       )}
     >
       <div className={cn(STICKY_CELLS[0], "flex h-[54px] items-center")}>
