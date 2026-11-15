@@ -215,10 +215,27 @@ func detailNode(n Node) DetailNode {
 		if t := str(data["text"]); t != "" {
 			data["text"] = truncate(t, 4000)
 		}
+		hideShotImages(data)
 	}
 	d := DetailNode{ID: n.ID(), Type: str(n["type"]), Parent: n.ParentID(), Position: n.Position(), Data: data}
 	if n.IsGroup() {
 		d.Size = &Point{X: n.Width(), Y: n.Height()}
 	}
 	return d
+}
+
+// hideShotImages 把分镜表镜头里手传的分镜图 image {assetId, src} 换成 hasImage: true：
+// 素材 id 和地址属于用户的私有资源，模型只需要知道这一行有没有图。关联的 imageNodeId / videoNodeId 保留，
+// 要给那些节点改提示词、连线都得靠它们的 id。
+func hideShotImages(data map[string]any) {
+	storyboard, _ := data["storyboard"].(map[string]any)
+	shots, _ := storyboard["shots"].([]any)
+	for _, v := range shots {
+		if shot, ok := v.(map[string]any); ok {
+			if _, has := shot["image"]; has {
+				delete(shot, "image")
+				shot["hasImage"] = true
+			}
+		}
+	}
 }

@@ -333,3 +333,64 @@ func TestStoryboardEnumsMatchFrontend(t *testing.T) {
 		t.Errorf("运镜不一致：后端 %v，前端 %v", got, want)
 	}
 }
+
+// TestStoryboardDetailHidesAssetsFromAgent 手传分镜图的素材 id 和地址属于用户的私有资源，不给模型看；
+// 模型能看到这一行有没有图，也能看到关联的图片、视频节点 id（要改提示词、连线都得靠它）。
+func TestStoryboardDetailHidesAssetsFromAgent(t *testing.T) {
+	g := mustParse(t, `{"nodes":[{"id":"n_sb","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"storyboard","label":"分镜表","storyboard":{"shots":[
+	  {"id":"a","scene":"推门","shot":"全景","camera":"推","action":"","dialogue":"","duration":3,"image":{"assetId":"90451","src":"/files/u1/a.png"}},
+	  {"id":"b","scene":"看窗","shot":"中景","camera":"固定","action":"","dialogue":"","duration":3,"imageNodeId":"n_img","videoNodeId":"n_vid"}
+	]}}}],"edges":[]}`)
+	res, err := canvasgraph.Detail(g, []string{"n_sb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(res.Nodes[0].Data)
+	for _, leak := range []string{"90451", "/files/u1/a.png", "assetId", `"src"`} {
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("详情里不该出现 %q：%s", leak, raw)
+		}
+	}
+	for _, want := range []string{`"hasImage":true`, "n_img", "n_vid"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("详情里应该有 %q：%s", want, raw)
+		}
+	}
+}
+
+// TestAgentEditsKeepShotLinksAndImages Agent 改镜头文字时，行上的手传图和关联节点 id 原样保留，不会被抹掉。
+func TestAgentEditsKeepShotLinksAndImages(t *testing.T) {
+	g := mustParse(t, `{"nodes":[{"id":"n_sb","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"storyboard","label":"分镜表","storyboard":{"shots":[
+	  {"id":"a","scene":"推门","shot":"全景","camera":"推","action":"","dialogue":"","duration":3,"image":{"assetId":"90451","src":"/files/u1/a.png"},"imageNodeId":"n_img","videoNodeId":"n_vid"}
+	]}}}],"edges":[]}`)
+	res := mustApply(t, g, `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[{"op":"update","no":1,"set":{"shot":"特写"}}]}}]`)
+	raw, _ := json.Marshal(res.Graph.Node("n_sb").Data()["storyboard"])
+	for _, want := range []string{`"assetId":"90451"`, `"src":"/files/u1/a.png"`, `"imageNodeId":"n_img"`, `"videoNodeId":"n_vid"`, `"shot":"特写"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("改文字后应保留 %q：%s", want, raw)
+		}
+	}
+}
+
+// TestAgentDeleteAndMoveKeepOtherShotsLinks 删一行、挪一行，别的行的关联和手传图不受影响。
+func TestAgentDeleteAndMoveKeepOtherShotsLinks(t *testing.T) {
+	g := mustParse(t, `{"nodes":[{"id":"n_sb","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"storyboard","label":"分镜表","storyboard":{"shots":[
+	  {"id":"a","scene":"一","shot":"中景","camera":"固定","action":"","dialogue":"","duration":3,"imageNodeId":"n_i1"},
+	  {"id":"b","scene":"二","shot":"中景","camera":"固定","action":"","dialogue":"","duration":3,"imageNodeId":"n_i2"},
+	  {"id":"c","scene":"三","shot":"中景","camera":"固定","action":"","dialogue":"","duration":3,"imageNodeId":"n_i3"}
+	]}}}],"edges":[]}`)
+	res := mustApply(t, g, `[{"op":"update_node","id":"n_sb","storyboard":{"edits":[{"op":"delete","no":1},{"op":"move","no":2,"to":1}]}}]`)
+	raw, _ := json.Marshal(res.Graph.Node("n_sb").Data()["storyboard"])
+	var sb struct {
+		Shots []struct {
+			ID          string `json:"id"`
+			ImageNodeID string `json:"imageNodeId"`
+		} `json:"shots"`
+	}
+	if err := json.Unmarshal(raw, &sb); err != nil {
+		t.Fatal(err)
+	}
+	if len(sb.Shots) != 2 || sb.Shots[0].ID != "c" || sb.Shots[0].ImageNodeID != "n_i3" || sb.Shots[1].ID != "b" || sb.Shots[1].ImageNodeID != "n_i2" {
+		t.Errorf("挪动后各行应带着自己的关联：%s", raw)
+	}
+}
