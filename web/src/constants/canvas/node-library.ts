@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Clapperboard, Image, Music, Type, UserRound, Video } from "lucide-react";
+import { Clapperboard, Image, Music, TableProperties, Type, UserRound, Video } from "lucide-react";
 
 import {
   AudioPlaceholderIcon,
@@ -80,6 +80,14 @@ export const NODE_LIBRARY = [
     icon: UserRound,
     placeholderIcon: CharacterPlaceholderIcon,
   },
+  {
+    kind: "storyboard",
+    label: "分镜表",
+    description: "把剧本拆成镜头，一行一个镜头",
+    placeholder: "连上剧本，逐行写镜头的画面、景别、运镜和时长。",
+    icon: TableProperties,
+    placeholderIcon: TextPlaceholderIcon,
+  },
 ] as const satisfies readonly NodeKindEntry[];
 
 /** 节点种类，从 NODE_LIBRARY 推导，不手写以免和清单漂移 */
@@ -101,4 +109,5 @@ export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string
   { kind: "audio", title: "音频", description: "配乐、音效、配音" },
   { kind: "director", title: "导演台", description: "3D 摆位与运镜预演" },
   { kind: "character", title: "角色卡", description: "人物形象与声音，只属于当前画布" },
+  { kind: "storyboard", title: "分镜表", description: "把剧本拆成镜头，一行一个镜头" },
 ];

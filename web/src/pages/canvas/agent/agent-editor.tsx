@@ -49,8 +49,8 @@ export type NodeOption = {
   id: string;
   /** 标题 */
   label: string;
-  /** 节点种类（导演台 Agent 读不懂，不在这里） */
-  kind: Exclude<NodeKind, "director">;
+  /** 节点种类（导演台 Agent 读不懂；分镜表要到迭代 2 才接 Agent，都不在这里） */
+  kind: Exclude<NodeKind, "director" | "storyboard">;
 };
 
 /** 编辑器对外的操作 */

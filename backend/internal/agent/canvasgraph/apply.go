@@ -239,6 +239,9 @@ func (a *applier) createNode(op Op) error {
 	if op.Kind == KindDirector {
 		return errors.New("导演台节点只能由用户在画布上手动创建")
 	}
+	if op.Kind == KindStoryboard {
+		return errors.New("分镜表节点只能由用户在画布上手动创建")
+	}
 	if op.Character != nil && op.Kind != KindCharacter {
 		return errors.New("character 只能写在角色节点（kind 为 character）上")
 	}
@@ -360,6 +363,9 @@ func (a *applier) updateNode(op Op) error {
 	if n.Kind() == KindDirector {
 		return errors.New("导演台节点只能由用户在导演台里修改")
 	}
+	if n.Kind() == KindStoryboard {
+		return errors.New("分镜表节点只能由用户在分镜表里修改")
+	}
 	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil && op.Character == nil {
 		return errors.New("没有要修改的内容")
 	}
@@ -436,6 +442,9 @@ func (a *applier) connect(op Op) error {
 	}
 	if src.Kind() == KindDirector || dst.Kind() == KindDirector {
 		return errors.New("导演台不能连线：要先在导演台里导出成视频或图片节点")
+	}
+	if src.Kind() == KindStoryboard || dst.Kind() == KindStoryboard {
+		return errors.New("分镜表的连线只能由用户在画布上操作")
 	}
 	if !canLink(src.Kind(), dst.Kind()) {
 		return fmt.Errorf("%s 节点不能连到 %s 节点（%s 的下游只能是 %s）",

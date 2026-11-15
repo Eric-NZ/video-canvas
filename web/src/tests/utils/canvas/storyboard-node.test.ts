@@ -1,0 +1,109 @@
+import { describe, expect, test } from "bun:test";
+
+import { ADD_NODE_MENU, DOWNSTREAM_KINDS, NODE_META } from "@/constants/canvas";
+import type { CanvasNode, NodeKind } from "@/types";
+import {
+  deserializeGraph,
+  deserializeNode,
+  serializeGraph,
+} from "@/utils/canvas/canvas-persistence";
+import { canLinkNodes } from "@/utils/canvas/link-rule";
+import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
+
+const viewport = { x: 0, y: 0, zoom: 1 };
+
+const shots = [
+  {
+    id: "a",
+    scene: "推门进屋",
+    shot: "全景" as const,
+    camera: "推" as const,
+    action: "从门口走到窗边",
+    dialogue: "OS：又是雨天。",
+    duration: 4.5,
+  },
+  {
+    id: "b",
+    scene: "看向窗外",
+    shot: "特写" as const,
+    camera: "固定" as const,
+    action: "",
+    dialogue: "",
+    duration: 2,
+  },
+];
+
+const storyboard = (data: Partial<CanvasNode["data"]> = {}): CanvasNode => ({
+  id: "sb1",
+  type: "canvas",
+  position: { x: 0, y: 0 },
+  data: { kind: "storyboard", label: "分镜表", storyboard: { shots }, ...data },
+});
+
+describe("分镜表节点注册", () => {
+  test("添加节点菜单里有「分镜表」", () => {
+    expect(NODE_META.get("storyboard")?.label).toBe("分镜表");
+    expect(ADD_NODE_MENU.some((item) => item.kind === "storyboard")).toBe(true);
+  });
+
+  test("只有文本节点能连进分镜表，音频、图片、视频、导演台、角色卡都不行", () => {
+    const to = { kind: "storyboard" as const };
+    expect(canLinkNodes({ kind: "script" }, to)).toBe(true);
+    for (const kind of [
+      "audio",
+      "image",
+      "video",
+      "director",
+      "character",
+      "storyboard",
+    ] as NodeKind[]) {
+      expect(canLinkNodes({ kind }, to)).toBe(false);
+    }
+  });
+
+  test("迭代 1 分镜表不能手动连出去", () => {
+    expect(DOWNSTREAM_KINDS.storyboard).toEqual([]);
+  });
+
+  test("选中分镜表不出生成功能区", () => {
+    expect(toolbarGate(storyboard().data).visible).toBe(false);
+  });
+});
+
+describe("分镜表节点存档", () => {
+  test("镜头原样存下、读回", () => {
+    const graph = serializeGraph([storyboard()], [], viewport);
+    expect(graph.nodes[0].data).toMatchObject({ kind: "storyboard", storyboard: { shots } });
+    const restored = deserializeGraph(JSON.parse(JSON.stringify(graph))).nodes[0] as CanvasNode;
+    expect(restored.data.storyboard).toEqual({ shots });
+  });
+
+  test("读档时规整：坏数据读成空表，越界时长修正", () => {
+    const raw = JSON.parse(JSON.stringify(serializeGraph([storyboard()], [], viewport)));
+    raw.nodes[0].data.storyboard = { shots: [{ ...shots[0], duration: 0 }] };
+    expect((deserializeGraph(raw).nodes[0] as CanvasNode).data.storyboard?.shots[0].duration).toBe(
+      1,
+    );
+    raw.nodes[0].data.storyboard = "坏数据";
+    expect((deserializeGraph(raw).nodes[0] as CanvasNode).data.storyboard).toEqual({ shots: [] });
+  });
+
+  test("没有 storyboard 字段的分镜表节点读回时补空表；单节点读取同样规整", () => {
+    const raw = JSON.parse(
+      JSON.stringify(serializeGraph([storyboard({ storyboard: undefined })], [], viewport)),
+    );
+    expect((deserializeGraph(raw).nodes[0] as CanvasNode).data.storyboard).toEqual({ shots: [] });
+    expect((deserializeNode(raw.nodes[0]) as CanvasNode).data.storyboard).toEqual({ shots: [] });
+  });
+
+  test("别的种类的节点不带 storyboard", () => {
+    const image: CanvasNode = {
+      id: "i1",
+      type: "canvas",
+      position: { x: 0, y: 0 },
+      data: { kind: "image", label: "图片" },
+    };
+    const restored = deserializeGraph(serializeGraph([image], [], viewport)).nodes[0] as CanvasNode;
+    expect(restored.data.storyboard).toBeUndefined();
+  });
+});

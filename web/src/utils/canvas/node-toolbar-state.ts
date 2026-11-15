@@ -17,7 +17,9 @@ export type ToolbarGate = {
  */
 export function toolbarGate(data: CanvasNodeData): ToolbarGate {
   // 导演台没有素材可加工，不出功能区：进编辑器的入口在节点正文的按钮上，导出在编辑器里
-  if (data.kind === "director") return { visible: false, actionsDisabled: true };
+  // 分镜表同理：编辑在表格里，生成按行走（迭代 2）
+  if (data.kind === "director" || data.kind === "storyboard")
+    return { visible: false, actionsDisabled: true };
   const hasOutput =
     data.kind === "script" ? !!data.text?.trim() : !!data.src && !data.src.startsWith("blob:");
   const running = data.status === "running";

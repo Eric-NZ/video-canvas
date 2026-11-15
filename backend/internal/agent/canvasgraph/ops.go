@@ -30,6 +30,9 @@ const (
 	KindCharacter = "character" // 角色卡（数据内嵌在 data.character）：生成、参考、连线按图片节点处理；短剧里的由拆解创建
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
+	// KindStoryboard 是分镜表（镜头数据内嵌在 data.storyboard）：迭代 1 只在画布上手动建和编辑，
+	// Agent 能读到但不能建、不能改、不能连线；读写放到迭代 2。
+	KindStoryboard = "storyboard"
 )
 
 // downstream 是每种节点能直接驱动生成的下游种类，与前端 constants/canvas 的 DOWNSTREAM_KINDS 一致。
@@ -42,7 +45,7 @@ var downstream = map[string][]string{
 }
 
 // kindLabel 是节点的默认标题。
-var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindCharacter: "角色", KindDirector: "导演台"}
+var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindCharacter: "角色", KindDirector: "导演台", KindStoryboard: "分镜表"}
 
 // hues 是组可选的颜色，与前端 GroupHue 一致。
 var hues = map[string]bool{"red": true, "orange": true, "yellow": true, "green": true, "cyan": true, "blue": true, "purple": true, "pink": true}

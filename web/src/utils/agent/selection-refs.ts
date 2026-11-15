@@ -5,10 +5,12 @@ import type { NodeOption } from "@/pages/canvas/agent/agent-editor";
 export type RefNode = { id: string; label: string; kind: NodeOption["kind"] | "group" };
 
 /**
- * 这种节点能不能被引用（@ 候选、选中后的浅色占位）：导演台 Agent 读不懂，不引用；
- * 文本、图片、视频、音频和角色卡都可以（后端按节点 id 校验，目录和详情对种类是通用的）。
+ * 这种节点能不能被引用（@ 候选、选中后的浅色占位）：导演台 Agent 读不懂，不引用；分镜表的
+ * Agent 读写放在迭代 2，先不引用。文本、图片、视频、音频和角色卡都可以（后端按节点 id 校验，
+ * 目录和详情对种类是通用的）。
  */
-export const isReferableKind = (kind: NodeKind): kind is NodeOption["kind"] => kind !== "director";
+export const isReferableKind = (kind: NodeKind): kind is NodeOption["kind"] =>
+  kind !== "director" && kind !== "storyboard";
 
 /** 一条消息最多直接显示几个引用的节点，超过的折成「+N」 */
 export const SELECTION_SHOWN = 3;
