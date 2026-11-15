@@ -15,6 +15,9 @@ func TestSystem_KnowsStoryboard(t *testing.T) {
 			t.Errorf("系统提示词缺少 %q", word)
 		}
 	}
+	if strings.Contains(sys, "暂时不能连出去") {
+		t.Error("分镜表已经能连到图片、视频节点，提示词不能再说不能连出去")
+	}
 	for _, line := range strings.Split(sys, "\n") {
 		if strings.Contains(line, "还没有这些") && strings.Contains(line, "分镜表") {
 			t.Errorf("不能再把分镜表列为没有的功能：%s", line)

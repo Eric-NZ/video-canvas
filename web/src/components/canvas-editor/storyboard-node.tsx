@@ -29,11 +29,11 @@ import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 
 /**
- * 分镜表左边接剧本（文本）节点；右边的输出口先隐藏，迭代 2 按行生成分镜图 / 视频时从这里连出去。
+ * 分镜表左边接剧本（文本）节点；右边连到图片、视频节点：按行生成时由程序建线，也能手动拉线，线只表示来源。
  */
 const STORYBOARD_HANDLES: NodeCardHandle[] = [
   { type: "target", position: Position.Left },
-  { type: "source", position: Position.Right, hidden: true },
+  { type: "source", position: Position.Right },
 ];
 
 /**

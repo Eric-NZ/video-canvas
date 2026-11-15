@@ -229,15 +229,47 @@ func TestStoryboardOnlyAcceptsItsOwnFields(t *testing.T) {
 	}
 }
 
-// TestStoryboardLinkRules 只有文本能连进分镜表；迭代 2 第 1 块里分镜表还不能连出去。
+// TestStoryboardLinkRules 只有文本能连进分镜表；分镜表能连到图片、视频节点，别的连不出去。
 func TestStoryboardLinkRules(t *testing.T) {
 	for _, ops := range []string{
+		// 进：图片、视频、音频都不能连进分镜表
 		`[{"op":"create_node","tempId":"i","kind":"image"},{"op":"connect","source":"i","target":"n_sb"}]`,
-		`[{"op":"create_node","tempId":"i","kind":"image"},{"op":"connect","source":"n_sb","target":"i"}]`,
+		`[{"op":"create_node","tempId":"v","kind":"video"},{"op":"connect","source":"v","target":"n_sb"}]`,
+		// 出：音频、文本、分镜表自己连不上
+		`[{"op":"create_node","tempId":"a","kind":"audio"},{"op":"connect","source":"n_sb","target":"a"}]`,
+		`[{"op":"create_node","tempId":"s","kind":"script"},{"op":"connect","source":"n_sb","target":"s"}]`,
+		`[{"op":"create_node","tempId":"b","kind":"storyboard"},{"op":"connect","source":"n_sb","target":"b"}]`,
 	} {
 		applyErr(t, storyboardPayload, ops)
 	}
-	mustApply(t, mustParse(t, storyboardPayload), `[{"op":"create_node","tempId":"s","kind":"script"},{"op":"connect","source":"s","target":"n_sb"}]`)
+	g := mustParse(t, storyboardPayload)
+	for _, ops := range []string{
+		`[{"op":"create_node","tempId":"s","kind":"script"},{"op":"connect","source":"s","target":"n_sb"}]`,
+		`[{"op":"create_node","tempId":"i","kind":"image"},{"op":"connect","source":"n_sb","target":"i"}]`,
+		`[{"op":"create_node","tempId":"v","kind":"video"},{"op":"connect","source":"n_sb","target":"v"}]`,
+	} {
+		mustApply(t, g, ops)
+	}
+}
+
+// TestStoryboardLinkIsProvenanceOnly 分镜表连到图片节点的线只表示来源：下游生成时不读分镜表的内容，
+// 既没有它的文字，也不会把它当作还没有产物的参考素材。
+func TestStoryboardLinkIsProvenanceOnly(t *testing.T) {
+	g := mustParse(t, storyboardPayload)
+	res := mustApply(t, g, `[
+	  {"op":"create_node","tempId":"i","kind":"image","prompt":"一只猫"},
+	  {"op":"connect","source":"n_sb","target":"i"}
+	]`)
+	src, err := canvasgraph.Generation(res.Graph, res.IDMap["i"])
+	if err != nil {
+		t.Fatalf("Generation: %v", err)
+	}
+	if len(src.Texts) != 0 || len(src.Assets) != 0 || src.Pending != 0 {
+		t.Fatalf("分镜表不该给下游任何文字或素材：%+v", src)
+	}
+	if got := canvasgraph.ComposePrompt(src, nil); got != "一只猫" {
+		t.Errorf("下游提示词应只有自己的：%q", got)
+	}
 }
 
 // TestStoryboardCannotGenerate 分镜表不调模型，不能申请生成。

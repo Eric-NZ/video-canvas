@@ -31,7 +31,7 @@ const (
 	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
 	KindDirector = "director"
 	// KindStoryboard 是分镜表（镜头数据内嵌在 data.storyboard）：不调模型，Agent 用 storyboard 字段建表、逐行改镜头；
-	// 只接文本节点，暂时不能连出去。
+	// 只接文本节点，能连到图片、视频节点，线只表示来源，下游生成时不读它的内容。
 	KindStoryboard = "storyboard"
 )
 
@@ -42,7 +42,7 @@ var downstream = map[string][]string{
 	KindVideo:      {KindVideo},
 	KindAudio:      {KindVideo},
 	KindDirector:   {},
-	KindStoryboard: {},
+	KindStoryboard: {KindImage, KindVideo}, // 线只表示来源，下游不把分镜表当参考输入（见 GenSource.addUpstream）
 }
 
 // kindLabel 是节点的默认标题。

@@ -7,7 +7,7 @@ import {
   MIN_SHOT_DURATION,
   SHOT_SIZES,
 } from "@/constants/storyboard";
-import type { CameraMove, NodeStoryboard, ShotSize, StoryboardShot } from "@/types";
+import type { CameraMove, NodeStoryboard, ShotImage, ShotSize, StoryboardShot } from "@/types";
 
 /** 生成行 id 的函数，测试里换成可预测的 */
 type NewId = () => string;
@@ -59,7 +59,7 @@ export function insertShot(
   return { shots: [...board.shots.slice(0, at), emptyShot(newId), ...board.shots.slice(at)] };
 }
 
-/** 复制一行，副本换新 id、紧跟在原行后面；那行不存在时原样返回 */
+/** 复制一行：关联的图片 / 视频节点属于原行，不跟着复制；手传的图没有归属，副本可以带着 */
 export function duplicateShot(
   board: NodeStoryboard,
   id: string,
@@ -67,7 +67,8 @@ export function duplicateShot(
 ): NodeStoryboard {
   const index = board.shots.findIndex((s) => s.id === id);
   if (index < 0) return board;
-  const copy = { ...board.shots[index], id: newId() };
+  const { imageNodeId: _image, videoNodeId: _video, ...rest } = board.shots[index];
+  const copy = { ...rest, id: newId() };
   return {
     shots: [...board.shots.slice(0, index + 1), copy, ...board.shots.slice(index + 1)],
   };
@@ -112,6 +113,49 @@ export function applyOrder(board: NodeStoryboard, orderIds: readonly string[]): 
   const at = (s: StoryboardShot) => rank.get(s.id) ?? Number.POSITIVE_INFINITY;
   const shots = [...board.shots].sort((x, y) => at(x) - at(y));
   return shots.every((s, i) => s === board.shots[i]) ? board : { shots };
+}
+
+/** 一行的分镜图 / 视频来源要改成什么；imageNodeId 和 image 二选一，设一个会清掉另一个 */
+export type ShotLinkPatch = {
+  imageNodeId?: string;
+  videoNodeId?: string;
+  image?: ShotImage;
+};
+
+/** 记下一行关联的图片 / 视频节点或手传的分镜图（AC9：手传和节点出图二选一）；其余行保持原引用 */
+export function linkShot(board: NodeStoryboard, id: string, patch: ShotLinkPatch): NodeStoryboard {
+  return {
+    shots: board.shots.map((s) => {
+      if (s.id !== id) return s;
+      const next: StoryboardShot = { ...s, ...patch };
+      if (patch.imageNodeId !== undefined) delete next.image;
+      if (patch.image !== undefined) delete next.imageNodeId;
+      return next;
+    }),
+  };
+}
+
+/**
+ * 把关联的节点已经不在画布上的行解除关联（AC8：删掉图片节点后这一行恢复成未生成）。
+ * 没有要解除的就原样返回，调用方靠引用判断要不要写回。
+ * @param exists 节点还在不在画布上
+ */
+export function pruneShotLinks(
+  board: NodeStoryboard,
+  exists: (nodeId: string) => boolean,
+): NodeStoryboard {
+  let changed = false;
+  const shots = board.shots.map((s) => {
+    const staleImage = s.imageNodeId !== undefined && !exists(s.imageNodeId);
+    const staleVideo = s.videoNodeId !== undefined && !exists(s.videoNodeId);
+    if (!staleImage && !staleVideo) return s;
+    changed = true;
+    const next = { ...s };
+    if (staleImage) delete next.imageNodeId;
+    if (staleVideo) delete next.videoNodeId;
+    return next;
+  });
+  return changed ? { shots } : board;
 }
 
 /** 行 id → 镜号：按行序从 1 起连续编号，镜号不存档，所以排序后不会错位 */
@@ -192,6 +236,22 @@ export function storyboardCardView(board: NodeStoryboard): StoryboardCardView {
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
+/** 值有效就带上这个键，否则什么都不带 */
+const optional = <K extends string, V>(key: K, value: V | undefined) =>
+  value === undefined ? {} : ({ [key]: value } as Record<K, V>);
+
+/** 非空字符串才算有效的节点 id；其余视为没有 */
+const nodeIdOf = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+
+/** 手传分镜图：素材 id 和地址都得是非空字符串，否则当没有 */
+function shotImageOf(v: unknown): ShotImage | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const { assetId, src } = v as Record<string, unknown>;
+  return typeof assetId === "string" && assetId && typeof src === "string" && src
+    ? { assetId, src }
+    : undefined;
+}
+
 const oneOf = <T extends string>(list: readonly T[], v: unknown): T | "" =>
   list.includes(v as T) ? (v as T) : "";
 
@@ -218,6 +278,10 @@ export function normalizeStoryboard(raw: unknown, newId: NewId = defaultId): Nod
       action: str(s.action),
       dialogue: str(s.dialogue),
       duration: clampDuration(s.duration),
+      // 关联字段只在有效时才写，没有就不带这个键
+      ...optional("imageNodeId", nodeIdOf(s.imageNodeId)),
+      ...optional("videoNodeId", nodeIdOf(s.videoNodeId)),
+      ...optional("image", shotImageOf(s.image)),
     });
   }
   return { shots };

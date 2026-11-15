@@ -66,8 +66,21 @@ describe("分镜表节点注册", () => {
     }
   });
 
-  test("迭代 1 分镜表不能手动连出去", () => {
-    expect(DOWNSTREAM_KINDS.storyboard).toEqual([]);
+  test("分镜表右边有出口：能连到图片、视频节点，连不到音频、文本、导演台、角色卡和自己", () => {
+    expect(DOWNSTREAM_KINDS.storyboard).toEqual(["image", "video"]);
+    const from = { kind: "storyboard" as const };
+    expect(canLinkNodes(from, { kind: "image" })).toBe(true);
+    expect(canLinkNodes(from, { kind: "video" })).toBe(true);
+    for (const kind of ["audio", "script", "director", "character", "storyboard"] as NodeKind[]) {
+      expect(canLinkNodes(from, { kind })).toBe(false);
+    }
+  });
+
+  test("连到只收部分素材的模型上也能连：连线只表示来源，不占用模型的参考素材能力", () => {
+    // 文本模型 / 不收参考图的视频模型：普通上游会因「模型不收这种素材」被拒，分镜表不受影响
+    expect(canLinkNodes({ kind: "storyboard" }, { kind: "video", model: "no-such-model" })).toBe(
+      true,
+    );
   });
 
   test("选中分镜表走公共功能区：显示、按钮可点，配置里只有「编辑分镜」", () => {

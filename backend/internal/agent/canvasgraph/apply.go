@@ -467,9 +467,6 @@ func (a *applier) connect(op Op) error {
 	if src.Kind() == KindDirector || dst.Kind() == KindDirector {
 		return errors.New("导演台不能连线：要先在导演台里导出成视频或图片节点")
 	}
-	if src.Kind() == KindStoryboard {
-		return errors.New("分镜表暂时不能连到别的节点：它只接文本（剧本）节点")
-	}
 	if !canLink(src.Kind(), dst.Kind()) {
 		return fmt.Errorf("%s 节点不能连到 %s 节点（%s 的下游只能是 %s）",
 			src.Kind(), dst.Kind(), src.Kind(), strings.Join(downstream[src.Kind()], "、"))

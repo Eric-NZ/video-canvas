@@ -22,8 +22,9 @@ export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   director: [],
   // 角色卡把形象当参考图、声音当参考音频：只能往生图 / 生视频连，不接音频、文本、导演台
   character: ["image", "video"],
-  // 分镜表只接剧本（文本）；按行生成分镜图 / 视频时由程序建线（迭代 2），不让手动连出去
-  storyboard: [],
+  // 分镜表只接剧本（文本）；能连到图片、视频：按行生成时由程序建线，也允许手动拉线。
+  // 线只表示「来源」，下游不读分镜表的内容（见 utils/canvas/provenance-links.ts）
+  storyboard: ["image", "video"],
 };
 
 /** 画布一开始是空的，节点都由用户双击或拉线建出来 */
