@@ -175,8 +175,8 @@ export type StoryboardCardView = {
 /** 卡片缩略图条最多几格 */
 const CARD_THUMBS = 5;
 
-/** 卡片摘要最多几行 */
-const CARD_SUMMARY = 3;
+/** 卡片摘要最多几行：576 × 324 的固定框里放完缩略图条后还剩的高度，能放 5 行加「还有 N 镜」 */
+const CARD_SUMMARY = 5;
 
 /** 算节点卡片要展示的缩略图和摘要 */
 export function storyboardCardView(board: NodeStoryboard): StoryboardCardView {

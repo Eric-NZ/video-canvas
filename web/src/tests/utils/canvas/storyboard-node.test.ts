@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 
 import { ADD_NODE_MENU, DOWNSTREAM_KINDS, NODE_META } from "@/constants/canvas";
 import { NODE_TOOLBAR } from "@/constants/node-toolbar";
+import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
+import { DEFAULT_NODE_ASPECT, nodeFrameSize } from "@/utils/canvas/node-frame";
+import { STORYBOARD_FRAME } from "@/utils/storyboard/card-frame";
 import type { CanvasNode, NodeKind } from "@/types";
 import {
   deserializeGraph,
@@ -74,6 +77,20 @@ describe("分镜表节点注册", () => {
       ["edit-storyboard", "编辑分镜"],
     ]);
     expect(NODE_TOOLBAR.storyboard.tail).toEqual([]);
+  });
+
+  test("节点卡片和 16:9 的图片节点一样大，也等于新建、排版用的默认尺寸", () => {
+    expect(STORYBOARD_FRAME).toEqual(nodeFrameSize(DEFAULT_NODE_ASPECT));
+    expect(STORYBOARD_FRAME).toEqual({
+      width: DEFAULT_NODE_SIZE.width,
+      height: DEFAULT_NODE_SIZE.height,
+    });
+    const src = readFileSync(
+      new URL("../../../components/canvas-editor/storyboard-node.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).toContain("STORYBOARD_FRAME");
+    expect(src).not.toMatch(/width=\{\s*\d+\s*\}|CARD_WIDTH/);
   });
 
   test("分镜表节点不再自己摆功能区：功能区只由公共 NodeOverlays 摆放", () => {

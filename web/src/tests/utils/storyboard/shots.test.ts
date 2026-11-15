@@ -224,14 +224,14 @@ describe("节点卡片", () => {
     expect(formatShotNumber(120)).toBe("120");
   });
 
-  test("缩略图取前 5 镜、多出来的计数；摘要取前 3 镜、剩下的计数", () => {
+  test("缩略图取前 5 镜、多出来的计数；摘要取前 5 镜、剩下的计数", () => {
     const list = Array.from({ length: 8 }, (_, i) => shot(`r${i}`));
     const view = storyboardCardView(board(...list));
     expect(view.thumbs.map((t) => t.number)).toEqual([1, 2, 3, 4, 5]);
     expect(view.thumbs[0].shot).toBe(list[0]);
     expect(view.moreThumbs).toBe(3);
-    expect(view.summary.map((t) => t.number)).toEqual([1, 2, 3]);
-    expect(view.moreSummary).toBe(5);
+    expect(view.summary.map((t) => t.number)).toEqual([1, 2, 3, 4, 5]);
+    expect(view.moreSummary).toBe(3);
   });
 
   test("镜头少时不出溢出计数", () => {

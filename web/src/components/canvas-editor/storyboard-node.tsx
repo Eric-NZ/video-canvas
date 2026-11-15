@@ -12,6 +12,8 @@ import {
   StoryboardStats,
 } from "@/components/storyboard/storyboard-dialog";
 import { NODE_META } from "@/constants/canvas";
+import { DEFAULT_NODE_ASPECT } from "@/utils/canvas/node-frame";
+import { STORYBOARD_FRAME } from "@/utils/storyboard/card-frame";
 import { cn } from "@/lib/utils";
 import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
@@ -34,9 +36,6 @@ const STORYBOARD_HANDLES: NodeCardHandle[] = [
   { type: "target", position: Position.Left },
   { type: "source", position: Position.Right, hidden: true },
 ];
-
-/** 卡片宽度：表格节点不需要画幅，比默认节点窄（设计 §2） */
-const CARD_WIDTH = 480;
 
 /**
  * 分镜表节点（设计 docs/design/分镜表节点 §2）：标题行右侧是「N 镜 · 总时长」，
@@ -99,7 +98,7 @@ export function StoryboardCanvasNode({
         ) : undefined
       }
       handles={STORYBOARD_HANDLES}
-      width={CARD_WIDTH}
+      width={STORYBOARD_FRAME.width}
     >
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && (
@@ -107,14 +106,15 @@ export function StoryboardCanvasNode({
             key="overlays"
             id={id}
             data={data}
-            kindExtra={<SplitControls id={id} compact />}
+            kindExtra={<SplitControls id={id} compact withModel={false} />}
           />
         )}
       </NodeOverlaysPresence>
-      <BaseNodeContent>
+      {/* 固定的 16:9 框（和图片节点一样大）：放不下的镜头少显示几行，不撑大卡片 */}
+      <BaseNodeContent style={{ aspectRatio: DEFAULT_NODE_ASPECT }}>
         {board.shots.length === 0 && running ? (
           // 拆分中：缩略图条换成闪烁的骨架，镜头出来后原地替换
-          <div className="flex flex-col gap-3 p-3" aria-busy>
+          <div className="flex flex-1 flex-col gap-3 p-3" aria-busy>
             <div className="grid grid-cols-5 gap-1.5">
               {Array.from({ length: 5 }, (_, i) => (
                 <Skeleton key={i} className="aspect-video rounded-sm" />
@@ -122,14 +122,14 @@ export function StoryboardCanvasNode({
             </div>
           </div>
         ) : board.shots.length === 0 ? (
-          <div className="bg-muted grid aspect-video w-full place-items-center rounded-[inherit]">
+          <div className="bg-muted grid w-full flex-1 place-items-center rounded-[inherit]">
             <StoryboardEmpty
               onAdd={addFirst}
               split={{ onSplit: triggerSplit, reason: splitReason }}
             />
           </div>
         ) : (
-          <div className={cn("flex flex-col gap-3 p-3", running && "animate-pulse")}>
+          <div className={cn("flex min-h-0 flex-1 flex-col gap-3 p-3", running && "animate-pulse")}>
             <div className="grid grid-cols-5 gap-1.5">
               {view.thumbs.map(({ number, shot }, i) => (
                 <div
@@ -150,7 +150,7 @@ export function StoryboardCanvasNode({
                 </div>
               ))}
             </div>
-            <div className="flex flex-col">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {view.summary.map(({ number, shot }) => (
                 <div key={shot.id} className="flex h-8 items-center gap-2 text-xs">
                   <span className="w-5 shrink-0 font-semibold tabular-nums">

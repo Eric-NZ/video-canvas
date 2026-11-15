@@ -2,6 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "b
 import { useEffect } from "react";
 
 import type { StoryboardSplitRequest, StoryboardSplitResponse } from "@/api/storyboard/type";
+import type { useModelsStore as UseModelsStore } from "@/store/models";
+import type { useStoryboardSplit as UseSplitStore } from "@/store/storyboard-split";
+import type { ApiError as ApiErrorClass } from "@/utils/requests/request";
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import type { CanvasEdge, CanvasNode, StoryboardShot } from "@/types";
 
@@ -20,10 +23,11 @@ mock.module("@/api/storyboard", () => ({
 }));
 
 let dom: DomEnv;
-let useSplit: typeof import("@/store/storyboard-split").useStoryboardSplit;
-let useModels: typeof import("@/store/models").useModelsStore;
-let ApiErrorCtor: typeof import("@/utils/requests/request").ApiError;
+let useSplit: typeof UseSplitStore;
+let useModels: typeof UseModelsStore;
+let ApiErrorCtor: typeof ApiErrorClass;
 let Harness: (props: { shots?: StoryboardShot[]; scripts?: string[] }) => React.ReactElement;
+let ActionBarHarness: () => React.ReactElement;
 let latest: () => StoryboardShot[];
 
 const apiShot = (scene: string) => ({
@@ -45,6 +49,7 @@ beforeAll(async () => {
   const { ReactFlowProvider, useNodes, useStoreApi } = await import("@xyflow/react");
   const { StoryboardDialog } = await import("@/components/storyboard/storyboard-dialog");
   const { SplitOverwriteDialog } = await import("@/components/storyboard/split-ui");
+  const { SplitControls } = await import("@/components/storyboard/split-controls");
   const { CanvasIdContext } = await import("@/utils/canvas/canvas-id");
   useSplit = (await import("@/store/storyboard-split")).useStoryboardSplit;
   useModels = (await import("@/store/models")).useModelsStore;
@@ -75,6 +80,30 @@ beforeAll(async () => {
       </>
     );
   }
+  /** 节点功能栏里的用法：compact 且不带模型下拉；剧本已连好、表是空的 */
+  ActionBarHarness = () => (
+    <CanvasIdContext.Provider value="c1">
+      <ReactFlowProvider
+        initialNodes={[
+          {
+            id: "sb",
+            type: "canvas",
+            position: { x: 700, y: 0 },
+            data: { kind: "storyboard", label: "分镜表", storyboard: { shots: [] } },
+          },
+          {
+            id: "s0",
+            type: "canvas",
+            position: { x: 0, y: 0 },
+            data: { kind: "script", label: "剧本", text: "第一段剧本" },
+          },
+        ]}
+        initialEdges={[{ id: "xy-edge__s0-sb", source: "s0", target: "sb" }]}
+      >
+        <SplitControls id="sb" compact withModel={false} />
+      </ReactFlowProvider>
+    </CanvasIdContext.Provider>
+  );
   Harness = ({ shots = [], scripts = ["第一段剧本"] }) => {
     const script = (i: number, text: string): CanvasNode => ({
       id: `s${i}`,
@@ -183,6 +212,28 @@ describe("拆分镜入口", () => {
     await dom.flush();
     expect(calls).toHaveLength(1);
     expect(latest().map((s) => s.scene)).toEqual(["月夜瓜地", "闰土举叉"]);
+    await m.unmount();
+  });
+});
+
+describe("节点功能栏里的拆分镜按钮", () => {
+  test("只有 ✦ 拆分镜按钮，没有模型下拉（模型在弹窗标题栏里选）；点它用 store 里记住的模型", async () => {
+    useSplit.getState().setModel("agent-a");
+    const m = await dom.mount(<ActionBarHarness />);
+    await dom.flush();
+    expect(body().textContent).not.toContain("Agent A");
+    const btn = body().querySelector<HTMLButtonElement>('[aria-label="从剧本拆分镜"]');
+    expect(btn).not.toBeNull();
+    await dom.click(btn);
+    await dom.flush();
+    expect(calls[0].model).toBe("agent-a");
+    await m.unmount();
+  });
+
+  test("弹窗标题栏里有模型下拉", async () => {
+    const m = await dom.mount(<Harness />);
+    await dom.flush();
+    expect(body().textContent).toContain("Agent A");
     await m.unmount();
   });
 });

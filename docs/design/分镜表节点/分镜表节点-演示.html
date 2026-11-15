@@ -52,7 +52,7 @@
   .node-title .stat.running { color: var(--running); } .node-title .stat.failed { color: var(--destructive); }
   .node { background: var(--card); border-radius: 8px; box-shadow: 0 0 0 1px color-mix(in oklch, var(--fg) 8%, transparent); position: relative; }
   .node.script { width: 260px; padding: 14px; font-size: 13px; line-height: 1.8; color: var(--muted-fg); }
-  .node.sb { width: 480px; padding: 12px; cursor: default; }
+  .node.sb { width: 576px; aspect-ratio: 16 / 9; padding: 12px; cursor: default; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
   .node.sb.selected { box-shadow: 0 0 0 2px var(--ring), 0 25px 50px -12px #0004; }
   .handle { position: absolute; top: 50%; width: 28px; height: 28px; margin-top: -14px; border-radius: 999px; background: var(--bg);
     box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--fg) 30%, transparent); display: grid; place-items: center; color: var(--muted-fg); }
@@ -380,8 +380,8 @@ function renderSplitSlots() {
   document.querySelectorAll("[data-split-slot]").forEach(slot => {
     const short = slot.dataset.splitSlot === "bar";
     if (short) slot.style.display = "contents";
-    slot.innerHTML = `<button class="cbtn model-btn" ${busy ? "disabled" : ""} aria-haspopup="listbox" aria-expanded="false"><span class="logo" style="background:${color}">${name[0]}</span>${name}${ic("chev", "chev")}</button>
-      ${short ? "" : '<span class="sep"></span>'}
+    // 节点功能区（bar）里只有拆分镜按钮，不带模型下拉；模型在弹窗标题栏里选
+    slot.innerHTML = `${short ? "" : `<button class="cbtn model-btn" ${busy ? "disabled" : ""} aria-haspopup="listbox" aria-expanded="false"><span class="logo" style="background:${color}">${name[0]}</span>${name}${ic("chev", "chev")}</button><span class="sep"></span>`}
       <span class="tip-wrap" title="${blocked ?? ""}"><button class="cbtn split-btn" ${blocked || busy ? "disabled" : ""}>${busy ? ic("loader", "spin") + "拆分中" : ic("spark") + (short ? "拆分镜" : "从剧本拆分镜")}</button></span>`;
   });
 }
@@ -448,9 +448,9 @@ function renderNode() {
     const dot = vdotClass(s.video) ? `<span class="vdot dot ${vdotClass(s.video)}"></span>` : "";
     return `<div class="frame${hasImg ? " has-img" : ""}${busy ? " shimmer" : ""}${more}" style="${hasImg ? `background-image:url('${s.img.url}')` : ""}"><b>${pad(i + 1)}</b><small>${s.size}</small>${dot}</div>`;
   }).join("");
-  const rows = shots.slice(0, 3).map((s, i) => `<div class="sum-row"><span class="no">${pad(i + 1)}</span>
+  const rows = shots.slice(0, 5).map((s, i) => `<div class="sum-row"><span class="no">${pad(i + 1)}</span>
     <span class="tag">${s.size} / ${s.move}</span><span class="desc">${esc(s.desc)}</span><span class="dur">${s.dur}s</span></div>`).join("");
-  const more = shots.length > 3 ? `<div class="sum-more">还有 ${shots.length - 3} 镜</div>` : "";
+  const more = shots.length > 5 ? `<div class="sum-more">还有 ${shots.length - 5} 镜</div>` : "";
   node.innerHTML = `<div class="strip">${frames}</div><div class="summary">${rows}${more}</div>`;
 }
 $("#sb-node").ondblclick = () => openDialog();
