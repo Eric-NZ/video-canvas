@@ -1,56 +1,10 @@
 import type { ReactNode } from "react";
-import { useStore, type ReactFlowState } from "@xyflow/react";
 import { Crosshair, Image, Link2, RefreshCw, TriangleAlert, Upload, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useTask } from "@/store/tasks";
-import type { CanvasNodeData, StoryboardShot } from "@/types";
-import { shotImageState, type LinkedNode } from "@/utils/storyboard/shot-image";
-import { deriveVideoNodeView } from "@/utils/tasks/node-view";
-
-/** 画格只关心关联节点的这几项 */
-type LinkedData = Pick<
-  CanvasNodeData,
-  "status" | "src" | "error" | "errorTaskRef" | "taskId" | "uploadProgress"
->;
-
-const sameLinked = (a: LinkedData | null, b: LinkedData | null) =>
-  a === b ||
-  (!!a &&
-    !!b &&
-    a.status === b.status &&
-    a.src === b.src &&
-    a.error === b.error &&
-    a.errorTaskRef === b.errorTaskRef &&
-    a.taskId === b.taskId &&
-    a.uploadProgress === b.uploadProgress);
-
-/**
- * 实时读关联节点的状态：只订阅这几项，用相等判断挡掉别的字段和位置变化，
- * 50 行都关联了节点时，一个节点的进度变化只重渲染它自己那一格（AC13）。
- */
-function useLinkedImage(nodeId: string | undefined): LinkedNode | undefined {
-  const data = useStore((state: ReactFlowState): LinkedData | null => {
-    const d = nodeId
-      ? (state.nodeLookup.get(nodeId)?.internals.userNode.data as CanvasNodeData | undefined)
-      : undefined;
-    return d
-      ? {
-          status: d.status,
-          src: d.src,
-          error: d.error,
-          errorTaskRef: d.errorTaskRef,
-          taskId: d.taskId,
-          uploadProgress: d.uploadProgress,
-        }
-      : null;
-  }, sameLinked);
-  const task = useTask(data?.taskId);
-  if (!nodeId) return undefined;
-  if (!data) return { exists: false };
-  // 耗时不显示，传 0 就行：进度条只用任务快照里的 progress
-  return { exists: true, view: deriveVideoNodeView(data, task, 0) };
-}
+import { useLinkedNodeView } from "@/hooks/use-linked-node-view";
+import type { StoryboardShot } from "@/types";
+import { shotImageState } from "@/utils/storyboard/shot-image";
 
 /** 画格里悬停浮出的圆形清透图标按钮；每个都有 title，不写文字（编码规范 6.2） */
 function CellTool({
@@ -108,7 +62,7 @@ export function ShotImageCell({
   onRemove: () => void;
   onLocate: (nodeId: string) => void;
 }) {
-  const linked = useLinkedImage(shot.imageNodeId);
+  const linked = useLinkedNodeView(shot.imageNodeId);
   const state = shotImageState(shot, linked);
   const generating =
     state.kind === "node" && (state.phase === "queued" || state.phase === "running");

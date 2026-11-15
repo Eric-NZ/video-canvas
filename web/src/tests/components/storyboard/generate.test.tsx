@@ -39,6 +39,8 @@ const seen: { nodes: CanvasNode[]; edges: CanvasEdge[] } = { nodes: [], edges: [
 const offs: Array<() => void> = [];
 /** 在挂载好的画布里改某个节点的数据（Body 渲染时把 updateNodeData 放进来） */
 let setNodeData: (id: string, patch: Partial<CanvasNode["data"]>) => void = () => {};
+/** 在挂载好的画布里删掉一个节点（连同它的连线），和用户在画布上删节点走同一条路径 */
+let removeNode: (id: string) => void = () => {};
 
 beforeAll(async () => {
   dom = await installDom();
@@ -59,12 +61,13 @@ beforeAll(async () => {
     if (!store.getState().hasDefaultEdges) store.setState({ hasDefaultEdges: true });
     const nodes = useNodes<CanvasNode>();
     const edges = useEdges<CanvasEdge>();
-    const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
+    const { updateNodeData, deleteElements } = useReactFlow<CanvasNode, CanvasEdge>();
     const node = nodes.find((n) => n.id === "sb")!;
     useEffect(() => {
       seen.nodes = nodes;
       seen.edges = edges;
       setNodeData = (id, patch) => updateNodeData(id, patch);
+      removeNode = (id) => void deleteElements({ nodes: [{ id }] });
     });
     return (
       <StoryboardDialog
@@ -154,7 +157,18 @@ const imageNode = (id: string, data: Partial<CanvasNode["data"]> = {}): CanvasNo
   data: { kind: "image", label: id, ...data },
 });
 
+const videoNode = (id: string, data: Partial<CanvasNode["data"]> = {}): CanvasNode => ({
+  id,
+  type: "canvas",
+  position: { x: 1356, y: 400 },
+  data: { kind: "video", label: id, ...data },
+});
+
 const body = () => dom.win.document.body;
+const buttonByText = (text: string, index = 0) =>
+  Array.from(body().querySelectorAll<HTMLButtonElement>("button")).filter(
+    (b) => b.textContent?.replace(/\s+/g, "") === text.replace(/\s+/g, ""),
+  )[index] ?? null;
 
 /** 一个可手动放行的上传，用来停在「上传中」检查界面 */
 function deferredAsset() {
@@ -486,6 +500,296 @@ describe("手动上传分镜图（AC9）", () => {
     await dom.click(byTitle("上传分镜图"));
     dom.win.document.createElement = real;
     expect(clicked).toEqual(["image/*"]);
+    await m.unmount();
+  });
+});
+
+describe("关联节点被删：弹窗开着时当场恢复（AC8）", () => {
+  test("删掉图片节点：这一行当场变回「生成分镜图」，不用关了弹窗重新打开", async () => {
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "done", src: "/f/a.png" })]}
+      />,
+    );
+    await dom.flush();
+    expect(byTitle("重新生成")).not.toBeNull();
+    await dom.act(async () => {
+      removeNode("i1");
+    });
+    await dom.flush(30);
+    expect(board()[0].imageNodeId).toBeUndefined();
+    expect(byTitle("生成分镜图")).not.toBeNull();
+    expect(byTitle("重新生成")).toBeNull();
+    await m.unmount();
+  });
+
+  test("删掉视频节点：这一行当场变回「生成视频」", async () => {
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "idle" })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).toContain("去生成");
+    await dom.act(async () => {
+      removeNode("v1");
+    });
+    await dom.flush(30);
+    expect(board()[0].videoNodeId).toBeUndefined();
+    expect(body().textContent).not.toContain("去生成");
+    expect(buttonByText("生成视频")).not.toBeNull();
+    await m.unmount();
+  });
+});
+
+describe("按行生成视频（AC10）", () => {
+  const videoCaps = (ops: string[], duration?: Record<string, unknown>) => ({
+    key: "vid-1",
+    label: "vid-1",
+    vendor: "x",
+    pricing: {},
+    capabilities: {
+      ops,
+      refs: {
+        image: { on: true, max: 4, max_mb: 10 },
+        video: { on: false, max: 0, max_mb: 0 },
+        audio: { on: false, max: 0, max_mb: 0 },
+      },
+      prompt: { max_length: 1000 },
+      params: duration ? { duration } : undefined,
+    },
+  });
+  const setVideoModels = (...models: ReturnType<typeof videoCaps>[]) =>
+    useModels.setState({
+      byKind: {
+        agent: imageModels("agent-a"),
+        image: imageModels("img-1"),
+        video: { status: "ready", loadedAt: Date.now(), models },
+      } as never,
+    });
+  const newVideoNodes = (known: string[] = []) =>
+    seen.nodes.filter((n) => n.data.kind === "video" && !known.includes(n.id));
+
+  test("建视频节点、从分镜表连线、提示词带对白、时长取模型最接近的值；不自动开始生成", async () => {
+    setVideoModels(
+      videoCaps(["t2v"], { type: "enum", label: "时长", open: true, options: [5, 10] }),
+    );
+    const submitted = { n: 0 };
+    const m = await mount(
+      <Harness shots={[shot("a", "月夜瓜地", { dialogue: "你好", duration: 4 })]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(300);
+    const [created] = newVideoNodes();
+    expect(created).toBeTruthy();
+    expect(created.data.prompt).toBe("中景，固定。月夜瓜地。对白：你好。");
+    expect(created.data.params?.duration).toBe(5);
+    expect(created.data.model).toBeUndefined();
+    expect(seen.edges.map((e) => [e.source, e.target])).toEqual([["sb", created.id]]);
+    expect(board()[0].videoNodeId).toBe(created.id);
+    // 视频贵，不自动开始：节点就算已经登记了提交动作，也没人去调
+    fakeActions(created.id, submitted);
+    await dom.flush(300);
+    expect(submitted.n).toBe(0);
+    await m.unmount();
+  });
+
+  test("视频节点竖排在分镜表右侧，和图片节点互不重叠", async () => {
+    setVideoModels(videoCaps(["t2v"]));
+    const m = await mount(<Harness shots={[shot("a", "甲"), shot("b", "乙")]} />);
+    await dom.flush();
+    await dom.click(byTitle("生成分镜图", 1));
+    await dom.flush(30);
+    await dom.click(buttonByText("生成视频", 1));
+    await dom.flush(300);
+    const img = newImageNodes()[0];
+    const vid = newVideoNodes()[0];
+    expect(vid.position.x).toBe(img.position.x);
+    expect(Math.abs(vid.position.y - img.position.y)).toBeGreaterThanOrEqual(324 + 40);
+    await m.unmount();
+  });
+
+  test("有已生成的分镜图、模型支持图生视频：图片节点连线进视频节点当首帧", async () => {
+    setVideoModels(videoCaps(["t2v", "i2v"]));
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "done", src: "/f/a.png", assetId: "55" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(300);
+    const [created] = newVideoNodes();
+    const edges = seen.edges.map((e) => [e.source, e.target]);
+    expect(edges).toContainEqual(["sb", created.id]);
+    expect(edges).toContainEqual(["i1", created.id]);
+    expect(created.data.params?.op).toBe("i2v");
+    await m.unmount();
+  });
+
+  test("手传的分镜图：写成视频节点的手动参考素材", async () => {
+    setVideoModels(videoCaps(["i2v"]));
+    const m = await mount(
+      <Harness shots={[shot("a", "月夜瓜地", { image: { assetId: "9", src: "/files/9.png" } })]} />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(300);
+    const [created] = newVideoNodes();
+    expect(created.data.params?.images).toEqual(["9"]);
+    expect(created.data.paramAssets).toEqual({ "9": { url: "/files/9.png", mediaType: "image" } });
+    expect(seen.edges.map((e) => [e.source, e.target])).toEqual([["sb", created.id]]);
+    await m.unmount();
+  });
+
+  test("图片节点有预览图但还没有素材 id（没法被引用）：不当首帧", async () => {
+    setVideoModels(videoCaps(["t2v", "i2v"]));
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "done", src: "blob:local-preview" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(300);
+    expect(seen.edges.map((e) => e.source)).not.toContain("i1");
+    await m.unmount();
+  });
+
+  test("图片节点还没出图：不当首帧，只写提示词", async () => {
+    setVideoModels(videoCaps(["t2v", "i2v"]));
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "running" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(300);
+    const [created] = newVideoNodes();
+    expect(seen.edges.map((e) => e.source)).not.toContain("i1");
+    expect(created.data.params?.op).toBeUndefined();
+    await m.unmount();
+  });
+
+  test("已建视频节点：按钮变成「未生成 · 去生成」，点它定位过去，不再新建", async () => {
+    setVideoModels(videoCaps(["t2v"]));
+    useEditor.setState({ nodeId: "sb", focusShotId: null });
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "idle" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(buttonByText("去生成"));
+    expect(useEditor.getState().nodeId).toBeNull();
+    expect(newVideoNodes(["v1"])).toHaveLength(0);
+    await m.unmount();
+  });
+
+  test("四种状态：生成中带进度、已完成可播放、失败给原因", async () => {
+    setVideoModels(videoCaps(["t2v"]));
+    const m1 = await mount(
+      <Harness
+        shots={[shot("a", "甲", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "running" })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).toContain("生成中");
+    await m1.unmount();
+
+    const m2 = await mount(
+      <Harness
+        shots={[shot("a", "甲", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "done", src: "/f/v.mp4" })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).toContain("已完成");
+    await m2.unmount();
+
+    const m3 = await mount(
+      <Harness
+        shots={[shot("a", "甲", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "error", error: "模型超时" })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).toContain("失败");
+    expect(body().querySelector('[title="模型超时"]')).not.toBeNull();
+    expect(buttonByText("去处理")).not.toBeNull();
+    await m3.unmount();
+  });
+
+  test("时长被模型改了：时长格下面显示黄色「实际 5s」，悬停说明模型支持哪些；一致就没有", async () => {
+    setVideoModels(
+      videoCaps(["t2v"], { type: "enum", label: "时长", open: true, options: [5, 10] }),
+    );
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "甲", { videoNodeId: "v1", duration: 4 })]}
+        nodes={[videoNode("v1", { status: "idle", model: "vid-1", params: { duration: 5 } })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).toContain("实际 5s");
+    expect(body().querySelector('[title="所选视频模型只支持 5s / 10s"]')).not.toBeNull();
+    await m.unmount();
+
+    const m2 = await mount(
+      <Harness
+        shots={[shot("a", "甲", { videoNodeId: "v1", duration: 5 })]}
+        nodes={[videoNode("v1", { status: "idle", model: "vid-1", params: { duration: 5 } })]}
+      />,
+    );
+    await dom.flush();
+    expect(body().textContent).not.toContain("实际");
+    await m2.unmount();
+  });
+
+  test("画面描述为空：不建节点，提示先写画面", async () => {
+    setVideoModels(videoCaps(["t2v"]));
+    const m = await mount(<Harness shots={[shot("a", "  ")]} />);
+    await dom.flush();
+    await dom.click(buttonByText("生成视频"));
+    await dom.flush(100);
+    expect(newVideoNodes()).toHaveLength(0);
+    await m.unmount();
+  });
+
+  test("同一行连点只建一个节点", async () => {
+    setVideoModels(videoCaps(["t2v"]));
+    const m = await mount(<Harness shots={[shot("a", "月夜瓜地")]} />);
+    await dom.flush();
+    const btn = buttonByText("生成视频");
+    await dom.click(btn);
+    await dom.click(btn);
+    await dom.flush(300);
+    expect(newVideoNodes()).toHaveLength(1);
+    await m.unmount();
+  });
+});
+
+describe("行菜单的视频项", () => {
+  test("「生成视频」「重新生成视频」都在行菜单里，键盘用户不靠悬停也能用", async () => {
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "甲"), shot("b", "乙", { videoNodeId: "v1" })]}
+        nodes={[videoNode("v1", { status: "idle" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(body().querySelector<HTMLElement>('[aria-label="第 1 镜的操作"]'));
+    await dom.flush();
+    expect(buttonByText("生成视频")).not.toBeNull();
     await m.unmount();
   });
 });

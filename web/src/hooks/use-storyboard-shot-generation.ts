@@ -9,13 +9,14 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useModelsStore } from "@/store/models";
 import { useSettingsStore } from "@/store/settings";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasNode, StoryboardShot } from "@/types";
 import { pickDefaultModel } from "@/utils/canvas/default-model";
 import { newNodeLabel } from "@/utils/canvas/node-label";
 import { DEFAULT_NODE_ASPECT, nodeFrameSize } from "@/utils/canvas/node-frame";
 import { placeInColumn } from "@/utils/canvas/place-beside";
 import { shotImagePrompt } from "@/utils/storyboard/prompt";
 import { emptyStoryboard, formatShotNumber, linkShot } from "@/utils/storyboard/shots";
+import { buildVideoNodeSeed, type VideoImageSource } from "@/utils/storyboard/video";
 
 /** 改完提示词后等一小会儿再提交：节点要重新渲染一次，提交读的才是新的提示词 */
 const SETTLE_MS = 60;
@@ -25,8 +26,11 @@ const SETTLE_MS = 60;
  * - generateImage：这一行还没有图片节点就在分镜表右侧按镜号竖排建一个、从分镜表连线过去，
  *   提示词由这一行拼出来，用设置里的默认图片模型，建好就自动开始生成；
  *   已经有图片节点就复用它（用这一行现在的内容重写提示词再生成），不新建；
+ * - generateVideo：这一行还没有视频节点就按镜号竖排建一个、从分镜表连线（PRD 6.6）：提示词是出图那套模板加对白，
+ *   时长取模型支持的最接近值，有分镜图就按模型能力当首帧或参考图。**不自动开始生成**（视频贵，让用户到节点上
+ *   确认模型和参数再点）；已经有视频节点就不重复建，行菜单的「重新生成视频」用这一行现在的内容更新它再定位过去；
  * - locate：关掉弹窗，把画布飞到关联节点。
- * 结果不用回填：分镜图格实时读关联节点。
+ * 结果不用回填：分镜图格、视频格实时读关联节点。
  * @param storyboardId 分镜表节点 id
  */
 export function useStoryboardShotGeneration(storyboardId: string) {
@@ -113,6 +117,117 @@ export function useStoryboardShotGeneration(storyboardId: string) {
     [addEdges, addNodes, getNode, getNodes, storyboardId, updateNodeData],
   );
 
+  /**
+   * 这一行的分镜图落在哪：关联的图片节点已经出了图就是它（连线进视频节点），否则手传的素材；都没有为 null。
+   * 图片节点还在生成中、没有图时不当首帧——连一个没有产物的参考只会让视频节点提交失败。
+   */
+  const imageSourceOf = useCallback(
+    (shot: StoryboardShot): VideoImageSource => {
+      const node = shot.imageNodeId ? getNode(shot.imageNodeId) : undefined;
+      if (node?.data.kind === "image" && node.data.src && node.data.assetId) {
+        return { kind: "node", nodeId: node.id };
+      }
+      return shot.image
+        ? { kind: "asset", assetId: shot.image.assetId, src: shot.image.src }
+        : null;
+    },
+    [getNode],
+  );
+
+  const generateVideo = useCallback(
+    async (shotId: string, options: { regenerate?: boolean } = {}) => {
+      const key = `video:${shotId}`;
+      if (busy.current.has(key)) return;
+      const source = getNode(storyboardId);
+      const board = source?.data.storyboard;
+      if (!source || !board) return;
+      const index = board.shots.findIndex((s) => s.id === shotId);
+      if (index < 0) return;
+      const shot = board.shots[index];
+      const no = formatShotNumber(index + 1);
+      if (!shot.scene.trim()) {
+        toast.error(`先写第 ${no} 镜的画面描述`);
+        return;
+      }
+      busy.current.add(key);
+      try {
+        const models = useModelsStore.getState().byKind.video?.models ?? [];
+        const existing = shot.videoNodeId ? getNode(shot.videoNodeId) : undefined;
+        const chosen = existing?.data.model ?? useSettingsStore.getState().defaultModels.video;
+        const model = models.find((m) => m.key === chosen) ?? models[0];
+        const seed = buildVideoNodeSeed({
+          shot,
+          caps: model?.capabilities,
+          image: imageSourceOf(shot),
+        });
+        if (existing?.data.kind === "video") {
+          // 已有视频节点：只有明确「重新生成」才用这一行现在的内容更新它；普通点击就是定位过去
+          if (options.regenerate) {
+            updateNodeData(existing.id, (node) => ({
+              prompt: seed.prompt,
+              params: { ...node.data.params, ...seed.params },
+              ...(seed.paramAssets
+                ? { paramAssets: { ...node.data.paramAssets, ...seed.paramAssets } }
+                : {}),
+            }));
+          }
+          return;
+        }
+        const nodeId = crypto.randomUUID();
+        const nodes = getNodes();
+        const picked = pickDefaultModel(useSettingsStore.getState().defaultModels.video, models);
+        addNodes({
+          id: nodeId,
+          type: "canvas",
+          position: placeInColumn({
+            source,
+            nodes,
+            size: nodeFrameSize(DEFAULT_NODE_ASPECT),
+            slot: index,
+          }),
+          data: {
+            kind: "video",
+            label: newNodeLabel(
+              `镜头 ${no} 视频`,
+              nodes.map((n) => n.data.label),
+            ),
+            prompt: seed.prompt,
+            params: seed.params,
+            ...(seed.paramAssets ? { paramAssets: seed.paramAssets } : {}),
+            ...(picked ? { model: picked } : {}),
+          },
+        });
+        const edges: CanvasEdge[] = [
+          {
+            id: `xy-edge__${storyboardId}-${nodeId}`,
+            source: storyboardId,
+            target: nodeId,
+            ...ANIMATED_EDGE_OPTIONS,
+          } as CanvasEdge,
+        ];
+        // 分镜图当首帧 / 参考图：从图片节点连线进来（这才是真正的参考输入，分镜表那条线只表示来源）
+        if (seed.linkImageNodeId) {
+          edges.push({
+            id: `xy-edge__${seed.linkImageNodeId}-${nodeId}`,
+            source: seed.linkImageNodeId,
+            target: nodeId,
+            ...ANIMATED_EDGE_OPTIONS,
+          } as CanvasEdge);
+        }
+        addEdges(edges);
+        updateNodeData(storyboardId, (node) => ({
+          storyboard: linkShot(node.data.storyboard ?? emptyStoryboard(), shotId, {
+            videoNodeId: nodeId,
+          }),
+        }));
+        // 不自动开始：视频贵，用户要到节点上确认模型和参数再点生成
+      } finally {
+        busy.current.delete(key);
+      }
+    },
+    [addEdges, addNodes, getNode, getNodes, imageSourceOf, storyboardId, updateNodeData],
+  );
+
   const locate = useCallback(
     (nodeId: string) => {
       useStoryboardEditor.getState().close();
@@ -121,5 +236,5 @@ export function useStoryboardShotGeneration(storyboardId: string) {
     [focusNode],
   );
 
-  return { generateImage, locate };
+  return { generateImage, generateVideo, locate };
 }

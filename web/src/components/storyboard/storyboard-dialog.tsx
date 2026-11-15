@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { useReactFlow } from "@xyflow/react";
+import { useReactFlow, useStore } from "@xyflow/react";
 import { motion, Reorder } from "motion/react";
 import { Plus } from "lucide-react";
 
@@ -35,10 +35,22 @@ import { SplitErrorBanner, SplitProgressBar, SplitSkeletonRows } from "./split-u
 const HIGHLIGHT_MS = 1200;
 
 /** 表格最小宽度：各列宽 + 列间距 + 行内边距，弹窗比它窄时横向滚动 */
-const TABLE_MIN_WIDTH = "min-w-[1216px]";
+const TABLE_MIN_WIDTH = "min-w-[1340px]";
 
 /** 表头文字；拖拽柄、行操作两列没有表头 */
-const HEADERS = ["", "镜号", "分镜图", "画面描述", "景别", "运镜", "动作/走位", "对白", "时长", ""];
+const HEADERS = [
+  "",
+  "镜号",
+  "分镜图",
+  "画面描述",
+  "景别",
+  "运镜",
+  "动作/走位",
+  "对白",
+  "时长",
+  "视频",
+  "",
+];
 
 /** 空状态：图标 + 一句标题 + 按钮（编码规范 6.2）；有 split 时主按钮是「从剧本拆分镜」，「添加镜头」退成次按钮 */
 export function StoryboardEmpty({
@@ -123,7 +135,7 @@ export function StoryboardDialog({
   const highlights = useStoryboardSplit((s) => s.highlights[id]);
   const clearHighlights = useStoryboardSplit((s) => s.clearHighlights);
   const running = split.phase === "running";
-  const { generateImage, locate } = useStoryboardShotGeneration(id);
+  const { generateImage, generateVideo, locate } = useStoryboardShotGeneration(id);
   const { upload, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
 
   // 刚拆进来的行：滚到第一条新行，停留一会儿后清掉高亮（设计 §6.4）。
@@ -172,6 +184,7 @@ export function StoryboardDialog({
       onDuplicate: (shotId) => commit((b) => duplicateShot(b, shotId)),
       onRemove: (shotId) => commit((b) => removeShot(b, shotId)),
       onGenerateImage: (shotId) => void generateImage(shotId),
+      onGenerateVideo: (shotId, options) => void generateVideo(shotId, options),
       onPickImage: pickFile,
       onDropFiles: dropFiles,
       onRemoveImage: removeImage,
@@ -189,13 +202,23 @@ export function StoryboardDialog({
           );
       },
     }),
-    [addAndFocus, commit, dropFiles, generateImage, locate, pickFile, removeImage],
+    [addAndFocus, commit, dropFiles, generateImage, generateVideo, locate, pickFile, removeImage],
   );
 
-  // 打开时把关联的节点已经不在画布上的行解除关联：删掉图片节点后，这一行恢复成未生成（AC8），导出也不带过期的 id
+  // 关联的图片 / 视频节点一旦不在画布上，这一行当场解除关联：弹窗开着时删掉图片节点，这一行立刻变回
+  // 「生成分镜图」（AC8），导出也不带过期的 id。订阅的是「行上关联的、却已经不在画布上的节点数」，
+  // 这个数字只在有节点被删时才变，画布拖动、节点进度变化都不会触发
+  const staleLinks = useStore((state) => {
+    let stale = 0;
+    for (const shot of board.shots) {
+      if (shot.imageNodeId && !state.nodeLookup.has(shot.imageNodeId)) stale += 1;
+      if (shot.videoNodeId && !state.nodeLookup.has(shot.videoNodeId)) stale += 1;
+    }
+    return stale;
+  });
   useEffect(() => {
-    if (open) commit((b) => pruneShotLinks(b, (nodeId) => !!getNode(nodeId)));
-  }, [open, commit, getNode]);
+    if (staleLinks > 0) commit((b) => pruneShotLinks(b, (nodeId) => !!getNode(nodeId)));
+  }, [staleLinks, commit, getNode]);
 
   const shots = dragOrder ?? board.shots;
 
@@ -208,7 +231,7 @@ export function StoryboardDialog({
           onOpenChange(next);
         }}
       >
-        <DialogContent className="flex h-[min(88svh,860px)] w-[min(1280px,94vw)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogContent className="flex h-[min(88svh,860px)] w-[min(1400px,96vw)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           <div className="flex shrink-0 items-center gap-3 border-b border-border/60 py-3 pr-12 pl-5">
             {KindIcon && <KindIcon className="text-muted-foreground size-4" />}
             <DialogTitle className="truncate text-sm font-semibold">{label}</DialogTitle>

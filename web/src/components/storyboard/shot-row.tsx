@@ -7,8 +7,10 @@ import type { StoryboardShot } from "@/types";
 import { formatShotNumber } from "@/utils/storyboard/shots";
 
 import { DurationInput } from "./duration-input";
+import { DurationHint } from "./duration-hint";
 import { ShotImageCell } from "./shot-image-cell";
 import { ShotRowMenu } from "./shot-row-menu";
+import { ShotVideoCell } from "./shot-video-cell";
 import { CameraMoveSelect, ShotSizeSelect } from "./shot-select";
 
 /**
@@ -16,7 +18,7 @@ import { CameraMoveSelect, ShotSizeSelect } from "./shot-select";
  * 表头和行共用这一份，列才对得齐。
  */
 export const SHOT_GRID_CLASS =
-  "grid grid-cols-[28px_48px_112px_minmax(240px,1fr)_104px_104px_200px_200px_88px_40px] items-start gap-x-1";
+  "grid grid-cols-[28px_48px_112px_minmax(240px,1fr)_104px_104px_200px_200px_88px_120px_40px] items-start gap-x-1";
 
 /**
  * 横向滚动时钉在左边的三列：始终知道在改第几镜。偏移 = 前面的列宽加列间距 4px。
@@ -43,6 +45,8 @@ export type ShotRowActions = {
   onDragEnd: () => void;
   /** 生成分镜图 / 重新生成（复用这一行已关联的图片节点） */
   onGenerateImage: (id: string) => void;
+  /** 生成视频：这一行还没有视频节点就建一个（不自动开始生成） */
+  onGenerateVideo: (id: string, options?: { regenerate?: boolean }) => void;
   /** 点上传：选一张图作为这一行的分镜图 */
   onPickImage: (id: string) => void;
   /** 拖进来的文件：取第一张图片上传 */
@@ -220,7 +224,15 @@ export const ShotRow = memo(function ShotRow({
         placeholder="台词或旁白"
         onCommit={(dialogue) => change({ dialogue })}
       />
-      <DurationInput value={shot.duration} onChange={(duration) => change({ duration })} />
+      <div className="flex flex-col">
+        <DurationInput value={shot.duration} onChange={(duration) => change({ duration })} />
+        <DurationHint shot={shot} />
+      </div>
+      <ShotVideoCell
+        shot={shot}
+        onGenerate={() => actions.onGenerateVideo(shot.id)}
+        onLocate={actions.onLocate}
+      />
       <div className="flex h-9 items-center justify-center">
         <ShotRowMenu
           number={number}
@@ -229,6 +241,10 @@ export const ShotRow = memo(function ShotRow({
           onRemove={() => actions.onRemove(shot.id)}
           onGenerateImage={() => actions.onGenerateImage(shot.id)}
           hasImageNode={!!shot.imageNodeId}
+          onGenerateVideo={() =>
+            actions.onGenerateVideo(shot.id, { regenerate: !!shot.videoNodeId })
+          }
+          hasVideoNode={!!shot.videoNodeId}
         />
       </div>
     </Reorder.Item>

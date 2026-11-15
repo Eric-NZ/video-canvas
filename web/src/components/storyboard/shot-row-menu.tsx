@@ -7,6 +7,7 @@ import {
   Image,
   RefreshCw,
   Trash2,
+  Video,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ export function ShotRowMenu({
   onRemove,
   onGenerateImage,
   hasImageNode,
+  onGenerateVideo,
+  hasVideoNode,
 }: {
   number: number;
   onInsert: (side: "before" | "after") => void;
@@ -37,6 +40,10 @@ export function ShotRowMenu({
   onGenerateImage: () => void;
   /** 这一行已经关联了图片节点：菜单项叫「重新生成分镜图」 */
   hasImageNode: boolean;
+  /** 生成视频 / 重新生成视频 */
+  onGenerateVideo: () => void;
+  /** 这一行已经建过视频节点：菜单项叫「重新生成视频」 */
+  hasVideoNode: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -87,6 +94,10 @@ export function ShotRowMenu({
             <button type="button" className={ITEM_CLASS} onClick={run(onGenerateImage)}>
               {hasImageNode ? <RefreshCw /> : <Image />}
               {hasImageNode ? "重新生成分镜图" : "生成分镜图"}
+            </button>
+            <button type="button" className={ITEM_CLASS} onClick={run(onGenerateVideo)}>
+              <Video />
+              {hasVideoNode ? "重新生成视频" : "生成视频"}
             </button>
             <div role="separator" className="bg-chrome-border mx-2 my-1 h-px" />
             <button type="button" className={ITEM_CLASS} onClick={run(() => onInsert("before"))}>
