@@ -4,12 +4,13 @@ import { getCanvas } from "@/api/canvas";
 import { useTasksStore } from "@/store/tasks";
 import type { TaskMap } from "@/utils/tasks/merge";
 import { assetsFromGraph, type RefAsset } from "@/utils/drama/segment-assets";
+import { followLatest } from "@/utils/latest-call";
 import { reconcileTaskIds } from "@/utils/ws/task-events";
 
 export type DramaAssetsState = {
   assets: RefAsset[];
   status: "loading" | "ready" | "error";
-  /** 重新读一次画布；返回最新的资产，读取失败（或被更晚的一次读取取代）为 null */
+  /** 重新读一次画布；返回最新的资产（同时多次调用都拿最后一次的结果），读取失败为 null */
   reload: () => Promise<RefAsset[] | null>;
 };
 
@@ -33,7 +34,7 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
   const tasks = useTasksStore((state) => state.tasks);
   const current = useMemo(() => withVoiceTasks(assets, tasks), [assets, tasks]);
 
-  const reload = useCallback(async (): Promise<RefAsset[] | null> => {
+  const load = useCallback(async (): Promise<RefAsset[] | null> => {
     const mine = ++seq.current;
     try {
       const canvas = await getCanvas(canvasId);
@@ -52,6 +53,9 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
       return null;
     }
   }, [canvasId]);
+  // 被更晚一次读取顶掉的调用改等最新结果：批量提交时多个片段同时重读，不能有人空手而归
+  const latest = useRef<Promise<RefAsset[] | null>>(null);
+  const reload = useCallback(() => followLatest(latest, load()), [load]);
 
   useEffect(() => {
     void reload();
