@@ -5,7 +5,9 @@ import type { Segment } from "@/api/drama/type";
 import type { Capabilities } from "@/api/model/type";
 import {
   adaptState,
+  batchChoice,
   formatLabel,
+  type BatchSplit,
   sha256Hex,
   sha256HexSync,
   splitBatch,
@@ -121,5 +123,42 @@ describe("批量拆分", () => {
     expect(split.none.map((s) => s.id)).toEqual(["b"]);
     expect(split.stale.map((s) => s.id)).toEqual(["c", "d"]);
     expect(split.edited).toBe(1);
+  });
+});
+
+describe("批量前的转写选择弹窗", () => {
+  const split = (ready: number, none: number, stale: number, edited = 0): BatchSplit => ({
+    ready: Array.from({ length: ready }, (_, i) => seg({ id: `r${i}` })),
+    none: Array.from({ length: none }, (_, i) => seg({ id: `n${i}` })),
+    stale: Array.from({ length: stale }, (_, i) => seg({ id: `s${i}` })),
+    edited,
+  });
+
+  test("推荐的「转写后生成」排第一，各项标出会生成几个", () => {
+    const view = batchChoice(split(2, 3, 1), "h3");
+    expect(view.title).toBe("4 个片段还没转写为 H3");
+    expect(view.options.map((o) => [o.value, o.label, o.count, o.primary ?? false])).toEqual([
+      ["adapt", "转写后生成", 6, true],
+      ["source", "原稿生成", 6, false],
+      ["ready", "只生成已转写的", 2, false],
+    ]);
+  });
+
+  test("统计只列不为零的项", () => {
+    expect(batchChoice(split(0, 4, 0), "h3").stats).toEqual([{ label: "未转写", value: 4 }]);
+    expect(batchChoice(split(2, 0, 1), "h3").stats).toEqual([
+      { label: "已就绪", value: 2 },
+      { label: "已过期", value: 1 },
+    ]);
+  });
+
+  test("一个都没转写好时，不给「只生成已转写的」", () => {
+    const values = batchChoice(split(0, 4, 0), "h3").options.map((o) => o.value);
+    expect(values).toEqual(["adapt", "source"]);
+  });
+
+  test("有手改过的过期稿：提示重新转写会覆盖，没有就不提", () => {
+    expect(batchChoice(split(0, 0, 2, 1), "h3").note).toBe("1 个转写稿被手改过，重新转写会覆盖");
+    expect(batchChoice(split(0, 0, 2), "h3").note).toBeUndefined();
   });
 });

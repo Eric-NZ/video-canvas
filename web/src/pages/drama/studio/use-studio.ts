@@ -29,6 +29,7 @@ import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import {
   adaptState,
+  batchChoice,
   formatLabel,
   segmentNos,
   sha256Hex,
@@ -36,6 +37,7 @@ import {
   submitText,
   targetFormat,
   type AdaptState,
+  type BatchPick,
   type TargetFormat,
 } from "@/utils/drama/adaptation";
 import { reloadSegments } from "@/utils/drama/segment-events";
@@ -440,8 +442,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           title: "原稿在转写后改过",
           description: `当前 ${formatLabel(format)} 转写稿是按旧原稿转的${adaptation.edited ? "，并且被你手改过，重新转写会覆盖这些修改" : ""}。`,
           options: [
-            { value: "keep", label: "仍用当前转写稿生成" },
             { value: "readapt", label: "重新转写并生成", primary: true },
+            { value: "keep", label: "仍用当前转写稿生成" },
           ],
         });
         if (!picked) return null;
@@ -535,20 +537,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       );
       const split = splitBatch(targets, format, (item) => hashes.get(item.id) ?? "");
       const pending = [...split.none, ...split.stale];
-      let picked: "adapt" | "source" | "ready" = "ready";
+      let picked: BatchPick = "ready";
       if (pending.length > 0) {
-        const label = formatLabel(format);
-        const choice = await chooseOption({
-          title: `有 ${pending.length} 个片段需要先转写为 ${label}`,
-          description:
-            `已就绪 ${split.ready.length} 个；未转写 ${split.none.length} 个；已过期 ${split.stale.length} 个。` +
-            (split.edited > 0 ? `其中 ${split.edited} 个转写稿被手改过，将被覆盖。` : ""),
-          options: [
-            { value: "ready", label: "只生成已转写的" },
-            { value: "source", label: "原稿生成" },
-            { value: "adapt", label: "转写后生成", primary: true },
-          ],
-        });
+        const choice = await chooseOption(batchChoice(split, format));
         if (!choice) return null;
         picked = choice;
       }
