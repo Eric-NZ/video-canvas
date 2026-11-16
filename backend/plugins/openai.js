@@ -9,7 +9,9 @@
  * 渠道怎么填：
  *   - Key  ：OpenAI 的 API Key（sk-...），由宿主按 Bearer 注入；
  *   - base_url：官方填 https://api.openai.com（路径里已带 /v1，base_url 不要再写 /v1）；兼容网关填它的根地址；
- *   - 设置 api：接口，responses（默认）或 chat_completions。网关只实现了 Chat Completions 时选后者。
+ *   - 设置 api：接口，responses（默认）或 chat_completions。网关只实现了 Chat Completions 时选后者；
+ *   - 设置 pathPrefix：接口路径的版本前缀，默认 /v1。智谱 /v4、火山方舟 /api/v3 这类不是 /v1 的上游改这里
+ *     （base_url 填到前缀之前，如 https://open.bigmodel.cn/api/paas + /v4）；上游路径不带版本段（如 DeepSeek）填 /。
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  * 插件没有网络与文件能力，只把任务翻译成请求描述、把响应翻译成统一结果。
@@ -36,7 +38,7 @@ module.exports = {
     apiVersion: 1,
     key: "openai",
     name: "OpenAI",
-    version: "1.1.0",
+    version: "1.2.0",
     vendor: "openai",
     description: "对接 OpenAI 官方接口：文本（Responses / Chat Completions 可选，同步）",
     auth: { type: "bearer" },
@@ -50,6 +52,12 @@ module.exports = {
         description: "responses：官方推荐的 Responses 接口；chat_completions：只支持 Chat Completions 的网关选这个",
         options: ["responses", "chat_completions"],
         default: "responses",
+      },
+      pathPrefix: {
+        type: "string",
+        label: "接口路径前缀",
+        description: "接口路径里版本段的前缀，默认 /v1；上游是 /v4、/api/v3 之类时改成对应值；上游路径不带版本段就填 /",
+        default: "/v1",
       },
     },
     import: { args: {} },
@@ -96,11 +104,11 @@ module.exports = {
   },
 
   buildCheckRequest: function (ctx) {
-    return { method: "GET", path: "/v1/models", timeout: 15 };
+    return { method: "GET", path: apiPath(ctx, "/models"), timeout: 15 };
   },
 
   buildImportRequest: function (ctx, args) {
-    return { method: "GET", path: "/v1/models", timeout: 30 };
+    return { method: "GET", path: apiPath(ctx, "/models"), timeout: 30 };
   },
 
   // 只导入文本类模型（gpt-* / chatgpt-* / o 系列）。
@@ -126,6 +134,21 @@ module.exports = {
 function useChat(ctx) {
   var settings = ctx.channel && ctx.channel.settings ? ctx.channel.settings : {};
   return settings.api === "chat_completions";
+}
+
+// 接口路径 = 渠道设置 pathPrefix + 后半段（如 /chat/completions）。
+// 前缀没填或只有空白按默认 /v1；"/" 表示不加前缀；缺前导斜杠会补上，末尾斜杠会去掉。
+function apiPath(ctx, rest) {
+  var settings = ctx.channel && ctx.channel.settings ? ctx.channel.settings : {};
+  var prefix = typeof settings.pathPrefix === "string" ? settings.pathPrefix.replace(/^\s+|\s+$/g, "") : "";
+  if (prefix === "") {
+    prefix = "/v1";
+  }
+  prefix = prefix.replace(/\/+$/, "");
+  if (prefix !== "" && prefix.charAt(0) !== "/") {
+    prefix = "/" + prefix;
+  }
+  return prefix + rest;
 }
 
 function buildResponsesRequest(ctx) {
@@ -161,7 +184,7 @@ function buildResponsesRequest(ctx) {
   }
   body.stream = false;
   body.store = false; // 刻意不在 OpenAI 侧保存对话
-  return { method: "POST", path: "/v1/responses", json: body, timeout: 120 };
+  return { method: "POST", path: apiPath(ctx, "/responses"), json: body, timeout: 120 };
 }
 
 function buildChatRequest(ctx) {
@@ -190,7 +213,7 @@ function buildChatRequest(ctx) {
   if (maxTokens !== undefined) {
     body.max_completion_tokens = maxTokens; // max_tokens 已弃用，且与 o 系列不兼容
   }
-  return { method: "POST", path: "/v1/chat/completions", json: body, timeout: 120 };
+  return { method: "POST", path: apiPath(ctx, "/chat/completions"), json: body, timeout: 120 };
 }
 
 // 用户传的 max_tokens 是正数才发；没填就不发，由上游按默认处理。
