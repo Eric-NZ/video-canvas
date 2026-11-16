@@ -76,6 +76,7 @@ export function ChipPopover({
   disabled,
   title,
   width,
+  contentClassName,
   children,
 }: {
   icon?: ReactNode;
@@ -94,6 +95,8 @@ export function ChipPopover({
   disabled?: boolean;
   title?: string;
   width?: string;
+  /** 弹层额外的样式，如限高滚动 */
+  contentClassName?: string;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -122,7 +125,11 @@ export function ChipPopover({
         </span>
         {showChevron && <ChevronDown className="opacity-50" />}
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={6} className={cn("gap-1", width ?? "w-64")}>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className={cn("gap-1", width ?? "w-64", contentClassName)}
+      >
         {children(() => setOpen(false))}
       </PopoverContent>
     </Popover>

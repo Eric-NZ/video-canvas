@@ -21,6 +21,7 @@ import { getCurrentUserId } from "@/utils/storage/user-id";
 
 import { AssetsUiContext, type AssetsUi } from "./assets-ui";
 import { AssetsOverlay } from "./assets-overlay";
+import { BreakdownProgress } from "./breakdown-progress";
 import { useWorkspace } from "./context";
 import { NodeEpisodesButton } from "./node-episodes";
 
@@ -249,6 +250,7 @@ export function AssetsArea({
           ))}
         </div>
         <span className="flex-1" />
+        <BreakdownProgress />
         <div ref={setGenerateAllTarget} className="flex items-center" />
         <Button
           variant="outline"

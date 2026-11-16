@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
@@ -35,10 +35,10 @@ export function BreakdownBody({
   onClose: () => void;
   onStarted: () => void;
 }) {
-  const { drama, refresh } = useWorkspace();
-  const options = breakdownOptions(drama.episodes);
+  const { drama, jobs, refresh } = useWorkspace();
+  const options = breakdownOptions(drama.episodes, jobs);
   const [selected, setSelected] = useState<number[]>(() =>
-    defaultBreakdownSelection(drama.episodes),
+    defaultBreakdownSelection(drama.episodes, jobs),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +143,7 @@ export function BreakdownBody({
           取消
         </Button>
         <Button disabled={!submit.ok || submitting} onClick={() => void start()}>
+          {submitting && <Loader2 className="animate-spin" />}
           {submit.label}
         </Button>
       </DialogFooter>

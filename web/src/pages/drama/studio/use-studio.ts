@@ -29,6 +29,7 @@ import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import {
   adaptState,
+  batchChoice,
   formatLabel,
   segmentNos,
   sha256Hex,
@@ -36,6 +37,7 @@ import {
   submitText,
   targetFormat,
   type AdaptState,
+  type BatchPick,
   type TargetFormat,
 } from "@/utils/drama/adaptation";
 import { reloadSegments } from "@/utils/drama/segment-events";
@@ -47,6 +49,7 @@ import {
   chooseCheck,
   isRunning,
   orderIds,
+  runBatch,
   sameOrder,
 } from "@/utils/drama/segments";
 import { describeSubmitError } from "@/utils/tasks/submit";
@@ -112,7 +115,14 @@ export type Studio = {
     setSeconds: (segment: Segment, seconds: number) => Promise<void>;
     patch: (sid: string, fields: Omit<UpdateSegmentInput, "revision">) => Promise<Segment>;
     choose: (segment: Segment, taskId: string) => Promise<void>;
-    generate: (segment: Segment) => Promise<void>;
+    /**
+     * 立即生成。批量用的两个选项：source 不看转写稿、直接交原稿（「原稿生成」）；
+     * deadConfirmed 引用失效已在批量开头统一确认过，不再逐个问
+     */
+    generate: (
+      segment: Segment,
+      options?: { source?: boolean; deadConfirmed?: boolean },
+    ) => Promise<void>;
     batch: () => Promise<void>;
     /**
      * 把原稿转写成当前格式；转写稿手改过时先确认覆盖（force 跳过确认）。
@@ -432,8 +442,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           title: "原稿在转写后改过",
           description: `当前 ${formatLabel(format)} 转写稿是按旧原稿转的${adaptation.edited ? "，并且被你手改过，重新转写会覆盖这些修改" : ""}。`,
           options: [
-            { value: "keep", label: "仍用当前转写稿生成" },
             { value: "readapt", label: "重新转写并生成", primary: true },
+            { value: "keep", label: "仍用当前转写稿生成" },
           ],
         });
         if (!picked) return null;
@@ -451,17 +461,19 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   );
 
   const generate = useCallback<Studio["actions"]["generate"]>(
-    async (segment) => {
+    async (segment, options) => {
       if (submitting.has(segment.id)) return;
       markSubmitting(segment.id, true);
       try {
         // 编辑中的提示词先存盘，提交的就是屏幕上看到的
         await flushEditors();
-        const current = await resolveSubmit(segment);
+        const current = options?.source
+          ? (latestOf(segment.id) ?? segment)
+          : await resolveSubmit(segment);
         if (!current) return;
         const latest = await freshAssets();
         if (!latest) {
-          toast.error("资产信息读取失败，请稍后重试");
+          toast.error("资产信息读取失败，请稍后重试", { id: "studio-assets-failed" });
           return;
         }
         const preview = planSegmentInput({
@@ -472,7 +484,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           overrides: prefs.overrides,
           assets: latest,
         });
-        if (preview.deadLabels.length > 0) {
+        if (preview.deadLabels.length > 0 && !options?.deadConfirmed) {
           const go = await confirm({
             title: "有引用已失效",
             description: `「${preview.deadLabels.join("」「")}」对应的资产已被删除，这部分只会按文字提交。要继续生成吗？`,
@@ -482,7 +494,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         }
         const result = await submitVideo(current, latest);
         if (!result.ok) {
-          toast.error(result.message);
+          // 同样的原因只弹一条：批量里积分不足、排队已满会让多个片段同时报同一句
+          toast.error(result.message, { id: `studio-submit:${result.message}` });
           return;
         }
         void reloadSegments(dramaId, no);
@@ -498,6 +511,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       markSubmitting,
       no,
       prefs.overrides,
+      latestOf,
       resolveSubmit,
       submitVideo,
       submitting,
@@ -507,11 +521,15 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
 
   /**
    * 目标格式需要转写时，批量前先把待生成片段分组：未转写 / 已过期的问一次
-   * 「转写后生成 / 只生成已转写的」；转写失败的跳过。返回要提交的片段（prompt 已换成转写稿），取消为 null
+   * 「转写后生成 / 原稿生成 / 只生成已转写的」；转写失败的跳过。
+   * 返回要提交的片段，和其中要直接用原稿提交的片段 id（选了「原稿生成」时是没转写好的那些）；取消为 null
    */
   const prepareBatch = useCallback(
-    async (targets: Segment[]): Promise<Segment[] | null> => {
-      if (format === "seedance") return targets;
+    async (
+      targets: Segment[],
+    ): Promise<{ targets: Segment[]; source: ReadonlySet<string> } | null> => {
+      const noSource: ReadonlySet<string> = new Set();
+      if (format === "seedance") return { targets, source: noSource };
       const hashes = new Map(
         await Promise.all(
           targets.map(async (item) => [item.id, await sha256Hex(item.prompt)] as const),
@@ -519,23 +537,16 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       );
       const split = splitBatch(targets, format, (item) => hashes.get(item.id) ?? "");
       const pending = [...split.none, ...split.stale];
-      let picked: "adapt" | "ready" = "ready";
+      let picked: BatchPick = "ready";
       if (pending.length > 0) {
-        const label = formatLabel(format);
-        const choice = await chooseOption({
-          title: `有 ${pending.length} 个片段需要先转写为 ${label}`,
-          description:
-            `已就绪 ${split.ready.length} 个；未转写 ${split.none.length} 个；已过期 ${split.stale.length} 个。` +
-            (split.edited > 0 ? `其中 ${split.edited} 个转写稿被手改过，将被覆盖。` : ""),
-          options: [
-            { value: "ready", label: "只生成已转写的" },
-            { value: "adapt", label: "转写后生成", primary: true },
-          ],
-        });
+        const choice = await chooseOption(batchChoice(split, format));
         if (!choice) return null;
         picked = choice;
       }
       const ids = split.ready.map((item) => item.id);
+      // 原稿生成：没转写好的也进来，但交的是原稿，不经过转写
+      const source = new Set(picked === "source" ? pending.map((item) => item.id) : []);
+      if (picked === "source") ids.push(...source);
       if (picked === "adapt" && pending.length > 0) {
         const failed: Segment[] = [];
         const queue = [...pending];
@@ -552,12 +563,15 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           toast.error(`${failed.length} 个片段转写失败，已跳过：片段 ${segmentNos(failed)}`);
         }
       }
-      return targets
+      const picks = targets
         .filter((item) => ids.includes(item.id))
         .map((item) => {
           const current = latestOf(item.id) ?? item;
-          return { ...current, prompt: submitText(current, format) };
+          return source.has(item.id)
+            ? current
+            : { ...current, prompt: submitText(current, format) };
         });
+      return { targets: picks, source };
     },
     [adapt, format, latestOf],
   );
@@ -569,29 +583,29 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       return;
     }
     await flushEditors();
-    const targets = await prepareBatch(all);
-    if (!targets) return;
+    const prepared = await prepareBatch(all);
+    if (!prepared) return;
+    const { targets, source } = prepared;
     if (targets.length === 0) {
       toast.info("没有可以直接生成的片段");
       return;
     }
+    // 引用失效一起问一次，免得同时提交时弹窗叠一摞
     const latest = await freshAssets();
     if (!latest) {
-      toast.error("资产信息读取失败，请稍后重试");
+      toast.error("资产信息读取失败，请稍后重试", { id: "studio-assets-failed" });
       return;
     }
-    // 引用失效的先一起问一次，允许继续
     const dead = new Set<string>();
     for (const item of targets) {
-      const planned = planSegmentInput({
+      planSegmentInput({
         caps: video.model?.capabilities,
         prompt: item.prompt,
         seconds: item.seconds,
         ratio: drama.ratio,
         overrides: prefs.overrides,
         assets: latest,
-      });
-      planned.deadLabels.forEach((label) => dead.add(label));
+      }).deadLabels.forEach((label) => dead.add(label));
     }
     if (dead.size > 0) {
       const go = await confirm({
@@ -601,33 +615,18 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       });
       if (!go) return;
     }
-    let ok = 0;
-    const failed: string[] = [];
-    for (const item of targets) {
-      markSubmitting(item.id, true);
-      const result = await submitVideo(item, latest);
-      markSubmitting(item.id, false);
-      if (result.ok) ok += 1;
-      else {
-        failed.push(result.message);
-        // 积分不足、排队已满之类每个片段都一样，不必再试
-        if (/积分不足|排队任务已达上限/.test(result.message)) break;
-      }
-    }
-    void reloadSegments(dramaId, no);
-    if (ok > 0) toast.info(`已提交 ${ok} 个片段`);
-    if (failed.length > 0) toast.error(`有 ${targets.length - ok} 个片段没能提交：${failed[0]}`);
+    // 和逐个点「立即生成」一样，全部同时提交，并发由后台统一限制
+    await runBatch(targets, (item) =>
+      generate(item, { source: source.has(item.id), deadConfirmed: true }),
+    );
   }, [
     drama.ratio,
-    dramaId,
     flushEditors,
     freshAssets,
+    generate,
     key,
-    markSubmitting,
-    no,
     prefs.overrides,
     prepareBatch,
-    submitVideo,
     video.model,
   ]);
 

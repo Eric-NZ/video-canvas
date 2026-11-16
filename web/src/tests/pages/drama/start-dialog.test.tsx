@@ -11,7 +11,7 @@ import {
 
 import type { CreateDramaInput, SourcePreflight } from "@/api/drama/type";
 import type { PromptLibrary } from "@/components/drama/prompts/use-prompt-library";
-import { installDom, type DomEnv } from "@/tests/helpers/dom";
+import { holdExitAnimations, installDom, type DomEnv } from "@/tests/helpers/dom";
 import service from "@/utils/requests/service";
 import type { StartBody as StartBodyType } from "@/pages/drama/start-dialog";
 import type { useModelsStore as useModelsStoreType } from "@/store/models";
@@ -399,5 +399,43 @@ describe("开拍设置：视频 / 图片模型", () => {
     expect(calls[0].imageModels?.character).toBeUndefined();
     expect(calls[0].imageModels?.scene).toBe("img-a");
     await m.unmount();
+  });
+});
+
+describe("开拍设置：弹窗开关", () => {
+  test("草稿过期时关弹窗并清掉预检：退出动画期间弹窗里仍是原来的内容", async () => {
+    const { StartDialog } = await import("@/pages/drama/start-dialog");
+    const { useState } = await import("react");
+    const Host = () => {
+      const [state, setState] = useState<{ open: boolean; pre: SourcePreflight | null }>({
+        open: true,
+        pre: pre(),
+      });
+      return (
+        <>
+          <button type="button" onClick={() => setState({ open: false, pre: null })}>
+            过期关闭
+          </button>
+          <StartDialog
+            open={state.open}
+            onOpenChange={(open) => setState((s) => ({ ...s, open }))}
+            pre={state.pre}
+            onSubmit={async () => {}}
+          />
+        </>
+      );
+    };
+    const release = holdExitAnimations(dom);
+    try {
+      const m = await dom.mount(<Host />);
+      await dom.flush();
+      await dom.click(byText(m.container, "过期关闭"));
+      const popup = dom.win.document.body.querySelector('[data-slot="dialog-content"]');
+      expect(popup?.hasAttribute("data-ending-style")).toBe(true);
+      expect(popup?.textContent).toContain("霜刃.docx");
+      await m.unmount();
+    } finally {
+      release();
+    }
   });
 });

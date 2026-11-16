@@ -137,7 +137,7 @@ func (s *DramaService) streamText(ctx context.Context, snap *provider.Snapshot, 
 		return nil, errcode.ErrDramaNoTextModel.WithMsg("模型渠道暂不可用")
 	}
 	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers, UpstreamModel: snap.Model.UpstreamModel,
-		Format: snap.Model.APIFormat, RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}
+		Format: snap.Model.APIFormat, PathPrefix: snap.Model.PathPrefix, RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency, IdleTimeout: snap.Model.IdleTimeout.D()}
 	req := llmgateway.Request{Messages: []llmgateway.Message{{Role: "user", Text: prompt}}}
 	if c := snap.Model.Capabilities.Context; c != nil {
 		req.MaxTokens = c.Output

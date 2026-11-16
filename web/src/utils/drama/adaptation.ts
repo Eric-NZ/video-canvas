@@ -147,6 +147,44 @@ export function splitBatch(
   return split;
 }
 
+/** 批量前转写选择的去向：转写后生成 / 没转写好的交原稿 / 只生成已转写的 */
+export type BatchPick = "adapt" | "source" | "ready";
+
+/** 批量前转写选择弹窗要显示的内容 */
+export type BatchChoiceView = {
+  title: string;
+  /** 只列不为零的项 */
+  stats: { label: string; value: number }[];
+  /** 有手改过的过期稿时提醒会被覆盖 */
+  note?: string;
+  /** 推荐的排第一；count 是选它会生成几个片段 */
+  options: { value: BatchPick; label: string; count: number; primary?: boolean }[];
+};
+
+/** 按拆分结果组织批量前的转写选择：一个都没转写好时不给「只生成已转写的」 */
+export function batchChoice(split: BatchSplit, format: TargetFormat): BatchChoiceView {
+  const pending = split.none.length + split.stale.length;
+  const all = split.ready.length + pending;
+  const stats = [
+    { label: "已就绪", value: split.ready.length },
+    { label: "未转写", value: split.none.length },
+    { label: "已过期", value: split.stale.length },
+  ].filter((item) => item.value > 0);
+  const options: BatchChoiceView["options"] = [
+    { value: "adapt", label: "转写后生成", count: all, primary: true },
+    { value: "source", label: "原稿生成", count: all },
+  ];
+  if (split.ready.length > 0) {
+    options.push({ value: "ready", label: "只生成已转写的", count: split.ready.length });
+  }
+  return {
+    title: `${pending} 个片段还没转写为 ${formatLabel(format)}`,
+    stats,
+    note: split.edited > 0 ? `${split.edited} 个转写稿被手改过，重新转写会覆盖` : undefined,
+    options,
+  };
+}
+
 /** 片段号：「01、03」 */
 export const segmentNos = (list: readonly Pick<Segment, "seq">[]): string =>
   list.map((item) => String(item.seq + 1).padStart(2, "0")).join("、");

@@ -30,6 +30,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useDramaStyles } from "@/hooks/use-drama-styles";
 import { useRemoteModels } from "@/hooks/use-models";
+import { useRetained } from "@/hooks/use-retained";
 import { cn } from "@/lib/utils";
 import type { ModelInfo } from "@/api/model/type";
 import {
@@ -663,6 +664,8 @@ export function StartDialog({
   /** 点「开始」建剧 */
   onSubmit: (input: CreateDramaInput) => Promise<void>;
 }) {
+  // 草稿过期时外面会同时关弹窗、清掉 pre：留住上一份，退出动画期间内容不消失
+  const shown = useRetained(pre);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -670,10 +673,10 @@ export function StartDialog({
         aria-label="开拍设置"
         className="bg-chrome ring-chrome-border w-160 max-w-[calc(100%-2rem)] gap-0 rounded-3xl p-0 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150 sm:max-w-160"
       >
-        {open && pre && (
+        {shown && (
           <StartDialogBody
-            key={pre.sourceToken}
-            pre={pre}
+            key={shown.sourceToken}
+            pre={shown}
             onCancel={() => onOpenChange(false)}
             onSubmit={onSubmit}
           />

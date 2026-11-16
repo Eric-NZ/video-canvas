@@ -21,6 +21,7 @@ import { CUSTOM_STYLE_KEY } from "@/utils/drama/options";
 import type { StageHints, WorkspaceStage } from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
+import { TaskPill } from "./job-bar";
 import { StageTabs } from "./stage-tabs";
 import type { SaveSummary } from "./use-workspace";
 
@@ -148,6 +149,7 @@ export function Topbar({
   onStage,
   onPalette,
   onPrompts,
+  onGo,
 }: {
   stage: WorkspaceStage;
   hints: StageHints;
@@ -155,6 +157,8 @@ export function Topbar({
   onPalette: () => void;
   /** 打开「提示词设置」 */
   onPrompts: () => void;
+  /** 任务面板里点集号：跳到这一步对应的工序页和集 */
+  onGo: (stage: WorkspaceStage, ep?: number) => void;
 }) {
   const { save } = useWorkspace();
   const status = SAVE_LABEL[save];
@@ -173,13 +177,14 @@ export function Topbar({
         <span
           role="status"
           className={cn(
-            "text-muted-foreground ml-1 inline-flex items-center gap-1 text-xs max-lg:hidden",
+            "text-muted-foreground ml-1 inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap max-lg:hidden",
             status.tone,
           )}
         >
           {status.icon}
           {status.text}
         </span>
+        <TaskPill onGo={onGo} />
       </div>
       <StageTabs stage={stage} hints={hints} onChange={onStage} />
       <div className="flex items-center justify-end gap-0.5">

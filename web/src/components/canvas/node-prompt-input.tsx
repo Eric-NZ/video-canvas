@@ -210,7 +210,11 @@ function PromptFooter({
             <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
             <ChevronDown className="opacity-50" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-72" align="start" sideOffset={8}>
+          <DropdownMenuContent
+            className="max-h-80 w-72 overflow-y-auto"
+            align="start"
+            sideOffset={8}
+          >
             <DropdownMenuGroup>
               {/* GroupLabel 必须待在 Group 里，否则 Base UI 会抛 MenuGroupContext 缺失 */}
               <DropdownMenuLabel>选择模型</DropdownMenuLabel>
