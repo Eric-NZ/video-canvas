@@ -119,7 +119,8 @@ describe("片场：还没有分镜时可以批量生成脚本", () => {
 });
 
 describe("片场：这一集正在拆解时", () => {
-  test("不再给「去拆解」，改成显示拆解进度和取消", async () => {
+  test("片场锁住：不给「去拆解」、不显示进度，只给「去资产管理」看进度", async () => {
+    const went: Array<[string, number | undefined]> = [];
     const view = await dom.mount(
       <Context.Provider
         value={
@@ -140,13 +141,24 @@ describe("片场：这一集正在拆解时", () => {
           } as unknown as DramaWorkspace
         }
       >
-        <StudioArea ep={1} onGo={() => {}} onBreakdownOpen={() => {}} />
+        <StudioArea
+          ep={1}
+          onGo={(stage, no) => went.push([stage, no])}
+          onBreakdownOpen={() => {}}
+        />
       </Context.Provider>,
     );
     const text = view.container.textContent ?? "";
-    expect(text).toContain("正在拆解第 1 集的资产");
-    expect(text).toContain("30%");
+    expect(text).toContain("第 1 集的资产还在拆解");
+    expect(text).not.toContain("30%");
+    expect(view.container.querySelector('[role="status"]')).toBeNull();
+    expect(text).not.toContain("取消");
     expect(text).not.toContain("去拆解");
+    const go = [...view.container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("去资产管理"),
+    );
+    await dom.click(go);
+    expect(went).toEqual([["assets", 1]]);
     // 空状态的工具条里同样有「批量生成脚本」，位置和片场顶栏一致
     expect(text).toContain("批量生成脚本");
     await view.unmount();

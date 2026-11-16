@@ -1,4 +1,4 @@
-import { Clapperboard, Lock, ScrollText } from "lucide-react";
+import { Clapperboard, Lock, ScrollText, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
@@ -39,7 +39,7 @@ function Gate({
 }
 
 /**
- * 拆解 / 分镜进行中的就地进度：进度条、百分比（排队时写「排队中」）和取消，和任务面板里的单条任务同一个样子。
+ * 分镜生成中的就地进度：进度条、百分比（排队时写「排队中」）和取消，和任务面板里的单条任务同一个样子。
  * 任务列表还没拉到（刚刷新）时只占位，不显示假进度。
  */
 function InlineProgress({ job }: { job: DramaJob | undefined }) {
@@ -137,17 +137,22 @@ export function StudioArea({
   );
 
   if (action.kind === "breakdown") {
-    // 这一集已经在拆解：不再给「去拆解」，免得重复提交
-    const breaking = jobs.find(
+    // 这一集已经在拆解：片场仍锁着，不给「去拆解」（免得重复提交），也不在这里放进度（拆解是资产管理的事），
+    // 只引导去资产管理看进度
+    const breaking = jobs.some(
       (job) => job.step === "breakdown" && isActiveJob(job) && job.episodes.includes(episode.no),
     );
     if (breaking) {
       return frame(
         <Gate
-          icon={<Lock className="animate-pulse motion-reduce:animate-none" />}
-          title={`正在拆解第 ${episode.no} 集的资产…`}
+          icon={<Lock />}
+          title={`第 ${episode.no} 集的资产还在拆解`}
+          text="拆解完成后才能生成分镜。"
         >
-          <InlineProgress job={breaking} />
+          <Button variant="outline" onClick={() => onGo("assets", episode.no)}>
+            <Users />
+            去资产管理
+          </Button>
         </Gate>,
       );
     }

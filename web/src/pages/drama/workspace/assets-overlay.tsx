@@ -28,7 +28,7 @@ import {
   toAssetItems,
   type AssetItem,
 } from "@/utils/drama/assets";
-import { writingAssetPrompts } from "@/utils/drama/jobs";
+import { isActiveJob, writingAssetPrompts } from "@/utils/drama/jobs";
 import { lowestUnit } from "@/utils/pricing/quote";
 
 import { AssetCard, TYPE_ICON } from "./asset-card";
@@ -128,6 +128,7 @@ function Credits({ value }: { value: number }) {
 /** 列表视图：类型 tab、资产卡网格（可鼠标框选，已生成的也能选上重新生成）、有选中时底部浮出批量操作栏 */
 function AssetList({ items }: { items: AssetItem[] }) {
   const ui = useAssetsUi();
+  const { jobs } = useWorkspace();
   const editor = useCanvasEditor();
   const imageModels = useRemoteModels("image");
   const audioModels = useRemoteModels("audio");
@@ -237,10 +238,20 @@ function AssetList({ items }: { items: AssetItem[] }) {
     toast.info("已在短剧画布上新建节点，列表同步出现");
   };
 
+  /** 正在拆解的是当前筛选的集（全集时任一集在拆）：空列表不说「还没有」，说拆完会出现 */
+  const breaking = jobs.some(
+    (job) =>
+      job.step === "breakdown" &&
+      isActiveJob(job) &&
+      (ui.filter.kind === "all" ||
+        (ui.filter.kind === "episode" && job.episodes.includes(ui.filter.no))),
+  );
   const hint =
     ui.filter.kind === "none"
       ? `画布里没有未分类的${typeMeta.label}`
-      : `这个筛选下还没有${typeMeta.label}`;
+      : breaking
+        ? `资产正在拆解，拆出的${typeMeta.label}会出现在这里`
+        : `这个筛选下还没有${typeMeta.label}`;
 
   return (
     <div className="bg-background absolute inset-0 z-20 flex flex-col">
