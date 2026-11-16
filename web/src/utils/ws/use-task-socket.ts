@@ -17,6 +17,11 @@ import {
   reconcileWatchedMarketing,
 } from "@/utils/marketing/events";
 
+import {
+  handleStoryboardSplitEvent,
+  reconcileStoryboardSplit,
+} from "@/utils/storyboard/split-sync";
+
 import { handleTaskView, reconcileActiveTasks } from "./task-events";
 import { buildWsUrl, TaskSocketClient } from "./socket-client";
 
@@ -46,7 +51,9 @@ export function useTaskSocket() {
       onDramaSegment: handleDramaSegmentEvent,
       onMarketingRound: handleMarketingRoundEvent,
       onMarketingScript: handleMarketingScriptEvent,
+      onStoryboardSplit: handleStoryboardSplitEvent,
       onOpen: () => {
+        void reconcileStoryboardSplit();
         void reconcileActiveTasks();
         void reconcileWatchedDramas();
         void reconcileWatchedSegments();
@@ -69,6 +76,7 @@ export function useTaskSocket() {
       void reconcileWatchedDramas();
       void reconcileWatchedSegments();
       void reconcileWatchedMarketing();
+      void reconcileStoryboardSplit();
     };
     const onOnline = () => client.reconnectNow();
     document.addEventListener("visibilitychange", onVisible);

@@ -130,12 +130,12 @@
 
 每种供应商协议是一个 JS 插件，运行在隔离的 plugin-runner 进程中。内置插件如下：
 
-| 类型 | 内置插件 |
-| ---- | -------- |
-| 文本 | OpenAI、Anthropic |
-| 图片 | OpenAI、OpenAI 兼容（对话生图）、豆包（火山方舟）、阿里云百炼 |
-| 视频 | Sora、Google Veo（Gemini API / Vertex AI）、豆包（火山方舟）、即梦、可灵、Vidu、MiniMax 海螺、阿里云百炼、xAI、New API 网关 |
-| 音频与音乐 | 豆包（火山语音）、SunoAPI（音乐、歌词）、音潮 Incho |
+| 类型       | 内置插件                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 文本       | OpenAI、Anthropic                                                                                                           |
+| 图片       | OpenAI、OpenAI 兼容（对话生图）、豆包（火山方舟）、阿里云百炼                                                               |
+| 视频       | Sora、Google Veo（Gemini API / Vertex AI）、豆包（火山方舟）、即梦、可灵、Vidu、MiniMax 海螺、阿里云百炼、xAI、New API 网关 |
+| 音频与音乐 | 豆包（火山语音）、SunoAPI（音乐、歌词）、音潮 Incho                                                                         |
 
 具体能用哪些模型，取决于你在后台渠道里配置并启用了什么。渠道里填 Base URL 和 API Key，通过连通性检查后才能启用。没有你要的供应商？按[插件契约](backend/docs/plugin-contract.md)写一个 JS 文件上传即可。
 
@@ -192,14 +192,6 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 | 产品与交互设计               | [docs/design/](docs/design/)                                                                            |
 | 版本变更                     | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
-## 状态与已知限制
-
-当前版本 0.6.x，迭代很快。使用前请知道：
-
-- 数据库迁移只向前；回退只能退到最近一次一键升级之前的版本。
-- 一键升级依赖 updater 容器挂载 `docker.sock`，等同服务器 root 权限，所以默认不启动。
-- Agent 的事件和会话暂时没有保留期清理，数据只增不减，请按用量规划存储。
-
 ## 参与贡献
 
 欢迎提交 Issue、功能建议和 Pull Request。如果你正在使用连镜，也欢迎分享你的工作流、使用体验或遇到的问题。
@@ -207,6 +199,12 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 开始贡献前，请先阅读 [贡献指南](CONTRIBUTING.md)（如何提 Issue 和 PR）和 [开发指南](docs/development.md)（环境、规范、提交前检查）。
 
 如果连镜对你有帮助，欢迎给项目一个 ⭐ Star，让更多创作者发现它。
+
+感谢每一位参与连镜的贡献者：
+
+<a href="https://github.com/zaylora/video-canvas/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=zaylora/video-canvas" alt="连镜贡献者" />
+</a>
 
 ## 致谢与社区
 

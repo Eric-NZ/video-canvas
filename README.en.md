@@ -196,14 +196,6 @@ Most documents are currently in Chinese.
 | Product and interaction design            | [docs/design/](docs/design/)                                                                            |
 | Changelog                                 | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
-## Status and known limitations
-
-Current version is 0.6.x and it moves fast. Please be aware that:
-
-- Database migrations only move forward; a rollback can only go back to the version before the last one-click upgrade.
-- One-click upgrade relies on the updater container mounting `docker.sock`, which is equivalent to root on the server, so it is off by default.
-- The Agent's events and sessions have no retention cleanup yet; data only grows, so plan storage for your usage.
-
 ## Contributing
 
 Issues, feature requests and pull requests are welcome. If you use 连镜, we would also love to hear about your workflow, your experience and any problems you run into.
@@ -211,6 +203,14 @@ Issues, feature requests and pull requests are welcome. If you use 连镜, we wo
 Before contributing, read the [contributing guide](CONTRIBUTING.en.md) (how to file issues and open pull requests) and the [development guide](docs/development.en.md) (environment setup, coding standards, pre-submit checks).
 
 If 连镜 is useful to you, a ⭐ Star helps more creators find it.
+
+### Contributors
+
+Thanks to everyone who has contributed to 连镜:
+
+<a href="https://github.com/zaylora/video-canvas/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=zaylora/video-canvas" alt="连镜 contributors" />
+</a>
 
 ## Community
 

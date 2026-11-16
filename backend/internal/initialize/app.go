@@ -200,6 +200,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	registerSteps(stepRegistry)
 	stepRepo := repository.NewStepRepository(db)
 	marketingRepo := repository.NewMarketingRepository(db)
+	storyboardRepo := repository.NewStoryboardRepository(db)
 	stepCaller := &stepkit.GatewayCaller{Streamer: textGateway, Secrets: aiCfgSvc}
 	stepSvc := service.NewStepAdminService(service.StepAdminDeps{
 		Registry: stepRegistry, Repo: stepRepo, Skills: skillSvc, Models: aiCfgSvc, Credits: settingsSvc, Audit: auditRepo,
@@ -212,6 +213,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务。
 	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
+	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
+	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{
+		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc, Broadcaster: hub,
+	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)
@@ -272,17 +277,18 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
 	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
-	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc)
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc, dramaSvc, stepSvc, marketingSvc, storyboardSvc)
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
 		closeDB(db)
 		return nil, err
 	}
-	taskRepo.SetEnqueuer(taskQueue)      // 创建任务的事务里入队：任务、积分冻结、job 一起提交
-	stepRepo.SetEnqueuer(taskQueue)      // 后台试跑与 River job 在业务事务里一并提交。
-	marketingRepo.SetEnqueuer(taskQueue) // 营销轮次与写脚本 job 在业务事务里一并提交。
-	dramaRepo.SetEnqueuer(taskQueue)     // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
+	taskRepo.SetEnqueuer(taskQueue)       // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	stepRepo.SetEnqueuer(taskQueue)       // 后台试跑与 River job 在业务事务里一并提交。
+	marketingRepo.SetEnqueuer(taskQueue)  // 营销轮次与写脚本 job 在业务事务里一并提交。
+	storyboardRepo.SetEnqueuer(taskQueue) // 分镜表拆分镜任务与 job 在业务事务里一并提交。
+	dramaRepo.SetEnqueuer(taskQueue)      // 短剧项目、流水线任务与 River job 在业务事务里一并提交。
 	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
 	if err != nil {
 		queueConn.Close()
@@ -356,6 +362,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
 		})),
+		Storyboard:   handler.NewStoryboardHandler(storyboardSvc),
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),

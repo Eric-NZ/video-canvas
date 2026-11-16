@@ -76,6 +76,8 @@ type Config struct {
 	StepTrial StepTrialHandler
 	// Marketing 是营销写脚本的执行器；为 nil 时不注册 worker、入队也会报错。
 	Marketing MarketingHandler
+	// StoryboardSplit 是分镜表拆分镜的执行器；为 nil 时不注册 worker、入队也会报错。
+	StoryboardSplit StoryboardSplitHandler
 
 	Enabled bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
 
@@ -179,6 +181,10 @@ func New(cfg Config) (*Runtime, error) {
 		if cfg.Marketing != nil {
 			AddWorker(workers, &marketingWorker{rt: rt})
 			rc.Queues[marketingQueue] = river.QueueConfig{MaxWorkers: hardCap}
+		}
+		if cfg.StoryboardSplit != nil {
+			AddWorker(workers, &storyboardSplitWorker{rt: rt})
+			rc.Queues[storyboardSplitQueue] = river.QueueConfig{MaxWorkers: hardCap}
 		}
 		if cfg.Notifier != nil {
 			AddWorker(workers, &notifyWorker{rt: rt})

@@ -2,7 +2,7 @@
 # 构建上下文是仓库根目录：docker build -f backend/Dockerfile .
 # 画布 Agent 是独立的服务（agent/Dockerfile，镜像 video-canvas-agent），这个镜像里没有 Node。
 
-FROM golang:1.27-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
 
 WORKDIR /src
 
@@ -14,8 +14,8 @@ COPY backend/ .
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILDTIME=unknown
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w -X video-canvas/pkg/version.Version=${VERSION} -X video-canvas/pkg/version.GitCommit=${COMMIT} -X video-canvas/pkg/version.BuildTime=${BUILDTIME}" \
     -o /out/server ./cmd/server

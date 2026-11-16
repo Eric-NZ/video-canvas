@@ -57,6 +57,14 @@ var (
 	ErrCanvasImportTooLarge = New(30007, "导入文件或素材数量超限", http.StatusRequestEntityTooLarge)
 	// 画布导出：导出的文件超出导入上限时拒绝导出（导出了也导不回来），具体原因用 WithMsg 给出
 	ErrCanvasExportTooLarge = New(30008, "画布太大，超过导入上限，无法导出", http.StatusRequestEntityTooLarge)
+	// 分镜表「从剧本拆分镜」：积分不足复用 40001
+	ErrStoryboardScriptEmpty   = New(30011, "剧本节点还没有内容", http.StatusBadRequest)
+	ErrStoryboardScriptTooLong = New(30012, "剧本超过 2 万字，请分场拆分镜", http.StatusBadRequest)
+	ErrStoryboardNoModel       = New(30013, "没有可用的 Agent 模型", http.StatusBadRequest)
+	ErrStoryboardSplitBusy     = New(30014, "这张分镜表正在拆分镜", http.StatusConflict)
+	ErrStoryboardSplitFailed   = New(30015, "拆分镜失败：模型两次输出都不合格，请重试", http.StatusBadGateway)
+	ErrStoryboardModelCall     = New(30016, "文本模型调用失败，请稍后重试", http.StatusBadGateway) // Msg 换成上游返回的错误原文
+	ErrStoryboardJobNotFound   = New(30017, "拆分镜任务不存在", http.StatusNotFound)
 )
 
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx
