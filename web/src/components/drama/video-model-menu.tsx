@@ -64,6 +64,7 @@ export function ModelMenu({
       label={prefix ? `${prefix} · ${name}` : name}
       title={title}
       width="w-80"
+      contentClassName="max-h-80 overflow-y-auto"
     >
       {(close) => (
         <>
