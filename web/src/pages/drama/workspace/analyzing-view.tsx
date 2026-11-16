@@ -45,7 +45,6 @@ export function AnalyzingView() {
   return (
     <div className="pt-6">
       <h3 className="text-base font-semibold">{paused ? "分集规划已暂停" : "正在研读剧本…"}</h3>
-      <p className="text-muted-foreground mt-1 text-sm">可以离开这个页面，完成后会通知你</p>
       <ol className="mt-6 grid gap-3">
         {steps.map(([title, detail], index) => (
           <li key={title} className="flex items-start gap-3">

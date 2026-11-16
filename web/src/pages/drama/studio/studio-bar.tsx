@@ -9,6 +9,7 @@ import { modelMaxSeconds } from "@/utils/drama/video-models";
 import { matchOption, paramEntries } from "@/utils/tasks/capabilities";
 
 import { useStoryboardStart } from "../workspace/storyboard-start";
+import { StoryboardBatchButton } from "../workspace/storyboard-batch-dialog";
 import { GenerateControls } from "./generate-controls";
 import type { SaveSummary } from "../workspace/use-workspace";
 import { useStudio } from "./use-studio";
@@ -144,6 +145,7 @@ export function StudioBar() {
           {drama.ratio || "比例未定"}
         </span>
       </div>
+      <StoryboardBatchButton current={no} maxSeconds={video.maxSeconds} />
       <Button
         variant="ghost"
         size="icon-sm"

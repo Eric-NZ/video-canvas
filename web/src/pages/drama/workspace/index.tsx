@@ -18,7 +18,6 @@ import { CommandPalette } from "./command-palette";
 import { DramaWorkspaceContext } from "./context";
 import { EpisodeRail } from "./episode-rail";
 import { FinalArea } from "./final-area";
-import { JobBar } from "./job-bar";
 import { OverviewArea } from "./overview-area";
 import { PromptSettingsSheet } from "./prompt-settings-sheet";
 import { ScriptArea } from "./script-area";
@@ -132,16 +131,7 @@ function Workspace({ id }: { id: string }) {
               onStage={(next) => nav.go(next)}
               onPalette={() => setPaletteOpen(true)}
               onPrompts={() => setPromptsOpen(true)}
-            />
-            <JobBar
-              inPlace={{
-                analyzingView:
-                  stage === "script" &&
-                  nav.doc !== null &&
-                  !value.drama.outlineMd &&
-                  value.drama.episodes.length === 0,
-                storyboardEp: stage === "studio" ? ep : null,
-              }}
+              onGo={nav.go}
             />
             <div className="flex min-h-0 flex-1">
               {stage !== "overview" && (

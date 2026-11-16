@@ -84,3 +84,71 @@ describe("片场：还没拆解资产时的引导", () => {
     expect(went).toEqual([["script", 1]]);
   });
 });
+
+describe("片场：还没有分镜时可以批量生成脚本", () => {
+  test("已拆解没分镜：右上角工具条里有「批量生成脚本」，点开选集弹窗并预选当前集", async () => {
+    const view = await dom.mount(
+      <Context.Provider
+        value={
+          {
+            drama: {
+              id: "d1",
+              videoModel: "",
+              episodes: [episode({ locked: true, segmentCount: 0, doneSegmentCount: 0 })],
+            },
+            jobs: [],
+            refresh: async () => {},
+          } as unknown as DramaWorkspace
+        }
+      >
+        <StudioArea ep={1} onGo={() => {}} onBreakdownOpen={() => {}} />
+      </Context.Provider>,
+    );
+    const batch = [...view.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "批量生成脚本",
+    );
+    expect(batch).toBeDefined();
+    await dom.click(batch);
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("批量生成分镜脚本");
+    expect(
+      dialog?.querySelector('[data-slot="episode-grid"] button[aria-pressed="true"]'),
+    ).not.toBeNull();
+    await view.unmount();
+  });
+});
+
+describe("片场：这一集正在拆解时", () => {
+  test("不再给「去拆解」，改成显示拆解进度和取消", async () => {
+    const view = await dom.mount(
+      <Context.Provider
+        value={
+          {
+            drama: { id: "d1", videoModel: "", episodes: [episode({ scriptStatus: "ready" })] },
+            jobs: [
+              {
+                id: "b1",
+                step: "breakdown",
+                episodes: [1, 2],
+                status: "running",
+                progress: 30,
+                lane: "user",
+                createdAt: "2026-11-16T10:00:00Z",
+              },
+            ],
+            refresh: async () => {},
+          } as unknown as DramaWorkspace
+        }
+      >
+        <StudioArea ep={1} onGo={() => {}} onBreakdownOpen={() => {}} />
+      </Context.Provider>,
+    );
+    const text = view.container.textContent ?? "";
+    expect(text).toContain("正在拆解第 1 集的资产");
+    expect(text).toContain("30%");
+    expect(text).not.toContain("去拆解");
+    // 空状态的工具条里同样有「批量生成脚本」，位置和片场顶栏一致
+    expect(text).toContain("批量生成脚本");
+    await view.unmount();
+  });
+});
