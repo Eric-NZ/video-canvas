@@ -47,7 +47,9 @@ import {
   chooseCheck,
   isRunning,
   orderIds,
+  runBatch,
   sameOrder,
+  type GenerateOutcome,
 } from "@/utils/drama/segments";
 import { describeSubmitError } from "@/utils/tasks/submit";
 import { submitSegmentTask } from "@/utils/tasks/gateway";
@@ -112,7 +114,8 @@ export type Studio = {
     setSeconds: (segment: Segment, seconds: number) => Promise<void>;
     patch: (sid: string, fields: Omit<UpdateSegmentInput, "revision">) => Promise<Segment>;
     choose: (segment: Segment, taskId: string) => Promise<void>;
-    generate: (segment: Segment) => Promise<void>;
+    /** source 为 true：不看转写稿，直接用原稿提交（批量里「原稿生成」用） */
+    generate: (segment: Segment, options?: { source?: boolean }) => Promise<GenerateOutcome>;
     batch: () => Promise<void>;
     /**
      * 把原稿转写成当前格式；转写稿手改过时先确认覆盖（force 跳过确认）。
@@ -127,6 +130,9 @@ export type DraftKind = "source" | TargetFormat;
 
 /** 转写失败等状态的键 */
 export const adaptKey = (sid: string, format: TargetFormat) => `${sid}:${format}`;
+
+/** 对每个片段都一样的提交失败原因：批量遇到就停 */
+const SAME_FOR_ALL_FAILURES = /积分不足|排队任务已达上限/;
 
 /** 批量转写的并发数 */
 const ADAPT_CONCURRENCY = 3;
@@ -451,18 +457,20 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   );
 
   const generate = useCallback<Studio["actions"]["generate"]>(
-    async (segment) => {
-      if (submitting.has(segment.id)) return;
+    async (segment, options) => {
+      if (submitting.has(segment.id)) return "skipped";
       markSubmitting(segment.id, true);
       try {
         // 编辑中的提示词先存盘，提交的就是屏幕上看到的
         await flushEditors();
-        const current = await resolveSubmit(segment);
-        if (!current) return;
+        const current = options?.source
+          ? (latestOf(segment.id) ?? segment)
+          : await resolveSubmit(segment);
+        if (!current) return "skipped";
         const latest = await freshAssets();
         if (!latest) {
           toast.error("资产信息读取失败，请稍后重试");
-          return;
+          return "failed";
         }
         const preview = planSegmentInput({
           caps: video.model?.capabilities,
@@ -478,14 +486,16 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             description: `「${preview.deadLabels.join("」「")}」对应的资产已被删除，这部分只会按文字提交。要继续生成吗？`,
             confirmLabel: "继续生成",
           });
-          if (!go) return;
+          if (!go) return "skipped";
         }
         const result = await submitVideo(current, latest);
         if (!result.ok) {
           toast.error(result.message);
-          return;
+          // 积分不足、排队已满之类对每个片段都一样，批量时不必再试后面的
+          return SAME_FOR_ALL_FAILURES.test(result.message) ? "stop" : "failed";
         }
         void reloadSegments(dramaId, no);
+        return "ok";
       } finally {
         markSubmitting(segment.id, false);
       }
@@ -498,6 +508,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       markSubmitting,
       no,
       prefs.overrides,
+      latestOf,
       resolveSubmit,
       submitVideo,
       submitting,
@@ -507,11 +518,15 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
 
   /**
    * 目标格式需要转写时，批量前先把待生成片段分组：未转写 / 已过期的问一次
-   * 「转写后生成 / 只生成已转写的」；转写失败的跳过。返回要提交的片段（prompt 已换成转写稿），取消为 null
+   * 「转写后生成 / 原稿生成 / 只生成已转写的」；转写失败的跳过。
+   * 返回要提交的片段，和其中要直接用原稿提交的片段 id（选了「原稿生成」时是没转写好的那些）；取消为 null
    */
   const prepareBatch = useCallback(
-    async (targets: Segment[]): Promise<Segment[] | null> => {
-      if (format === "seedance") return targets;
+    async (
+      targets: Segment[],
+    ): Promise<{ targets: Segment[]; source: ReadonlySet<string> } | null> => {
+      const noSource: ReadonlySet<string> = new Set();
+      if (format === "seedance") return { targets, source: noSource };
       const hashes = new Map(
         await Promise.all(
           targets.map(async (item) => [item.id, await sha256Hex(item.prompt)] as const),
@@ -519,7 +534,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       );
       const split = splitBatch(targets, format, (item) => hashes.get(item.id) ?? "");
       const pending = [...split.none, ...split.stale];
-      let picked: "adapt" | "ready" = "ready";
+      let picked: "adapt" | "source" | "ready" = "ready";
       if (pending.length > 0) {
         const label = formatLabel(format);
         const choice = await chooseOption({
@@ -529,6 +544,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             (split.edited > 0 ? `其中 ${split.edited} 个转写稿被手改过，将被覆盖。` : ""),
           options: [
             { value: "ready", label: "只生成已转写的" },
+            { value: "source", label: "原稿生成" },
             { value: "adapt", label: "转写后生成", primary: true },
           ],
         });
@@ -536,6 +552,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         picked = choice;
       }
       const ids = split.ready.map((item) => item.id);
+      // 原稿生成：没转写好的也进来，但交的是原稿，不经过转写
+      const source = new Set(picked === "source" ? pending.map((item) => item.id) : []);
+      if (picked === "source") ids.push(...source);
       if (picked === "adapt" && pending.length > 0) {
         const failed: Segment[] = [];
         const queue = [...pending];
@@ -552,12 +571,15 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           toast.error(`${failed.length} 个片段转写失败，已跳过：片段 ${segmentNos(failed)}`);
         }
       }
-      return targets
+      const picks = targets
         .filter((item) => ids.includes(item.id))
         .map((item) => {
           const current = latestOf(item.id) ?? item;
-          return { ...current, prompt: submitText(current, format) };
+          return source.has(item.id)
+            ? current
+            : { ...current, prompt: submitText(current, format) };
         });
+      return { targets: picks, source };
     },
     [adapt, format, latestOf],
   );
@@ -569,67 +591,16 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       return;
     }
     await flushEditors();
-    const targets = await prepareBatch(all);
-    if (!targets) return;
+    const prepared = await prepareBatch(all);
+    if (!prepared) return;
+    const { targets, source } = prepared;
     if (targets.length === 0) {
       toast.info("没有可以直接生成的片段");
       return;
     }
-    const latest = await freshAssets();
-    if (!latest) {
-      toast.error("资产信息读取失败，请稍后重试");
-      return;
-    }
-    // 引用失效的先一起问一次，允许继续
-    const dead = new Set<string>();
-    for (const item of targets) {
-      const planned = planSegmentInput({
-        caps: video.model?.capabilities,
-        prompt: item.prompt,
-        seconds: item.seconds,
-        ratio: drama.ratio,
-        overrides: prefs.overrides,
-        assets: latest,
-      });
-      planned.deadLabels.forEach((label) => dead.add(label));
-    }
-    if (dead.size > 0) {
-      const go = await confirm({
-        title: "有引用已失效",
-        description: `「${[...dead].join("」「")}」对应的资产已被删除，这部分只会按文字提交。要继续批量生成吗？`,
-        confirmLabel: "继续生成",
-      });
-      if (!go) return;
-    }
-    let ok = 0;
-    const failed: string[] = [];
-    for (const item of targets) {
-      markSubmitting(item.id, true);
-      const result = await submitVideo(item, latest);
-      markSubmitting(item.id, false);
-      if (result.ok) ok += 1;
-      else {
-        failed.push(result.message);
-        // 积分不足、排队已满之类每个片段都一样，不必再试
-        if (/积分不足|排队任务已达上限/.test(result.message)) break;
-      }
-    }
-    void reloadSegments(dramaId, no);
-    if (ok > 0) toast.info(`已提交 ${ok} 个片段`);
-    if (failed.length > 0) toast.error(`有 ${targets.length - ok} 个片段没能提交：${failed[0]}`);
-  }, [
-    drama.ratio,
-    dramaId,
-    flushEditors,
-    freshAssets,
-    key,
-    markSubmitting,
-    no,
-    prefs.overrides,
-    prepareBatch,
-    submitVideo,
-    video.model,
-  ]);
+    // 和逐个点「立即生成」一样：每个片段各走一遍，失败提示、引用失效确认都在 generate 里
+    await runBatch(targets, (item) => generate(item, { source: source.has(item.id) }));
+  }, [flushEditors, generate, key, prepareBatch]);
 
   const add = useCallback<Studio["actions"]["add"]>(async () => {
     try {

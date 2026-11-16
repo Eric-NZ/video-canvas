@@ -12,6 +12,7 @@ import {
   orderIds,
   playableTake,
   removeSegmentFrom,
+  runBatch,
   sameOrder,
   totalSeconds,
 } from "@/utils/drama/segments";
@@ -146,6 +147,39 @@ describe("批量生成：对没有采用视频的片段逐个提交", () => {
       seg("err", 4, { status: "error", takes: [take("2", "failed")] }),
     ];
     expect(batchTargets(list).map((s) => s.id)).toEqual(["idle", "err"]);
+  });
+});
+
+describe("批量生成：等同于对每个片段各点一次「立即生成」", () => {
+  const list = [seg("a", 0), seg("b", 1), seg("c", 2)];
+
+  test("按片段顺序一个接一个调用，前一个结束后才开始下一个", async () => {
+    const events: string[] = [];
+    await runBatch(list, async (item) => {
+      events.push(`start ${item.id}`);
+      await Promise.resolve();
+      events.push(`end ${item.id}`);
+      return "ok";
+    });
+    expect(events).toEqual(["start a", "end a", "start b", "end b", "start c", "end c"]);
+  });
+
+  test("某个片段失败或被拦下，不影响后面的继续", async () => {
+    const calls: string[] = [];
+    await runBatch(list, async (item) => {
+      calls.push(item.id);
+      return item.id === "a" ? "failed" : item.id === "b" ? "skipped" : "ok";
+    });
+    expect(calls).toEqual(["a", "b", "c"]);
+  });
+
+  test("积分不足、排队已满这类每个片段都一样的失败，返回 stop 后不再试后面的", async () => {
+    const calls: string[] = [];
+    await runBatch(list, async (item) => {
+      calls.push(item.id);
+      return item.id === "a" ? "stop" : "ok";
+    });
+    expect(calls).toEqual(["a"]);
   });
 });
 

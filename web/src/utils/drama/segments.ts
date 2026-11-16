@@ -83,6 +83,22 @@ export function chooseCheck(segment: Segment, taskId: string): "ok" | "already" 
 export const batchTargets = (list: readonly Segment[]): Segment[] =>
   list.filter((item) => !hasVideo(item) && !isRunning(item) && item.prompt.trim() !== "");
 
+/**
+ * 单个片段「立即生成」的结果：ok 已提交；skipped 没提交（已在提交、被拦下、用户取消），失败提示已弹；
+ * failed 提交失败，提示已弹；stop 失败原因对每个片段都一样（积分不足、排队已满），批量不必再试后面的
+ */
+export type GenerateOutcome = "ok" | "skipped" | "failed" | "stop";
+
+/** 批量生成：按顺序对每个片段各走一遍「立即生成」，一个结束再开始下一个；遇到 stop 就收手 */
+export async function runBatch(
+  targets: readonly Segment[],
+  generate: (segment: Segment) => Promise<GenerateOutcome>,
+): Promise<void> {
+  for (const item of targets) {
+    if ((await generate(item)) === "stop") return;
+  }
+}
+
 /** 失败时的说明：最近一条失败 take 的原因；不是 error 状态为 null */
 export function latestError(segment: Segment): string | null {
   if (segment.status !== "error") return null;
