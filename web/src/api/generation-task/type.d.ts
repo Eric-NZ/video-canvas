@@ -2,6 +2,7 @@ import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
 import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
+import type { StoryboardSplitJob } from "@/api/storyboard/type";
 /** 生成任务状态 */
 export type TaskStatus =
   /** 已创建，待入队 */
@@ -142,6 +143,8 @@ export type ServerMessage =
   | { type: "marketing.round"; channel?: string; data: MarketingRoundEvent }
   /** 营销片单个脚本保存、出片开始 / 结束、问题旁白变化：前端并进所在轮次 */
   | { type: "marketing.script"; channel?: string; data: MarketingScriptEvent }
+  /** 分镜表拆分镜任务的状态变化（开始跑、成功带镜头、失败带原因）：前端写回节点或显示失败横幅 */
+  | { type: "storyboard.split"; channel?: string; data: StoryboardSplitJob }
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */

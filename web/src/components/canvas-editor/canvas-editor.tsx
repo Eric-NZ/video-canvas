@@ -59,6 +59,7 @@ import { useFramePickStore } from "@/store/frame-pick";
 import { useDirectorStore } from "@/store/director";
 import { useTrimStore } from "@/store/trim";
 import { DirectorHost } from "@/components/director/director-host";
+import { StoryboardSplitSync } from "@/components/storyboard/split-sync";
 import { openDirector } from "@/components/director/open-director";
 import { useCharacterDetail } from "@/store/character-detail";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
@@ -950,6 +951,7 @@ export const CanvasEditor = memo(function CanvasEditor({
                             />
                             <NodeHistoryDialog />
                             <DirectorHost />
+                            <StoryboardSplitSync />
                             <MediaLightbox
                               items={liveItems ?? lastItems}
                               target={preview}

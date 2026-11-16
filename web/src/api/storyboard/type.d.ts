@@ -18,11 +18,24 @@ export interface StoryboardSplitShotDto {
   duration: number;
 }
 
-/** 「从剧本拆分镜」接口的返回 */
-export interface StoryboardSplitResponse {
-  shots: StoryboardSplitShotDto[];
-  /** 实扣积分，失败不扣 */
-  credits: number;
+/** 拆分镜任务的状态：pending / running 是进行中，succeeded / failed 是终态 */
+export type StoryboardSplitStatus = "pending" | "running" | "succeeded" | "failed";
+
+/**
+ * 拆分镜任务的快照：提交接口、按节点 / 按 id 查询、WebSocket `storyboard.split` 推送用同一个形状。
+ * 提交时只拿到 pending 快照，结果靠推送或补查拿到。
+ */
+export interface StoryboardSplitJob {
+  id: string;
+  canvas_id: string;
+  node_id: string;
+  status: StoryboardSplitStatus;
   /** 实际用的模型 key（用户选的下架时会回落到第一个可用的） */
   model: string;
+  /** 只在 succeeded 时有 */
+  shots?: StoryboardSplitShotDto[];
+  /** 实扣积分，失败不扣 */
+  credits: number;
+  /** 只在 failed 时有 */
+  error?: string;
 }

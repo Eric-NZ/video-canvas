@@ -2,6 +2,7 @@ import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { BackendJobView, DramaEpisodeEvent, DramaSegmentEvent } from "@/api/drama/type";
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
 import type { MarketingRoundEvent, MarketingScriptEvent } from "@/api/marketing/type";
+import type { StoryboardSplitJob } from "@/api/storyboard/type";
 import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
 
@@ -200,6 +201,19 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "storyboard.split": {
+      if (typeof data !== "object" || data === null) return null;
+      const job = data as Partial<StoryboardSplitJob>;
+      if (
+        typeof job.id !== "string" ||
+        typeof job.canvas_id !== "string" ||
+        typeof job.node_id !== "string" ||
+        typeof job.status !== "string"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
     default:
       return null;
   }
@@ -247,6 +261,8 @@ export type SocketClientDeps = {
   onMarketingRound?: (event: MarketingRoundEvent) => void;
   /** 收到营销片脚本的变化 */
   onMarketingScript?: (event: MarketingScriptEvent) => void;
+  /** 收到分镜表拆分镜任务的状态变化 */
+  onStoryboardSplit?: (job: StoryboardSplitJob) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
   onOpen: () => void;
   onState: (state: ConnectionState) => void;
@@ -406,6 +422,7 @@ export class TaskSocketClient {
       else if (msg.type === "drama.segment") this.deps.onDramaSegment?.(msg.data);
       else if (msg.type === "marketing.round") this.deps.onMarketingRound?.(msg.data);
       else if (msg.type === "marketing.script") this.deps.onMarketingScript?.(msg.data);
+      else if (msg.type === "storyboard.split") this.deps.onStoryboardSplit?.(msg.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;

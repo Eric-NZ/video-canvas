@@ -1,9 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
-import { splitStoryboard } from "@/api/storyboard";
+import { getActiveStoryboardSplit, getStoryboardSplitJob, splitStoryboard } from "@/api/storyboard";
+import type { StoryboardSplitJob } from "@/api/storyboard/type";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
+import { useCreditsStore } from "@/store/credits";
 import {
   IDLE,
   splitDisabledReason,
@@ -14,6 +16,14 @@ import type { CanvasEdge, CanvasNode } from "@/types";
 import { useCurrentCanvasId } from "@/utils/canvas/canvas-id";
 import { ApiError } from "@/utils/requests/request";
 import { emptyStoryboard, normalizeStoryboard } from "@/utils/storyboard/shots";
+import { forgetSplit, recallSplit, rememberSplit } from "@/utils/storyboard/split-memory";
+import {
+  isSplitSettled,
+  markSplitSettled,
+  reconcileStoryboardSplit,
+  setSplitSink,
+  type SplitSink,
+} from "@/utils/storyboard/split-sync";
 import { upstreamScripts, type UpstreamScripts } from "@/utils/storyboard/upstream-scripts";
 
 /** 上游剧本读数只看这三项：值没变就不重渲染，画布拖动时每帧不会带着节点重渲染 */
@@ -33,9 +43,14 @@ export function useUpstreamScripts(id: string): UpstreamScripts {
 export const useSplitStateOf = (id: string): SplitState =>
   useStoryboardSplit((s) => s.states[id] ?? IDLE);
 
+/** 后端「同一张表正在拆」的业务错误码：说明节点上已有任务在跑（刷新后点了按钮、另一个窗口提交过） */
+const SPLIT_BUSY = 30014;
+/** 后端「任务不存在」的业务错误码 */
+const SPLIT_JOB_NOT_FOUND = 30017;
+
 /**
  * 分镜表节点拆分镜的动作（设计 §6.1–6.4）：
- * - run：调后端，成功后按 mode 把镜头覆盖或追加进节点，镜头 id 在前端分配；失败不扣费，原因进横幅；
+ * - run：提交后端任务就返回，模型在后台跑；结果由 useStoryboardSplitSync 收到推送后写回节点。提交被拒（积分不足等）原因进横幅；
  * - trigger：用户点「拆分镜」，表里已有镜头时先弹覆盖 / 追加 / 取消，没有就直接覆盖（空表）；
  * - retry：失败横幅的「重试」，沿用失败那次的模式。
  * 模型从 store 取，三个入口选的是同一份。
@@ -43,8 +58,7 @@ export const useSplitStateOf = (id: string): SplitState =>
  */
 export function useStoryboardSplitAction(id: string) {
   const canvasId = useCurrentCanvasId();
-  const { getNode, getNodes, getEdges, updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
-  const history = useCanvasHistoryContext();
+  const { getNode, getNodes, getEdges } = useReactFlow<CanvasNode, CanvasEdge>();
 
   const run = useCallback(
     async (mode: "replace" | "append") => {
@@ -54,39 +68,28 @@ export function useStoryboardSplitAction(id: string) {
       if (!scripts.script) return;
       split.start(id, mode);
       try {
-        const res = await splitStoryboard(canvasId, {
+        const job = await splitStoryboard(canvasId, {
           node_id: id,
           script: scripts.script,
           model: split.model,
         });
-        const node = getNode(id);
-        if (!node) {
-          // 拆分期间节点被删了：没有地方可写，也不留下失败横幅
+        // 推送比提交的响应先到时结果已经写回，不能再回头记一条永远等不到结果的任务
+        if (!isSplitSettled(job.id)) rememberSplit(canvasId, id, { jobId: job.id, mode });
+      } catch (err) {
+        if (err instanceof ApiError && err.code === SPLIT_BUSY) {
+          // 节点上已有任务在跑：按节点补查，恢复成它的进行中状态，不当成失败
+          await reconcileStoryboardSplit();
+          if (useStoryboardSplit.getState().stateOf(id).phase === "running") return;
           useStoryboardSplit.getState().dismiss(id);
           return;
         }
-        const incoming = normalizeStoryboard({ shots: res.shots }).shots;
-        const existing = node.data.storyboard ?? emptyStoryboard();
-        const shots = mode === "replace" ? incoming : [...existing.shots, ...incoming];
-        updateNodeData(id, { storyboard: { shots } });
-        useStoryboardSplit.getState().done(
-          id,
-          incoming.map((s) => s.id),
-        );
-        // 覆盖丢掉了原来的镜头：给一个能撤销的出口（画布撤销栈已盯着分镜表的改动）
-        if (mode === "replace" && existing.shots.length > 0) {
-          toast.success(`已覆盖为 ${incoming.length} 个镜头`, {
-            action: { label: "撤销", onClick: () => history?.undo() },
-          });
-        }
-      } catch (err) {
         const reason = err instanceof ApiError ? err.message : "网络异常，请稍后重试";
         useStoryboardSplit.getState().fail(id, reason);
         // 弹窗关着时用户看不到横幅，靠 toast 告知；弹窗开着时横幅已经说明，toast 也无妨
         toast.error(`拆分镜失败：${reason}`);
       }
     },
-    [canvasId, getEdges, getNode, getNodes, history, id, updateNodeData],
+    [canvasId, getEdges, getNodes, id],
   );
 
   const trigger = useCallback(() => {
@@ -101,6 +104,133 @@ export function useStoryboardSplitAction(id: string) {
   }, [id, run]);
 
   return { run, trigger, retry };
+}
+
+/** 节点上记着的任务只在 id 对得上时才算「这条任务」，免得旧任务的收尾带走新任务的记录 */
+const rememberedFor = (canvasId: string, nodeId: string, jobId: string) => {
+  const entry = recallSplit(canvasId, nodeId);
+  return entry?.jobId === jobId ? entry : null;
+};
+
+/** 分镜表节点 id 拼成一个串：作为订阅的读数，节点增减才变，拖动画布不触发重渲染 */
+const storyboardNodeIds = (nodes: CanvasNode[]) =>
+  nodes
+    .filter((n) => n.data?.kind === "storyboard")
+    .map((n) => n.id)
+    .join("\n");
+
+/**
+ * 画布里接收拆分镜任务结果的一端（挂在画布里，用 StoryboardSplitSync 组件）：
+ * - 登记成 split-sync 的接收端：WebSocket 推送过来的任务快照在这里落到界面和节点上；
+ * - 画布加载、新增分镜表节点时，按节点补查任务（本机记着任务 id 就按 id 查，没有就查进行中的），
+ *   所以刷新页面、关掉弹窗再回来都能接上还在跑的任务，或者拿到离开期间跑完的结果；
+ * - 成功：按提交时选的覆盖 / 追加写回节点；失败：显示失败横幅；节点已被删：什么都不留。
+ * 同一份终态只处理一次（推送和补查都可能送来）。
+ */
+export function useStoryboardSplitSync() {
+  const canvasId = useCurrentCanvasId();
+  const { getNode, getNodes, updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
+  const history = useCanvasHistoryContext();
+  const nodeIds = useStore((state) => storyboardNodeIds(state.nodes as CanvasNode[]));
+
+  const apply = (job: StoryboardSplitJob) => {
+    if (!canvasId || isSplitSettled(job.id)) return;
+    const split = useStoryboardSplit.getState();
+    const id = job.node_id;
+    const node = getNode(id);
+    const mine = rememberedFor(canvasId, id, job.id);
+    const running = split.stateOf(id);
+
+    if (job.status === "pending" || job.status === "running") {
+      if (node && running.phase !== "running") split.start(id, mine?.mode ?? "append");
+      return;
+    }
+
+    markSplitSettled(job.id);
+    const mode = running.phase === "running" ? running.mode : (mine?.mode ?? "append");
+    if (mine) forgetSplit(canvasId, id);
+    if (!node) {
+      // 拆分期间节点被删了：没有地方可写，也不留下失败横幅
+      split.dismiss(id);
+      return;
+    }
+    if (job.status === "failed") {
+      const reason = job.error || "拆分镜失败";
+      if (running.phase !== "running") split.start(id, mode);
+      useStoryboardSplit.getState().fail(id, reason);
+      // 弹窗关着时用户看不到横幅，靠 toast 告知；弹窗开着时横幅已经说明，toast 也无妨
+      toast.error(`拆分镜失败：${reason}`);
+      return;
+    }
+
+    const incoming = normalizeStoryboard({ shots: job.shots ?? [] }).shots;
+    const existing = node.data.storyboard ?? emptyStoryboard();
+    const shots = mode === "replace" ? incoming : [...existing.shots, ...incoming];
+    updateNodeData(id, { storyboard: { shots } });
+    split.done(
+      id,
+      incoming.map((s) => s.id),
+    );
+    void useCreditsStore.getState().refresh();
+    // 覆盖丢掉了原来的镜头：给一个能撤销的出口（画布撤销栈已盯着分镜表的改动）
+    if (mode === "replace" && existing.shots.length > 0) {
+      toast.success(`已覆盖为 ${incoming.length} 个镜头`, {
+        action: { label: "撤销", onClick: () => history?.undo() },
+      });
+    }
+  };
+
+  /** 补查一批节点：查不到的记录忘掉；网络失败保留记录，下次对账再查 */
+  const reconcile = async (ids: string[]) => {
+    if (!canvasId) return;
+    for (const id of ids) {
+      const entry = recallSplit(canvasId, id);
+      try {
+        const job = entry
+          ? await getStoryboardSplitJob(canvasId, entry.jobId)
+          : await getActiveStoryboardSplit(canvasId, id);
+        if (job) apply(job);
+      } catch (err) {
+        if (entry && err instanceof ApiError && err.code === SPLIT_JOB_NOT_FOUND) {
+          forgetSplit(canvasId, id);
+          if (useStoryboardSplit.getState().stateOf(id).phase === "running") {
+            useStoryboardSplit.getState().dismiss(id);
+          }
+        }
+      }
+    }
+  };
+
+  // 接收端读最新的 apply / reconcile：每次渲染都换新闭包，登记的对象只在换画布时重建
+  const latest = useRef({ apply, reconcile });
+  useEffect(() => {
+    latest.current = { apply, reconcile };
+  });
+  const checked = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!canvasId) return;
+    checked.current = new Set();
+    const sink: SplitSink = {
+      canvasId,
+      apply: (job) => latest.current.apply(job),
+      reconcile: () =>
+        latest.current.reconcile(
+          getNodes()
+            .filter((n) => n.data?.kind === "storyboard")
+            .map((n) => n.id),
+        ),
+    };
+    setSplitSink(sink);
+    return () => setSplitSink(null, sink);
+  }, [canvasId, getNodes]);
+
+  useEffect(() => {
+    if (!canvasId || !nodeIds) return;
+    const fresh = nodeIds.split("\n").filter((id) => !checked.current.has(id));
+    for (const id of fresh) checked.current.add(id);
+    if (fresh.length > 0) void latest.current.reconcile(fresh);
+  }, [canvasId, nodeIds]);
 }
 
 /**
