@@ -49,7 +49,6 @@ import {
   orderIds,
   runBatch,
   sameOrder,
-  type GenerateOutcome,
 } from "@/utils/drama/segments";
 import { describeSubmitError } from "@/utils/tasks/submit";
 import { submitSegmentTask } from "@/utils/tasks/gateway";
@@ -114,8 +113,14 @@ export type Studio = {
     setSeconds: (segment: Segment, seconds: number) => Promise<void>;
     patch: (sid: string, fields: Omit<UpdateSegmentInput, "revision">) => Promise<Segment>;
     choose: (segment: Segment, taskId: string) => Promise<void>;
-    /** source 为 true：不看转写稿，直接用原稿提交（批量里「原稿生成」用） */
-    generate: (segment: Segment, options?: { source?: boolean }) => Promise<GenerateOutcome>;
+    /**
+     * 立即生成。批量用的两个选项：source 不看转写稿、直接交原稿（「原稿生成」）；
+     * deadConfirmed 引用失效已在批量开头统一确认过，不再逐个问
+     */
+    generate: (
+      segment: Segment,
+      options?: { source?: boolean; deadConfirmed?: boolean },
+    ) => Promise<void>;
     batch: () => Promise<void>;
     /**
      * 把原稿转写成当前格式；转写稿手改过时先确认覆盖（force 跳过确认）。
@@ -130,9 +135,6 @@ export type DraftKind = "source" | TargetFormat;
 
 /** 转写失败等状态的键 */
 export const adaptKey = (sid: string, format: TargetFormat) => `${sid}:${format}`;
-
-/** 对每个片段都一样的提交失败原因：批量遇到就停 */
-const SAME_FOR_ALL_FAILURES = /积分不足|排队任务已达上限/;
 
 /** 批量转写的并发数 */
 const ADAPT_CONCURRENCY = 3;
@@ -458,7 +460,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
 
   const generate = useCallback<Studio["actions"]["generate"]>(
     async (segment, options) => {
-      if (submitting.has(segment.id)) return "skipped";
+      if (submitting.has(segment.id)) return;
       markSubmitting(segment.id, true);
       try {
         // 编辑中的提示词先存盘，提交的就是屏幕上看到的
@@ -466,11 +468,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         const current = options?.source
           ? (latestOf(segment.id) ?? segment)
           : await resolveSubmit(segment);
-        if (!current) return "skipped";
+        if (!current) return;
         const latest = await freshAssets();
         if (!latest) {
-          toast.error("资产信息读取失败，请稍后重试");
-          return "failed";
+          toast.error("资产信息读取失败，请稍后重试", { id: "studio-assets-failed" });
+          return;
         }
         const preview = planSegmentInput({
           caps: video.model?.capabilities,
@@ -480,22 +482,21 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           overrides: prefs.overrides,
           assets: latest,
         });
-        if (preview.deadLabels.length > 0) {
+        if (preview.deadLabels.length > 0 && !options?.deadConfirmed) {
           const go = await confirm({
             title: "有引用已失效",
             description: `「${preview.deadLabels.join("」「")}」对应的资产已被删除，这部分只会按文字提交。要继续生成吗？`,
             confirmLabel: "继续生成",
           });
-          if (!go) return "skipped";
+          if (!go) return;
         }
         const result = await submitVideo(current, latest);
         if (!result.ok) {
-          toast.error(result.message);
-          // 积分不足、排队已满之类对每个片段都一样，批量时不必再试后面的
-          return SAME_FOR_ALL_FAILURES.test(result.message) ? "stop" : "failed";
+          // 同样的原因只弹一条：批量里积分不足、排队已满会让多个片段同时报同一句
+          toast.error(result.message, { id: `studio-submit:${result.message}` });
+          return;
         }
         void reloadSegments(dramaId, no);
-        return "ok";
       } finally {
         markSubmitting(segment.id, false);
       }
@@ -598,9 +599,45 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       toast.info("没有可以直接生成的片段");
       return;
     }
-    // 和逐个点「立即生成」一样：每个片段各走一遍，失败提示、引用失效确认都在 generate 里
-    await runBatch(targets, (item) => generate(item, { source: source.has(item.id) }));
-  }, [flushEditors, generate, key, prepareBatch]);
+    // 引用失效一起问一次，免得同时提交时弹窗叠一摞
+    const latest = await freshAssets();
+    if (!latest) {
+      toast.error("资产信息读取失败，请稍后重试", { id: "studio-assets-failed" });
+      return;
+    }
+    const dead = new Set<string>();
+    for (const item of targets) {
+      planSegmentInput({
+        caps: video.model?.capabilities,
+        prompt: item.prompt,
+        seconds: item.seconds,
+        ratio: drama.ratio,
+        overrides: prefs.overrides,
+        assets: latest,
+      }).deadLabels.forEach((label) => dead.add(label));
+    }
+    if (dead.size > 0) {
+      const go = await confirm({
+        title: "有引用已失效",
+        description: `「${[...dead].join("」「")}」对应的资产已被删除，这部分只会按文字提交。要继续批量生成吗？`,
+        confirmLabel: "继续生成",
+      });
+      if (!go) return;
+    }
+    // 和逐个点「立即生成」一样，全部同时提交，并发由后台统一限制
+    await runBatch(targets, (item) =>
+      generate(item, { source: source.has(item.id), deadConfirmed: true }),
+    );
+  }, [
+    drama.ratio,
+    flushEditors,
+    freshAssets,
+    generate,
+    key,
+    prefs.overrides,
+    prepareBatch,
+    video.model,
+  ]);
 
   const add = useCallback<Studio["actions"]["add"]>(async () => {
     try {

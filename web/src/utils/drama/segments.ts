@@ -84,19 +84,14 @@ export const batchTargets = (list: readonly Segment[]): Segment[] =>
   list.filter((item) => !hasVideo(item) && !isRunning(item) && item.prompt.trim() !== "");
 
 /**
- * 单个片段「立即生成」的结果：ok 已提交；skipped 没提交（已在提交、被拦下、用户取消），失败提示已弹；
- * failed 提交失败，提示已弹；stop 失败原因对每个片段都一样（积分不足、排队已满），批量不必再试后面的
+ * 批量生成：对每个片段各走一遍「立即生成」，全部同时开始（并发由后台统一限制）；
+ * 某个片段出错不影响其他片段，等全部结束才返回
  */
-export type GenerateOutcome = "ok" | "skipped" | "failed" | "stop";
-
-/** 批量生成：按顺序对每个片段各走一遍「立即生成」，一个结束再开始下一个；遇到 stop 就收手 */
 export async function runBatch(
   targets: readonly Segment[],
-  generate: (segment: Segment) => Promise<GenerateOutcome>,
+  generate: (segment: Segment) => Promise<void>,
 ): Promise<void> {
-  for (const item of targets) {
-    if ((await generate(item)) === "stop") return;
-  }
+  await Promise.allSettled(targets.map((item) => generate(item)));
 }
 
 /** 失败时的说明：最近一条失败 take 的原因；不是 error 状态为 null */

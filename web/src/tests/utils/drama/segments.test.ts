@@ -153,33 +153,24 @@ describe("批量生成：对没有采用视频的片段逐个提交", () => {
 describe("批量生成：等同于对每个片段各点一次「立即生成」", () => {
   const list = [seg("a", 0), seg("b", 1), seg("c", 2)];
 
-  test("按片段顺序一个接一个调用，前一个结束后才开始下一个", async () => {
+  test("各片段同时开始，不等前一个结束（并发由后台统一限制）", async () => {
     const events: string[] = [];
     await runBatch(list, async (item) => {
       events.push(`start ${item.id}`);
       await Promise.resolve();
       events.push(`end ${item.id}`);
-      return "ok";
     });
-    expect(events).toEqual(["start a", "end a", "start b", "end b", "start c", "end c"]);
+    expect(events.slice(0, 3)).toEqual(["start a", "start b", "start c"]);
   });
 
-  test("某个片段失败或被拦下，不影响后面的继续", async () => {
-    const calls: string[] = [];
+  test("某个片段抛错，不影响其他片段，批量本身也不抛", async () => {
+    const done: string[] = [];
     await runBatch(list, async (item) => {
-      calls.push(item.id);
-      return item.id === "a" ? "failed" : item.id === "b" ? "skipped" : "ok";
+      if (item.id === "a") throw new Error("boom");
+      await Promise.resolve();
+      done.push(item.id);
     });
-    expect(calls).toEqual(["a", "b", "c"]);
-  });
-
-  test("积分不足、排队已满这类每个片段都一样的失败，返回 stop 后不再试后面的", async () => {
-    const calls: string[] = [];
-    await runBatch(list, async (item) => {
-      calls.push(item.id);
-      return item.id === "a" ? "stop" : "ok";
-    });
-    expect(calls).toEqual(["a"]);
+    expect(done).toEqual(["b", "c"]);
   });
 });
 
