@@ -141,7 +141,7 @@ export function StoryboardDialog({
   const running = split.phase === "running";
   const { generateImage, planImages, generateImages, generateVideo, locate } =
     useStoryboardShotGeneration(id);
-  const { upload, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
+  const { uploads, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
   /** 正在放大看的那一行；null 表示预览关着 */
   const [previewId, setPreviewId] = useState<string | null>(null);
 
@@ -345,7 +345,7 @@ export function StoryboardDialog({
                       number={i + 1}
                       autoFocus={shot.id === focusId}
                       highlight={highlights?.has(shot.id)}
-                      uploading={upload?.shotId === shot.id ? upload.progress : undefined}
+                      uploading={uploads[shot.id]}
                       actions={actions}
                     />
                   ))}

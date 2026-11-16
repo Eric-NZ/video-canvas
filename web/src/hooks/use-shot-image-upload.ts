@@ -10,15 +10,15 @@ import { buildShotImageNode } from "@/utils/storyboard/image-node";
 import { emptyStoryboard, linkShot, removeShotImage } from "@/utils/storyboard/shots";
 import { firstImageFile, takeShotImageFile } from "@/utils/storyboard/upload";
 
-/** 上传中的状态：哪一行、传了多少 */
-export type ShotUpload = { shotId: string; progress: number };
+/** 上传中的各行：行 id -> 传了多少（0–100） */
+export type ShotUploads = Record<string, number>;
 
 /**
  * 分镜图的手动上传（PRD 6.5、AC9）：点击选文件和拖入共用一条路径，上传中显示进度，传完落到图片节点上——
  * 这一行还没有图片节点就按镜号在分镜表右侧建一个（和按行生成同一个位置）、连线并关联；已经有了就把上传的图
  * 作为这个节点的新一版，旧版留在节点历史里。上传的图不自动提交生成。
  * 失败（格式、大小、网络）这一格回到原状，toast 说明原因。关联的节点正在生成时不收，免得生成结果回来把它盖掉。
- * 一次只传一张，上传中再来一张直接忽略；上传期间这一行被删了不写回。
+ * 各行各传、互不阻塞；同一行正在传时再来一张直接忽略。上传期间这一行被删了不写回。
  * @param storyboardId 分镜表节点 id
  */
 export function useShotImageUpload(storyboardId: string) {
@@ -26,9 +26,9 @@ export function useShotImageUpload(storyboardId: string) {
     CanvasNode,
     CanvasEdge
   >();
-  const [upload, setUpload] = useState<ShotUpload | null>(null);
-  // 上传是异步的：用 ref 挡住并发，state 只管显示
-  const running = useRef(false);
+  const [uploads, setUploads] = useState<ShotUploads>({});
+  // 上传是异步的：用 ref 挡住同一行的并发，state 只管显示
+  const running = useRef(new Set<string>());
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -93,7 +93,7 @@ export function useShotImageUpload(storyboardId: string) {
 
   const uploadFile = useCallback(
     async (shotId: string, file: File) => {
-      if (running.current) return;
+      if (running.current.has(shotId)) return;
       const check = takeShotImageFile(file);
       if (!check.ok) {
         toast.error(check.reason);
@@ -104,20 +104,22 @@ export function useShotImageUpload(storyboardId: string) {
         toast.error("这一镜的分镜图正在生成，生成完再上传");
         return;
       }
-      running.current = true;
-      setUpload({ shotId, progress: 0 });
+      running.current.add(shotId);
+      const setProgress = (progress: number) =>
+        setUploads((current) => ({ ...current, [shotId]: progress }));
+      setProgress(0);
       try {
         const asset = await uploadAsset(file, {
           onProgress: (progress) => {
-            if (mounted.current) setUpload({ shotId, progress });
+            if (mounted.current) setProgress(progress);
           },
         });
         placeAsset(shotId, asset, file);
       } catch {
         // 上传失败的全局提示由请求层统一弹，这一格回到原状
       } finally {
-        running.current = false;
-        if (mounted.current) setUpload(null);
+        running.current.delete(shotId);
+        if (mounted.current) setUploads(({ [shotId]: _done, ...rest }) => rest);
       }
     },
     [linkedImageNode, placeAsset],
@@ -156,5 +158,5 @@ export function useShotImageUpload(storyboardId: string) {
     [storyboardId, updateNodeData],
   );
 
-  return { upload, pickFile, dropFiles, removeImage };
+  return { uploads, pickFile, dropFiles, removeImage };
 }

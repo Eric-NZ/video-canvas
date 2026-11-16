@@ -146,9 +146,9 @@ export function ShotImageCell({
               ? `生成中 ${state.progress}%`
               : "生成中"}
         </span>
-      ) : (
+      ) : uploading === undefined ? (
         <Image className="size-6" />
-      )}
+      ) : null}
       {state.kind === "node" && state.phase === "done" && (
         <span
           data-slot="shot-image-link"

@@ -463,26 +463,42 @@ describe("手动上传分镜图（AC9）", () => {
     await m.unmount();
   });
 
-  test("上传中：这一格显示进度，传完恢复；上传期间不能再传第二张", async () => {
-    const d = deferredAsset();
-    upload = (_file, options) => {
-      options?.onProgress?.(60);
+  test("各行各传、互不阻塞：两行同时上传各显示自己的进度，各自建节点；同一行传的时候再拖进来不理", async () => {
+    const pending = new Map<string, ReturnType<typeof deferredAsset>>();
+    upload = (file, options) => {
+      options?.onProgress?.(file.name === "a.png" ? 60 : 30);
+      const d = deferredAsset();
+      pending.set(file.name, d);
       return d.promise;
     };
     const m = await mount(<Harness shots={[shot("a", "甲"), shot("b", "乙")]} />);
     await dom.flush();
-    await dropOn(cell(), [png()]);
+    const cells = () => body().querySelectorAll<HTMLElement>('[data-slot="shot-image-cell"]');
+    await dropOn(cells()[0], [png("a.png")]);
+    await dropOn(cells()[1], [png("b.png")]);
     await dom.flush();
-    expect(body().textContent).toContain("上传中 60%");
-    const calls = uploadCalls;
-    await dropOn(body().querySelectorAll<HTMLElement>('[data-slot="shot-image-cell"]')[1], [
-      png("b.png"),
-    ]);
+    expect(uploadCalls).toBe(2);
+    expect(cells()[0].textContent).toContain("上传中 60%");
+    expect(cells()[1].textContent).toContain("上传中 30%");
+    // 上传中的格子不再叠着空白占位图标
+    expect(cells()[0].querySelector("svg.lucide-image")).toBeNull();
+
+    // 第 1 行还在传：再拖一张到这一行不理
+    await dropOn(cells()[0], [png("c.png")]);
     await dom.flush();
-    expect(uploadCalls).toBe(calls);
-    d.resolve({ id: "9", url: "/files/9.png" });
+    expect(uploadCalls).toBe(2);
+
+    pending.get("b.png")!.resolve({ id: "8", url: "/files/8.png" });
+    await dom.flush(30);
+    expect(cells()[1].textContent).not.toContain("上传中");
+    expect(cells()[0].textContent).toContain("上传中 60%");
+    pending.get("a.png")!.resolve({ id: "9", url: "/files/9.png" });
     await dom.flush(30);
     expect(body().textContent).not.toContain("上传中");
+    const assetOf = (i: number) =>
+      seen.nodes.find((n) => n.id === board()[i].imageNodeId)?.data.assetId;
+    expect([assetOf(0), assetOf(1)]).toEqual(["9", "8"]);
+    expect(newImageNodes()).toHaveLength(2);
     await m.unmount();
   });
 
