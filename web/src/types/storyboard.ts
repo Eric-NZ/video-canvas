@@ -6,7 +6,7 @@ export type ShotSize = (typeof SHOT_SIZES)[number];
 /** 运镜，取值见 CAMERA_MOVES */
 export type CameraMove = (typeof CAMERA_MOVES)[number];
 
-/** 手动上传的分镜图：只存素材 id 和地址，不复制文件 */
+/** 旧数据里手动上传的分镜图：只存素材 id 和地址，不复制文件。现在上传会落成图片节点，不再写它 */
 export type ShotImage = {
   /** 素材 id（字符串） */
   assetId: string;
@@ -40,7 +40,7 @@ export type StoryboardShot = {
   imageNodeId?: string;
   /** 这一行按行生成时建的视频节点 id，行上的视频状态实时读它 */
   videoNodeId?: string;
-  /** 手动上传的分镜图；和 imageNodeId 二选一：传了图就解除和图片节点的关联 */
+  /** 旧数据里手动上传的分镜图，只读、可移除；和 imageNodeId 二选一，重新上传后换成关联的图片节点 */
   image?: ShotImage;
 };
 

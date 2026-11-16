@@ -394,25 +394,72 @@ describe("手动上传分镜图（AC9）", () => {
   const png = (name = "a.png") => new File([new Uint8Array(1024)], name, { type: "image/png" });
   const cell = () => body().querySelector<HTMLElement>('[data-slot="shot-image-cell"]')!;
 
-  test("拖入图片：上传后显示在这一行，记素材 id 和地址，并解除和图片节点的关联", async () => {
+  test("拖入图片：没有图片节点时在分镜表右侧建一个上传素材的图片节点、连线过去，行上记下关联", async () => {
+    upload = async () => ({ id: "9", url: "/files/9.png" });
+    const m = await mount(<Harness shots={[shot("a", "甲"), shot("b", "乙")]} />);
+    await dom.flush();
+    await dropOn(body().querySelectorAll<HTMLElement>('[data-slot="shot-image-cell"]')[1], [png()]);
+    await dom.flush(30);
+
+    const [created] = newImageNodes();
+    expect(created).toBeTruthy();
+    expect(created.data).toMatchObject({
+      kind: "image",
+      label: "镜头 02",
+      status: "done",
+      src: "/files/9.png",
+      assetId: "9",
+      mediaType: "image",
+      uploaded: true,
+      fileName: "a.png",
+    });
+    // 和按行生成同一个位置：第 2 镜 → 第 1 格
+    expect(created.position).toEqual({ x: 700 + 576 + 80, y: 324 + 40 });
+    expect(seen.edges.map((e) => [e.source, e.target])).toEqual([["sb", created.id]]);
+    expect(board()[1].imageNodeId).toBe(created.id);
+    expect(board()[1].image).toBeUndefined();
+    // 来自节点：有链接角标，可以在画布中定位；上传的图不自动提交生成
+    expect(body().querySelector('[data-slot="shot-image-link"]')).not.toBeNull();
+    expect(byTitle("在画布中定位")).not.toBeNull();
+    await m.unmount();
+  });
+
+  test("拖入图片：已有图片节点时不新建，上传的图作为这个节点的新一版，旧版留在历史里", async () => {
     upload = async () => ({ id: "9", url: "/files/9.png" });
     const m = await mount(
       <Harness
         shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
-        nodes={[imageNode("i1", { status: "done", src: "/f/node.png" })]}
+        nodes={[imageNode("i1", { status: "done", src: "/files/8.png", assetId: "8" })]}
       />,
     );
     await dom.flush();
     await dropOn(cell(), [png()]);
     await dom.flush(30);
-    expect(board()[0].image).toEqual({ assetId: "9", src: "/files/9.png" });
-    expect(board()[0].imageNodeId).toBeUndefined();
-    expect(body().querySelector<HTMLImageElement>('img[alt="第 1 镜分镜图"]')?.src).toContain(
-      "/files/9.png",
+    expect(newImageNodes(["i1"])).toHaveLength(0);
+    const node = seen.nodes.find((n) => n.id === "i1")!;
+    expect(node.data.src).toBe("/files/9.png");
+    expect(node.data.assetId).toBe("9");
+    expect(node.data.outputs?.map((o) => o.assetId)).toEqual(["8", "9"]);
+    expect(board()[0].imageNodeId).toBe("i1");
+    await m.unmount();
+  });
+
+  test("分镜图格显示缩略图；点「查看大图」打开预览看原图", async () => {
+    const m = await mount(
+      <Harness
+        shots={[shot("a", "月夜瓜地", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "done", src: "/files/8.png", assetId: "8" })]}
+      />,
     );
-    // 手传的图没有链接角标；图片节点本身还在画布上，只是解除了关联
-    expect(body().querySelector('[data-slot="shot-image-link"]')).toBeNull();
-    expect(seen.nodes.some((n) => n.id === "i1")).toBe(true);
+    await dom.flush();
+    const thumb = cell().querySelector<HTMLImageElement>("img");
+    expect(thumb?.getAttribute("src")).toBe("/files/8.png?v=thumb");
+    expect(cell().querySelector('img[src="/files/8.png"]')).toBeNull();
+    await dom.click(byTitle("查看大图"));
+    await dom.flush(30);
+    const popup = body().querySelector('[data-slot="media-lightbox"]');
+    expect(popup).not.toBeNull();
+    expect(popup!.querySelector('img[src="/files/8.png"]')).not.toBeNull();
     await m.unmount();
   });
 
@@ -446,7 +493,7 @@ describe("手动上传分镜图（AC9）", () => {
     await dropOn(cell(), [new File(["x"], "a.txt", { type: "text/plain" })]);
     await dom.flush(30);
     expect(uploadCalls).toBe(calls);
-    expect(board()[0].image).toBeUndefined();
+    expect(board()[0].imageNodeId).toBeUndefined();
     await m.unmount();
   });
 
@@ -458,7 +505,8 @@ describe("手动上传分镜图（AC9）", () => {
     await dom.flush();
     await dropOn(cell(), [png()]);
     await dom.flush(30);
-    expect(board()[0].image).toBeUndefined();
+    expect(board()[0].imageNodeId).toBeUndefined();
+    expect(newImageNodes()).toHaveLength(0);
     expect(body().textContent).not.toContain("上传中");
     await m.unmount();
   });
@@ -469,16 +517,17 @@ describe("手动上传分镜图（AC9）", () => {
     await dom.flush();
     await dropOn(body().querySelector<HTMLElement>('[data-shot-id="a"]')!, [png()]);
     await dom.flush(30);
-    expect(board()[0].image?.assetId).toBe("9");
+    expect(seen.nodes.find((n) => n.id === board()[0].imageNodeId)?.data.assetId).toBe("9");
     await m.unmount();
   });
 
-  test("已有手传的图：可替换、可移除；移除后回到空，按钮恢复成「生成分镜图」", async () => {
+  test("旧数据里手传的图：照样显示缩略图，可替换、可移除；移除后回到空，按钮恢复成「生成分镜图」", async () => {
     upload = async () => ({ id: "10", url: "/files/10.png" });
     const m = await mount(
       <Harness shots={[shot("a", "月夜瓜地", { image: { assetId: "9", src: "/files/9.png" } })]} />,
     );
     await dom.flush();
+    expect(cell().querySelector("img")?.getAttribute("src")).toBe("/files/9.png?v=thumb");
     expect(byTitle("替换")).not.toBeNull();
     await dom.click(byTitle("移除"));
     await dom.flush();
@@ -790,6 +839,88 @@ describe("行菜单的视频项", () => {
     await dom.click(body().querySelector<HTMLElement>('[aria-label="第 1 镜的操作"]'));
     await dom.flush();
     expect(buttonByText("生成视频")).not.toBeNull();
+    await m.unmount();
+  });
+});
+
+describe("批量生成分镜图", () => {
+  const rows = () => [
+    shot("a", "月夜瓜地"),
+    shot("b", "已经出图", { imageNodeId: "i1" }),
+    shot("c", "手传的", { image: { assetId: "9", src: "/files/9.png" } }),
+    shot("d", "上次失败", { imageNodeId: "i2" }),
+    shot("e", "  "),
+  ];
+  const nodes = () => [
+    imageNode("i1", { status: "done", src: "/f/1.png" }),
+    imageNode("i2", { status: "error", error: "超时" }),
+  ];
+  const dialogText = () => body().querySelector('[role="alertdialog"]')?.textContent ?? "";
+
+  test("表头有批量按钮；点了先确认，写明要生成几张、哪些行跳过", async () => {
+    const m = await mount(<Harness shots={rows()} nodes={nodes()} />);
+    await dom.flush();
+    await dom.click(byTitle("批量生成分镜图"));
+    await dom.flush();
+    expect(dialogText()).toContain("生成 2 张分镜图");
+    expect(dialogText()).toContain("1 镜没写画面描述");
+    // 确认前什么都不建
+    expect(newImageNodes(["i1", "i2"])).toHaveLength(0);
+    await m.unmount();
+  });
+
+  test("确认后：没图的行新建图片节点并生成，失败的行复用原节点重新生成，其余不动", async () => {
+    const submitted = { n: 0 };
+    fakeActions("i2", submitted);
+    const m = await mount(<Harness shots={rows()} nodes={nodes()} />);
+    await dom.flush();
+    await dom.click(byTitle("批量生成分镜图"));
+    await dom.flush();
+    await dom.click(buttonByText("开始生成"));
+    await dom.flush(30);
+
+    const created = newImageNodes(["i1", "i2"]);
+    expect(created).toHaveLength(1);
+    expect(created[0].data.prompt).toBe("中景，固定。月夜瓜地。");
+    expect(board().map((s) => s.imageNodeId)).toEqual([
+      created[0].id,
+      "i1",
+      undefined,
+      "i2",
+      undefined,
+    ]);
+    fakeActions(created[0].id, submitted);
+    await dom.flush(400);
+    expect(submitted.n).toBe(2);
+    await m.unmount();
+  });
+
+  test("取消：不建节点、不生成", async () => {
+    const submitted = { n: 0 };
+    fakeActions("i2", submitted);
+    const m = await mount(<Harness shots={rows()} nodes={nodes()} />);
+    await dom.flush();
+    await dom.click(byTitle("批量生成分镜图"));
+    await dom.flush();
+    await dom.click(buttonByText("取消"));
+    await dom.flush(200);
+    expect(newImageNodes(["i1", "i2"])).toHaveLength(0);
+    expect(submitted.n).toBe(0);
+    await m.unmount();
+  });
+
+  test("每一行都有图了：不弹确认，也不建节点", async () => {
+    const m = await mount(
+      <Harness
+        shots={[shot("b", "已经出图", { imageNodeId: "i1" })]}
+        nodes={[imageNode("i1", { status: "done", src: "/f/1.png" })]}
+      />,
+    );
+    await dom.flush();
+    await dom.click(byTitle("批量生成分镜图"));
+    await dom.flush(30);
+    expect(dialogText()).toBe("");
+    expect(newImageNodes(["i1"])).toHaveLength(0);
     await m.unmount();
   });
 });

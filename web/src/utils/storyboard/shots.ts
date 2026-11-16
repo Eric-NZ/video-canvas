@@ -135,19 +135,6 @@ export function linkShot(board: NodeStoryboard, id: string, patch: ShotLinkPatch
   };
 }
 
-/**
- * 手传的分镜图上传完成：记素材 id 和地址，同时解除和图片节点的关联（AC9）。
- * 上传期间这一行被删了就原样返回，不凭空写回。
- */
-export function applyShotUpload(
-  board: NodeStoryboard,
-  id: string,
-  asset: { id: string; url: string },
-): NodeStoryboard {
-  if (!board.shots.some((s) => s.id === id)) return board;
-  return linkShot(board, id, { image: { assetId: asset.id, src: asset.url } });
-}
-
 /** 移除手传的分镜图，这一行回到空 */
 export function removeShotImage(board: NodeStoryboard, id: string): NodeStoryboard {
   return {

@@ -9,14 +9,18 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useModelsStore } from "@/store/models";
 import { useSettingsStore } from "@/store/settings";
 import { useStoryboardEditor } from "@/store/storyboard-editor";
+import { findTask, useTasksStore } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, StoryboardShot } from "@/types";
 import { pickDefaultModel } from "@/utils/canvas/default-model";
 import { newNodeLabel } from "@/utils/canvas/node-label";
 import { DEFAULT_NODE_ASPECT, nodeFrameSize } from "@/utils/canvas/node-frame";
 import { placeInColumn } from "@/utils/canvas/place-beside";
+import { buildShotImageNode } from "@/utils/storyboard/image-node";
 import { shotImagePrompt } from "@/utils/storyboard/prompt";
+import { batchImagePlan } from "@/utils/storyboard/shot-image";
 import { emptyStoryboard, formatShotNumber, linkShot } from "@/utils/storyboard/shots";
 import { buildVideoNodeSeed, type VideoImageSource } from "@/utils/storyboard/video";
+import { deriveVideoNodeView } from "@/utils/tasks/node-view";
 
 /** 改完提示词后等一小会儿再提交：节点要重新渲染一次，提交读的才是新的提示词 */
 const SETTLE_MS = 60;
@@ -26,6 +30,8 @@ const SETTLE_MS = 60;
  * - generateImage：这一行还没有图片节点就在分镜表右侧按镜号竖排建一个、从分镜表连线过去，
  *   提示词由这一行拼出来，用设置里的默认图片模型，建好就自动开始生成；
  *   已经有图片节点就复用它（用这一行现在的内容重写提示词再生成），不新建；
+ * - planImages / generateImages：批量生成分镜图，只补没图的行（规则见 batchImagePlan），各行同时开始，
+ *   没能开始的合成一条提示；
  * - generateVideo：这一行还没有视频节点就按镜号竖排建一个、从分镜表连线（PRD 6.6）：提示词是出图那套模板加对白，
  *   时长取模型支持的最接近值，有分镜图就按模型能力当首帧或参考图。**不自动开始生成**（视频贵，让用户到节点上
  *   确认模型和参数再点）；已经有视频节点就不重复建，行菜单的「重新生成视频」用这一行现在的内容更新它再定位过去；
@@ -44,19 +50,23 @@ export function useStoryboardShotGeneration(storyboardId: string) {
   /** 正在处理的行：同一行连点只处理一次，免得建出两个节点 */
   const busy = useRef(new Set<string>());
 
-  const generateImage = useCallback(
-    async (shotId: string) => {
-      if (busy.current.has(shotId)) return;
+  /**
+   * 建或复用这一行的图片节点并提交生成。
+   * @returns 没能开始时的镜号和原因；开始了、或这一行被跳过为 null
+   */
+  const startImage = useCallback(
+    async (shotId: string): Promise<{ no: string; reason: string } | null> => {
+      if (busy.current.has(shotId)) return null;
       const source = getNode(storyboardId);
       const board = source?.data.storyboard;
-      if (!source || !board) return;
+      if (!source || !board) return null;
       const index = board.shots.findIndex((s) => s.id === shotId);
-      if (index < 0) return;
+      if (index < 0) return null;
       const shot = board.shots[index];
       const no = formatShotNumber(index + 1);
       if (!shot.scene.trim()) {
         toast.error(`先写第 ${no} 镜的画面描述`);
-        return;
+        return null;
       }
       busy.current.add(shotId);
       try {
@@ -68,53 +78,72 @@ export function useStoryboardShotGeneration(storyboardId: string) {
           updateNodeData(nodeId, (node) => ({ prompt, params: { ...node.data.params, prompt } }));
           await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
         } else {
-          nodeId = crypto.randomUUID();
-          const nodes = getNodes();
           const model = pickDefaultModel(
             useSettingsStore.getState().defaultModels.image,
             useModelsStore.getState().byKind.image?.models ?? [],
           );
-          addNodes({
-            id: nodeId,
-            type: "canvas",
-            position: placeInColumn({
-              source,
-              nodes,
-              size: nodeFrameSize(DEFAULT_NODE_ASPECT),
-              slot: index,
-            }),
-            data: {
-              kind: "image",
-              label: newNodeLabel(
-                `镜头 ${no}`,
-                nodes.map((n) => n.data.label),
-              ),
-              prompt,
-              params: { prompt },
-              ...(model ? { model } : {}),
-            },
+          const { node, edge } = buildShotImageNode({
+            source,
+            nodes: getNodes(),
+            index,
+            data: { prompt, params: { prompt }, ...(model ? { model } : {}) },
           });
-          addEdges({
-            id: `xy-edge__${storyboardId}-${nodeId}`,
-            source: storyboardId,
-            target: nodeId,
-            ...ANIMATED_EDGE_OPTIONS,
-          } as CanvasEdge);
-          const created = nodeId;
-          updateNodeData(storyboardId, (node) => ({
-            storyboard: linkShot(node.data.storyboard ?? emptyStoryboard(), shotId, {
-              imageNodeId: created,
+          addNodes(node);
+          addEdges(edge);
+          nodeId = node.id;
+          updateNodeData(storyboardId, (board) => ({
+            storyboard: linkShot(board.data.storyboard ?? emptyStoryboard(), shotId, {
+              imageNodeId: node.id,
             }),
           }));
         }
         const reason = await submitNodeWhenReady(nodeId);
         // 没能开始（积分不足、模型不可用……）：节点已经建好，用户可以到节点上处理后再点生成
-        if (reason) toast.error(`第 ${no} 镜没能开始生成：${reason}`);
+        return reason ? { no, reason } : null;
       } finally {
         busy.current.delete(shotId);
       }
     },
     [addEdges, addNodes, getNode, getNodes, storyboardId, updateNodeData],
+  );
+
+  const generateImage = useCallback(
+    async (shotId: string) => {
+      const failed = await startImage(shotId);
+      if (failed) toast.error(`第 ${failed.no} 镜没能开始生成：${failed.reason}`);
+    },
+    [startImage],
+  );
+
+  /** 按分镜表和关联节点此刻的状态，算出批量生成要处理哪些行 */
+  const planImages = useCallback(() => {
+    const shots = getNode(storyboardId)?.data.storyboard?.shots ?? [];
+    const tasks = useTasksStore.getState().tasks;
+    return batchImagePlan(shots, (shot) => {
+      if (!shot.imageNodeId) return undefined;
+      const node = getNode(shot.imageNodeId);
+      if (!node) return { exists: false };
+      return {
+        exists: true,
+        view: deriveVideoNodeView(node.data, findTask(tasks, node.data.taskId), 0),
+      };
+    });
+  }, [getNode, storyboardId]);
+
+  /**
+   * 批量生成：各行同时开始。建节点那一段在第一个 await 之前，按调用顺序依次完成，不会互相抢位置。
+   * @param shotIds planImages 挑出来的行
+   */
+  const generateImages = useCallback(
+    async (shotIds: string[]) => {
+      const failed = (await Promise.all(shotIds.map(startImage))).filter((f) => f !== null);
+      if (failed.length === 1) {
+        toast.error(`第 ${failed[0].no} 镜没能开始生成：${failed[0].reason}`);
+      } else if (failed.length > 1) {
+        toast.error(`${failed.length} 镜没能开始生成：${failed[0].reason}`);
+      }
+    },
+    [startImage],
   );
 
   /**
@@ -236,5 +265,5 @@ export function useStoryboardShotGeneration(storyboardId: string) {
     [focusNode],
   );
 
-  return { generateImage, generateVideo, locate };
+  return { generateImage, planImages, generateImages, generateVideo, locate };
 }

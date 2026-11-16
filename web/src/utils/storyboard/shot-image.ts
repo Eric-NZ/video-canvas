@@ -1,5 +1,8 @@
 import type { StoryboardShot } from "@/types";
+import type { PreviewItem } from "@/utils/canvas/preview-items";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
+
+import { formatShotNumber } from "./shots";
 
 /** 关联的图片节点此刻的情况：不在画布上，或在，带上它的展示状态 */
 export type LinkedNode = { exists: false } | { exists: true; view: VideoNodeView };
@@ -42,4 +45,43 @@ export function shotImageState(
     default:
       return { kind: "node", phase: "idle" };
   }
+}
+
+/**
+ * 批量生成分镜图要处理哪些行：只补没图的。空白、关联节点还没出图、生成失败的生成；
+ * 已有图（生成好的或手传的）、排队和生成中的跳过。画面描述是空的行没法拼提示词，不生成，单独计数。
+ * @param linkedOf 取某一行关联节点的情况；没有 imageNodeId 时返回 undefined
+ */
+export function batchImagePlan(
+  shots: StoryboardShot[],
+  linkedOf: (shot: StoryboardShot) => LinkedNode | undefined,
+): { targets: string[]; missingScene: number } {
+  const targets: string[] = [];
+  let missingScene = 0;
+  for (const shot of shots) {
+    const state = shotImageState(shot, linkedOf(shot));
+    const wanted =
+      state.kind === "empty" ||
+      (state.kind === "node" && (state.phase === "idle" || state.phase === "failed"));
+    if (!wanted) continue;
+    if (shot.scene.trim()) targets.push(shot.id);
+    else missingScene += 1;
+  }
+  return { targets, missingScene };
+}
+
+/**
+ * 分镜表里能放大看的分镜图，按镜号排，没图的行跳过；项 id 用行 id，标题是「镜头 NN」。
+ * @param srcs 和 shots 一一对应的图片地址（关联节点出的图或旧数据里手传的），没图为 null
+ */
+export function shotPreviewItems(
+  shots: Pick<StoryboardShot, "id">[],
+  srcs: (string | null)[],
+): PreviewItem[] {
+  return shots.flatMap((shot, i) => {
+    const src = srcs[i];
+    return src
+      ? [{ id: shot.id, src, mediaType: "image", label: `镜头 ${formatShotNumber(i + 1)}` }]
+      : [];
+  });
 }

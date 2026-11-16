@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { StoryboardShot } from "@/types";
-import { shotImageState } from "@/utils/storyboard/shot-image";
+import { batchImagePlan, shotImageState, shotPreviewItems } from "@/utils/storyboard/shot-image";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 const shot = (patch: Partial<StoryboardShot> = {}): StoryboardShot => ({
@@ -78,5 +78,58 @@ describe("分镜图格的状态（设计 §6.5 的 6 种）", () => {
     expect(
       shotImageState(shot({ imageNodeId: "i1" }), view({ phase: "uploading", progress: 30 })),
     ).toEqual({ kind: "node", phase: "idle" });
+  });
+});
+
+describe("批量生成分镜图挑哪些行", () => {
+  const plan = (rows: Array<[StoryboardShot, ReturnType<typeof view> | undefined]>) =>
+    batchImagePlan(
+      rows.map(([s]) => s),
+      (s) => rows.find(([r]) => r === s)?.[1],
+    );
+
+  test("只补没图的行：空白、关联节点没出图、生成失败的要生成；已有图、手传图、排队和生成中的跳过", () => {
+    const rows: Array<[StoryboardShot, ReturnType<typeof view> | undefined]> = [
+      [shot({ id: "empty" }), undefined],
+      [shot({ id: "done", imageNodeId: "i1" }), view({ phase: "done", src: "/f/1.png" })],
+      [shot({ id: "uploaded", image: { assetId: "9", src: "/f/9.png" } }), undefined],
+      [shot({ id: "queued", imageNodeId: "i2" }), view({ phase: "queued" })],
+      [
+        shot({ id: "running", imageNodeId: "i3" }),
+        view({ phase: "running", elapsedMs: null, progress: 30 }),
+      ],
+      [
+        shot({ id: "failed", imageNodeId: "i4" }),
+        view({ phase: "failed", message: "x", refunded: true, taskRef: null }),
+      ],
+      [shot({ id: "idle", imageNodeId: "i5" }), view({ phase: "idle" })],
+      [shot({ id: "deleted", imageNodeId: "gone" }), MISSING],
+    ];
+    expect(plan(rows)).toEqual({
+      targets: ["empty", "failed", "idle", "deleted"],
+      missingScene: 0,
+    });
+  });
+
+  test("画面描述是空的行不生成，单独计数", () => {
+    expect(
+      plan([
+        [shot({ id: "a" }), undefined],
+        [shot({ id: "b", scene: "  " }), undefined],
+      ]),
+    ).toEqual({ targets: ["a"], missingScene: 1 });
+  });
+});
+
+describe("分镜图预览项", () => {
+  test("按镜号排、没图的行跳过；标题用这一行的镜号，不是预览里的序号", () => {
+    const items = shotPreviewItems(
+      [{ id: "a" }, { id: "b" }, { id: "c" }],
+      ["/files/1.png", null, "/files/3.png"],
+    );
+    expect(items).toEqual([
+      { id: "a", src: "/files/1.png", mediaType: "image", label: "镜头 01" },
+      { id: "c", src: "/files/3.png", mediaType: "image", label: "镜头 03" },
+    ]);
   });
 });

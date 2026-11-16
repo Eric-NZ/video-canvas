@@ -18,7 +18,7 @@ import { CameraMoveSelect, ShotSizeSelect } from "./shot-select";
  * 表头和行共用这一份，列才对得齐。
  */
 export const SHOT_GRID_CLASS =
-  "grid grid-cols-[28px_48px_112px_minmax(240px,1fr)_104px_104px_200px_200px_88px_120px_40px] items-start gap-x-1";
+  "grid grid-cols-[28px_48px_160px_minmax(240px,1fr)_104px_104px_200px_200px_88px_120px_40px] items-start gap-x-1";
 
 /**
  * 横向滚动时钉在左边的三列：始终知道在改第几镜。偏移 = 前面的列宽加列间距 4px。
@@ -55,6 +55,8 @@ export type ShotRowActions = {
   onRemoveImage: (id: string) => void;
   /** 关掉弹窗，把画布飞到这个节点 */
   onLocate: (nodeId: string) => void;
+  /** 放大看这一行的分镜图原图 */
+  onPreviewImage: (id: string) => void;
 };
 
 /**
@@ -168,7 +170,7 @@ export const ShotRow = memo(function ShotRow({
         highlight ? "bg-status-running/10" : "bg-popover",
       )}
     >
-      <div className={cn(STICKY_CELLS[0], "flex h-[54px] items-center")}>
+      <div className={cn(STICKY_CELLS[0], "flex h-[81px] items-center")}>
         <button
           type="button"
           aria-label={`拖动第 ${number} 镜排序`}
@@ -178,7 +180,7 @@ export const ShotRow = memo(function ShotRow({
           <GripVertical className="size-4" />
         </button>
       </div>
-      <div className={cn(STICKY_CELLS[1], "flex h-[54px] items-center justify-center")}>
+      <div className={cn(STICKY_CELLS[1], "flex h-[81px] items-center justify-center")}>
         {/* 镜号变了淡入一下，让人看到「重新编号了」 */}
         <motion.span
           key={number}
@@ -200,6 +202,7 @@ export const ShotRow = memo(function ShotRow({
           onUpload={() => actions.onPickImage(shot.id)}
           onRemove={() => actions.onRemoveImage(shot.id)}
           onLocate={actions.onLocate}
+          onPreview={() => actions.onPreviewImage(shot.id)}
         />
       </div>
       <TextCell

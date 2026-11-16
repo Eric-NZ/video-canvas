@@ -5,7 +5,6 @@ import { pickDefaultModel } from "@/utils/canvas/default-model";
 import { shotImagePrompt } from "@/utils/storyboard/prompt";
 import { firstImageFile, takeShotImageFile } from "@/utils/storyboard/upload";
 import {
-  applyShotUpload,
   duplicateShot,
   linkShot,
   normalizeStoryboard,
@@ -175,19 +174,7 @@ describe("分镜图上传的文件检查", () => {
   });
 });
 
-describe("上传成功写回", () => {
-  test("手传分镜图记素材 id 和地址；节点出图的关联同时解除（AC9）", () => {
-    const board = linkShot({ shots: [shot("a")] }, "a", { imageNodeId: "img1" });
-    const next = applyShotUpload(board, "a", { id: "9", url: "/files/9.png" });
-    expect(next.shots[0].image).toEqual({ assetId: "9", src: "/files/9.png" });
-    expect(next.shots[0].imageNodeId).toBeUndefined();
-  });
-
-  test("行在上传期间被删了：不写回，原样返回", () => {
-    const board = { shots: [shot("a")] };
-    expect(applyShotUpload(board, "gone", { id: "9", url: "/f/9.png" })).toBe(board);
-  });
-
+describe("旧数据里手传的分镜图", () => {
   test("移除手传的图：回到空", () => {
     const board = linkShot({ shots: [shot("a")] }, "a", {
       image: { assetId: "9", src: "/f/9.png" },

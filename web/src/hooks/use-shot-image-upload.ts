@@ -3,21 +3,29 @@ import { useReactFlow } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { uploadAsset } from "@/api/asset";
-import type { CanvasEdge, CanvasNode } from "@/types";
-import { applyShotUpload, emptyStoryboard, removeShotImage } from "@/utils/storyboard/shots";
+import type { AssetDto } from "@/api/asset/type";
+import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import { appendOutput, isGenerating } from "@/utils/canvas/outputs";
+import { buildShotImageNode } from "@/utils/storyboard/image-node";
+import { emptyStoryboard, linkShot, removeShotImage } from "@/utils/storyboard/shots";
 import { firstImageFile, takeShotImageFile } from "@/utils/storyboard/upload";
 
 /** 上传中的状态：哪一行、传了多少 */
 export type ShotUpload = { shotId: string; progress: number };
 
 /**
- * 分镜图的手动上传（PRD 6.5、AC9）：点击选文件和拖入共用一条路径，上传中显示进度，传完写回这一行
- * 并解除和图片节点的关联；失败（格式、大小、网络）这一格回到原状，toast 说明原因。
+ * 分镜图的手动上传（PRD 6.5、AC9）：点击选文件和拖入共用一条路径，上传中显示进度，传完落到图片节点上——
+ * 这一行还没有图片节点就按镜号在分镜表右侧建一个（和按行生成同一个位置）、连线并关联；已经有了就把上传的图
+ * 作为这个节点的新一版，旧版留在节点历史里。上传的图不自动提交生成。
+ * 失败（格式、大小、网络）这一格回到原状，toast 说明原因。关联的节点正在生成时不收，免得生成结果回来把它盖掉。
  * 一次只传一张，上传中再来一张直接忽略；上传期间这一行被删了不写回。
  * @param storyboardId 分镜表节点 id
  */
 export function useShotImageUpload(storyboardId: string) {
-  const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { getNode, getNodes, addNodes, addEdges, updateNodeData } = useReactFlow<
+    CanvasNode,
+    CanvasEdge
+  >();
   const [upload, setUpload] = useState<ShotUpload | null>(null);
   // 上传是异步的：用 ref 挡住并发，state 只管显示
   const running = useRef(false);
@@ -29,12 +37,71 @@ export function useShotImageUpload(storyboardId: string) {
     };
   }, []);
 
+  /** 这一行关联的、还在画布上的图片节点 */
+  const linkedImageNode = useCallback(
+    (shotId: string) => {
+      const shot = getNode(storyboardId)?.data.storyboard?.shots.find((s) => s.id === shotId);
+      const node = shot?.imageNodeId ? getNode(shot.imageNodeId) : undefined;
+      return node?.data.kind === "image" ? node : undefined;
+    },
+    [getNode, storyboardId],
+  );
+
+  /** 传好的素材落到这一行的图片节点上：复用关联的节点，没有就新建并关联 */
+  const placeAsset = useCallback(
+    (shotId: string, asset: AssetDto, file: File) => {
+      const source = getNode(storyboardId);
+      const index = source?.data.storyboard?.shots.findIndex((s) => s.id === shotId) ?? -1;
+      if (!source || index < 0) return;
+      const uploaded: Partial<CanvasNodeData> = {
+        status: "done",
+        error: null,
+        uploaded: true,
+        fileName: file.name,
+        ...(asset.width && asset.height ? { mediaAspect: asset.width / asset.height } : {}),
+      };
+      const linked = linkedImageNode(shotId);
+      if (linked) {
+        updateNodeData(linked.id, (node) => ({
+          ...uploaded,
+          ...appendOutput(node.data, {
+            id: asset.id,
+            src: asset.url,
+            mediaType: "image",
+            assetId: asset.id,
+            createdAt: Date.now(),
+          }),
+        }));
+        return;
+      }
+      const { node, edge } = buildShotImageNode({
+        source,
+        nodes: getNodes(),
+        index,
+        data: { ...uploaded, src: asset.url, assetId: asset.id, mediaType: "image" },
+      });
+      addNodes(node);
+      addEdges(edge);
+      updateNodeData(storyboardId, (board) => ({
+        storyboard: linkShot(board.data.storyboard ?? emptyStoryboard(), shotId, {
+          imageNodeId: node.id,
+        }),
+      }));
+    },
+    [addEdges, addNodes, getNode, getNodes, linkedImageNode, storyboardId, updateNodeData],
+  );
+
   const uploadFile = useCallback(
     async (shotId: string, file: File) => {
       if (running.current) return;
       const check = takeShotImageFile(file);
       if (!check.ok) {
         toast.error(check.reason);
+        return;
+      }
+      const linked = linkedImageNode(shotId);
+      if (linked && isGenerating(linked.data)) {
+        toast.error("这一镜的分镜图正在生成，生成完再上传");
         return;
       }
       running.current = true;
@@ -45,9 +112,7 @@ export function useShotImageUpload(storyboardId: string) {
             if (mounted.current) setUpload({ shotId, progress });
           },
         });
-        updateNodeData(storyboardId, (node) => ({
-          storyboard: applyShotUpload(node.data.storyboard ?? emptyStoryboard(), shotId, asset),
-        }));
+        placeAsset(shotId, asset, file);
       } catch {
         // 上传失败的全局提示由请求层统一弹，这一格回到原状
       } finally {
@@ -55,7 +120,7 @@ export function useShotImageUpload(storyboardId: string) {
         if (mounted.current) setUpload(null);
       }
     },
-    [storyboardId, updateNodeData],
+    [linkedImageNode, placeAsset],
   );
 
   /** 点「上传分镜图」：临时建一个文件输入框选图，选完上传（不挂进页面，不用持有元素的 ref） */
@@ -82,7 +147,7 @@ export function useShotImageUpload(storyboardId: string) {
     [uploadFile],
   );
 
-  /** 移除手传的图 */
+  /** 移除旧数据里手传的图（新上传的都落成图片节点，删节点即可） */
   const removeImage = useCallback(
     (shotId: string) =>
       updateNodeData(storyboardId, (node) => ({

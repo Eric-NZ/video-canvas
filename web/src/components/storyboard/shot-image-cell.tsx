@@ -1,47 +1,84 @@
 import type { ReactNode } from "react";
-import { Crosshair, Image, Link2, RefreshCw, TriangleAlert, Upload, X } from "lucide-react";
+import {
+  Crosshair,
+  Image,
+  Link2,
+  Maximize2,
+  RefreshCw,
+  TriangleAlert,
+  Upload,
+  X,
+} from "lucide-react";
 
+import { MediaPreview } from "@/components/canvas/media-preview";
 import { cn } from "@/lib/utils";
 import { useLinkedNodeView } from "@/hooks/use-linked-node-view";
 import type { StoryboardShot } from "@/types";
 import { shotImageState } from "@/utils/storyboard/shot-image";
 
-/** 画格里悬停浮出的圆形清透图标按钮；每个都有 title，不写文字（编码规范 6.2） */
-function CellTool({
-  title,
-  onClick,
-  children,
-}: {
+/** 画格悬停面板里的一个操作：图标 + 短文字，占满所在的一格，完整说法放在 title 里 */
+type CellAction = {
+  key: string;
   title: string;
+  label: string;
+  icon: ReactNode;
   onClick: () => void;
-  children: ReactNode;
-}) {
+};
+
+function CellActionButton({ action }: { action: CellAction }) {
   return (
     <button
       type="button"
-      title={title}
-      aria-label={title}
+      title={action.title}
+      aria-label={action.title}
       onClick={(event) => {
         event.stopPropagation();
-        onClick();
+        action.onClick();
       }}
-      className="nodrag bg-chrome ring-chrome-border text-foreground hover:bg-chrome-hover focus-visible:ring-node-ring/60 grid size-7 place-items-center rounded-full shadow-sm ring-1 backdrop-blur-xl outline-none focus-visible:ring-2 [&_svg]:size-3.5"
+      className="nodrag flex min-w-0 flex-1 items-center justify-center gap-1.5 text-xs font-medium whitespace-nowrap text-white/80 outline-none transition-colors hover:bg-white/12 hover:text-white focus-visible:bg-white/12 focus-visible:text-white [&_svg]:size-3.5 [&_svg]:shrink-0"
     >
-      {children}
+      {action.icon}
+      {action.label}
     </button>
   );
 }
 
 /**
- * 分镜图格：96 × 54 的 16:9 画格（设计 §6.5）。状态由行和关联节点现算：
- * 空 / 排队或生成中 / 来自关联节点（左下角链接角标）/ 生成失败 / 手动上传。
- * 操作都放在画格里，悬停或键盘聚焦才浮出，图标按钮：生成用图片图标（本表所有地方都不用 ✦）。
+ * 悬停 / 键盘聚焦时盖满画格的磨砂操作面板：主操作（生成 / 重新生成）占上半格，
+ * 其余操作在下半格左右平分；只有一组时占满整格。细线分隔，不用胶囊。
+ */
+function CellActions({ primary, rest }: { primary?: CellAction; rest: CellAction[] }) {
+  if (!primary && rest.length === 0) return null;
+  return (
+    <div className="absolute inset-0 flex flex-col divide-y divide-white/10 bg-black/60 opacity-0 backdrop-blur-sm transition-opacity duration-150 group-focus-within/thumb:opacity-100 group-hover/thumb:opacity-100">
+      {primary && (
+        <div className="flex min-h-0 flex-1">
+          <CellActionButton action={primary} />
+        </div>
+      )}
+      {rest.length > 0 && (
+        <div className="flex min-h-0 flex-1 divide-x divide-white/10">
+          {rest.map((action) => (
+            <CellActionButton key={action.key} action={action} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 分镜图格：144 × 81 的 16:9 画格（设计 §6.5）。状态由行和关联节点现算：
+ * 空 / 排队或生成中 / 来自关联节点（左下角链接角标）/ 生成失败 / 旧数据里手动上传的。
+ * 有图时只加载缩略图，「查看大图」打开预览看原图。
+ * 操作都放在画格里，悬停或键盘聚焦才浮出磨砂面板（见 CellActions）。
  * @param uploading 这一格正在上传的进度（0–100）；没在上传为 undefined
  * @param dragging 有图片正拖在这一行上：整行任何位置都算拖到这一格，格子画出虚线框
  * @param onGenerate 生成 / 重新生成（复用同一个图片节点）
  * @param onUpload 点「上传」选文件
  * @param onRemove 移除手传的图
  * @param onLocate 关掉弹窗，把画布飞到关联节点
+ * @param onPreview 打开预览看原图
  */
 export function ShotImageCell({
   shot,
@@ -52,6 +89,7 @@ export function ShotImageCell({
   onUpload,
   onRemove,
   onLocate,
+  onPreview,
 }: {
   shot: StoryboardShot;
   number: number;
@@ -61,6 +99,7 @@ export function ShotImageCell({
   onUpload: () => void;
   onRemove: () => void;
   onLocate: (nodeId: string) => void;
+  onPreview: () => void;
 }) {
   const linked = useLinkedNodeView(shot.imageNodeId);
   const state = shotImageState(shot, linked);
@@ -78,19 +117,22 @@ export function ShotImageCell({
       data-slot="shot-image-cell"
       title={state.kind === "node" && state.phase === "failed" ? state.message : undefined}
       className={cn(
-        "group/thumb bg-muted text-muted-foreground/50 focus-visible:ring-node-ring/60 relative grid h-[54px] w-24 place-items-center overflow-hidden rounded-md outline-none focus-visible:ring-2",
+        "group/thumb bg-muted text-muted-foreground/50 focus-visible:ring-node-ring/60 relative grid h-[81px] w-36 place-items-center overflow-hidden rounded-md outline-none focus-visible:ring-2",
         generating && "animate-pulse",
         dragging && "ring-node-ring ring-2",
         state.kind === "node" && state.phase === "failed" && "bg-destructive/10 text-destructive",
       )}
     >
       {src ? (
-        <img
-          src={src}
-          alt={`第 ${number} 镜分镜图`}
-          draggable={false}
-          className={cn("size-full object-cover", uploading !== undefined && "opacity-40")}
-        />
+        <div className={cn("size-full", uploading !== undefined && "opacity-40")}>
+          <MediaPreview
+            src={src}
+            alt={`第 ${number} 镜分镜图`}
+            mode="thumb"
+            fit="cover"
+            draggable={false}
+          />
+        </div>
       ) : state.kind === "node" && state.phase === "failed" ? (
         <span className="flex flex-col items-center gap-0.5 text-[11px]">
           <TriangleAlert className="size-4" />
@@ -105,7 +147,7 @@ export function ShotImageCell({
               : "生成中"}
         </span>
       ) : (
-        <Image className="size-5" />
+        <Image className="size-6" />
       )}
       {state.kind === "node" && state.phase === "done" && (
         <span
@@ -125,34 +167,58 @@ export function ShotImageCell({
           <Upload className="size-4" />
         </span>
       )}
-      {uploading === undefined && (
-        <div className="absolute inset-x-0 bottom-1 flex justify-center gap-1 opacity-0 transition-opacity group-focus-within/thumb:opacity-100 group-hover/thumb:opacity-100">
-          {!generating &&
-            (regenerate ? (
-              <CellTool title="重新生成" onClick={onGenerate}>
-                <RefreshCw />
-              </CellTool>
-            ) : (
-              <CellTool title="生成分镜图" onClick={onGenerate}>
-                <Image />
-              </CellTool>
-            ))}
-          {!generating && (
-            <CellTool title={src ? "替换" : "上传分镜图"} onClick={onUpload}>
-              <Upload />
-            </CellTool>
-          )}
-          {state.kind === "uploaded" && (
-            <CellTool title="移除" onClick={onRemove}>
-              <X />
-            </CellTool>
-          )}
-          {state.kind === "node" && shot.imageNodeId && (
-            <CellTool title="在画布中定位" onClick={() => onLocate(shot.imageNodeId!)}>
-              <Crosshair />
-            </CellTool>
-          )}
-        </div>
+      {uploading === undefined && !dragging && (
+        <CellActions
+          primary={
+            generating
+              ? undefined
+              : {
+                  key: "generate",
+                  title: regenerate ? "重新生成" : "生成分镜图",
+                  label: regenerate ? "重新生成" : "生成",
+                  icon: regenerate ? <RefreshCw /> : <Image />,
+                  onClick: onGenerate,
+                }
+          }
+          rest={[
+            ...(generating
+              ? []
+              : [
+                  {
+                    key: "upload",
+                    title: src ? "替换" : "上传分镜图",
+                    label: src ? "替换" : "上传",
+                    icon: <Upload />,
+                    onClick: onUpload,
+                  },
+                ]),
+            ...(src
+              ? [
+                  {
+                    key: "preview",
+                    title: "查看大图",
+                    label: "查看",
+                    icon: <Maximize2 />,
+                    onClick: onPreview,
+                  },
+                ]
+              : []),
+            ...(state.kind === "uploaded"
+              ? [{ key: "remove", title: "移除", label: "移除", icon: <X />, onClick: onRemove }]
+              : []),
+            ...(state.kind === "node" && shot.imageNodeId
+              ? [
+                  {
+                    key: "locate",
+                    title: "在画布中定位",
+                    label: "定位",
+                    icon: <Crosshair />,
+                    onClick: () => onLocate(shot.imageNodeId!),
+                  },
+                ]
+              : []),
+          ]}
+        />
       )}
     </div>
   );

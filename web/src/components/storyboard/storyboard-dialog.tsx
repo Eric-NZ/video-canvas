@@ -2,8 +2,10 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { useReactFlow, useStore } from "@xyflow/react";
 import { motion, Reorder } from "motion/react";
 import { Plus } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 import { ChromePill } from "@/components/canvas/chrome/chrome";
+import { MediaLightbox } from "@/components/canvas/media-lightbox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NODE_META } from "@/constants/canvas";
@@ -12,6 +14,7 @@ import { useStoryboardShotGeneration } from "@/hooks/use-storyboard-shot-generat
 import { useStoryboardSplitUi } from "@/hooks/use-storyboard-split";
 import { cn } from "@/lib/utils";
 import { useStoryboardSplit } from "@/store/storyboard-split";
+import { shotPreviewItems } from "@/utils/storyboard/shot-image";
 import type { CanvasNode, NodeStoryboard, StoryboardShot } from "@/types";
 import {
   addShot,
@@ -26,6 +29,7 @@ import {
   updateShot,
 } from "@/utils/storyboard/shots";
 
+import { BatchImageButton } from "./batch-image";
 import { SHOT_GRID_CLASS, ShotRow, STICKY_CELLS, type ShotRowActions } from "./shot-row";
 import { SplitControls } from "./split-controls";
 import { StopDoubleClick } from "./stop-double-click";
@@ -35,7 +39,7 @@ import { SplitErrorBanner, SplitProgressBar, SplitSkeletonRows } from "./split-u
 const HIGHLIGHT_MS = 1200;
 
 /** 表格最小宽度：各列宽 + 列间距 + 行内边距，弹窗比它窄时横向滚动 */
-const TABLE_MIN_WIDTH = "min-w-[1340px]";
+const TABLE_MIN_WIDTH = "min-w-[1388px]";
 
 /** 表头文字；拖拽柄、行操作两列没有表头 */
 const HEADERS = [
@@ -135,8 +139,11 @@ export function StoryboardDialog({
   const highlights = useStoryboardSplit((s) => s.highlights[id]);
   const clearHighlights = useStoryboardSplit((s) => s.clearHighlights);
   const running = split.phase === "running";
-  const { generateImage, generateVideo, locate } = useStoryboardShotGeneration(id);
+  const { generateImage, planImages, generateImages, generateVideo, locate } =
+    useStoryboardShotGeneration(id);
   const { upload, pickFile, dropFiles, removeImage } = useShotImageUpload(id);
+  /** 正在放大看的那一行；null 表示预览关着 */
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   // 刚拆进来的行：滚到第一条新行，停留一会儿后清掉高亮（设计 §6.4）。
   // 滚动要读最新的表和弹窗开关，但它们变化时不该重置高亮定时器，所以放进 effect event
@@ -189,6 +196,7 @@ export function StoryboardDialog({
       onDropFiles: dropFiles,
       onRemoveImage: removeImage,
       onLocate: locate,
+      onPreviewImage: setPreviewId,
       onDragEnd: () => {
         const order = dragOrderRef.current;
         dragOrderRef.current = null;
@@ -222,6 +230,26 @@ export function StoryboardDialog({
 
   const shots = dragOrder ?? board.shots;
 
+  // 预览开着时才订阅各行分镜图的地址（关联节点出的图优先，其次旧数据里手传的）；
+  // 浅比较地址列表，画布拖动、进度变化不会重算
+  const previewSrcs = useStore(
+    useShallow((state) =>
+      previewId === null
+        ? []
+        : board.shots.map((shot) => {
+            const data = shot.imageNodeId
+              ? (state.nodeLookup.get(shot.imageNodeId)?.data as CanvasNode["data"] | undefined)
+              : undefined;
+            const src = data?.kind === "image" ? data.src : undefined;
+            return src || shot.image?.src || null;
+          }),
+    ),
+  );
+  const previewItems = useMemo(
+    () => shotPreviewItems(board.shots, previewSrcs),
+    [board.shots, previewSrcs],
+  );
+
   return (
     <StopDoubleClick>
       <Dialog
@@ -235,7 +263,16 @@ export function StoryboardDialog({
           <div className="flex shrink-0 items-center gap-3 border-b border-border/60 py-3 pr-12 pl-5">
             {KindIcon && <KindIcon className="text-muted-foreground size-4" />}
             <DialogTitle className="truncate text-sm font-semibold">{label}</DialogTitle>
-            <ChromePill className="ml-auto h-9">
+            {/* 表里有镜头才有东西可批量生成 */}
+            {board.shots.length > 0 && (
+              <ChromePill className="ml-auto h-9">
+                <BatchImageButton
+                  plan={planImages}
+                  onConfirm={(shotIds) => void generateImages(shotIds)}
+                />
+              </ChromePill>
+            )}
+            <ChromePill className={cn("h-9", board.shots.length === 0 && "ml-auto")}>
               <SplitControls id={id} />
             </ChromePill>
             <DialogDescription render={<div />} className="text-xs">
@@ -331,6 +368,17 @@ export function StoryboardDialog({
           )}
         </DialogContent>
       </Dialog>
+      <MediaLightbox
+        items={previewItems}
+        target={previewId === null ? null : { id: previewId, origin: null }}
+        onActiveChange={setPreviewId}
+        onLocate={(shotId) => {
+          const nodeId = board.shots.find((s) => s.id === shotId)?.imageNodeId;
+          if (nodeId) locate(nodeId);
+        }}
+        countLabel="本分镜表"
+        onClose={() => setPreviewId(null)}
+      />
     </StopDoubleClick>
   );
 }

@@ -69,8 +69,8 @@ export function SplitSkeletonRows({ count = 3 }: { count?: number }) {
           className={`${SHOT_GRID_CLASS} min-h-[72px] border-b border-border/60 px-2 py-2.5`}
         >
           <div />
-          <Skeleton className="mx-auto mt-4 h-4 w-6" />
-          <Skeleton className="h-[54px] w-24 rounded-md" />
+          <Skeleton className="mx-auto mt-8 h-4 w-6" />
+          <Skeleton className="h-[81px] w-36 rounded-md" />
           <Skeleton className="mx-2 mt-1.5 h-5" />
           <Skeleton className="mx-2 mt-1.5 h-5" />
           <Skeleton className="mx-2 mt-1.5 h-5" />
