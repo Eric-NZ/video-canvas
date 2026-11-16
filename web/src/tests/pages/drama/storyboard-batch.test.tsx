@@ -10,7 +10,7 @@ import {
 } from "bun:test";
 
 import type { Drama, EpisodeSummary } from "@/api/drama/type";
-import { installDom, type DomEnv } from "@/tests/helpers/dom";
+import { holdExitAnimations, installDom, type DomEnv } from "@/tests/helpers/dom";
 import service from "@/utils/requests/service";
 import type { StoryboardBatchBody as BodyType } from "@/pages/drama/workspace/storyboard-batch-dialog";
 import type { DramaWorkspaceContext as DramaWorkspaceContextType } from "@/pages/drama/workspace/context";
@@ -176,9 +176,7 @@ describe("批量生成分镜脚本弹窗的开关", () => {
   test("关闭时内容不先卸载：退出动画期间弹窗里仍是原来的内容", async () => {
     const { StoryboardBatchButton } =
       await import("@/pages/drama/workspace/storyboard-batch-dialog");
-    // 让退出动画一直不结束，定格在「正在关闭」这一刻
-    const proto = dom.win.Element.prototype as unknown as { getAnimations?: () => unknown[] };
-    proto.getAnimations = () => [{ finished: new Promise(() => {}) }];
+    const release = holdExitAnimations(dom);
     try {
       const m = await dom.mount(
         <DramaWorkspaceContext.Provider
@@ -195,7 +193,7 @@ describe("批量生成分镜脚本弹窗的开关", () => {
       expect(popup?.textContent).toContain("选择集数");
       await m.unmount();
     } finally {
-      delete proto.getAnimations;
+      release();
     }
   });
 });
