@@ -121,7 +121,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
 		canvas.GET("/:id/export", h.CanvasTransfer.Export)
 		canvas.POST("/import", h.CanvasTransfer.Import)
-		canvas.POST("/:id/storyboard/split", h.Storyboard.Split) // 同步调 Agent 模型，成功后按实际用量扣费
+		canvas.POST("/:id/storyboard/split", h.Storyboard.Split)           // 异步任务：建任务 + 入队，立刻返回 pending
+		canvas.GET("/:id/storyboard/split/active", h.Storyboard.ActiveJob) // 按 node_id 补查进行中的任务（弹窗打开 / 刷新页面）
+		canvas.GET("/:id/storyboard/split/:jobId", h.Storyboard.Job)       // 按 id 读任务当前状态（断线对账）
 		fwd := agentRoute(h.AgentProxy)
 		canvas.GET("/:id/agent/sessions", fwd)
 		canvas.POST("/:id/agent/sessions", fwd)

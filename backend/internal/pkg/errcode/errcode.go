@@ -64,6 +64,7 @@ var (
 	ErrStoryboardSplitBusy     = New(30014, "这张分镜表正在拆分镜", http.StatusConflict)
 	ErrStoryboardSplitFailed   = New(30015, "拆分镜失败：模型两次输出都不合格，请重试", http.StatusBadGateway)
 	ErrStoryboardModelCall     = New(30016, "文本模型调用失败，请稍后重试", http.StatusBadGateway) // Msg 换成上游返回的错误原文
+	ErrStoryboardJobNotFound   = New(30017, "拆分镜任务不存在", http.StatusNotFound)
 )
 
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx

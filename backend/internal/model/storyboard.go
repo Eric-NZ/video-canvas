@@ -17,9 +17,15 @@ type StoryboardShot struct {
 	Duration float64 `json:"duration"` // 时长（秒），1–60
 }
 
-// StoryboardSplitResp 是拆分镜的结果：镜头、实扣积分和实际用的模型。
+// StoryboardSplitResp 是一次拆分镜任务的快照：提交时是 pending，之后随 WebSocket 推送和补查变成 running / succeeded / failed。
+// 成功时带镜头和实扣积分，失败时带原因；id 是十六进制串，和其他资源 id 的编码一致。
 type StoryboardSplitResp struct {
-	Shots   []StoryboardShot `json:"shots"`
-	Credits int              `json:"credits"`
-	Model   string           `json:"model"`
+	ID       string           `json:"id"`
+	CanvasID string           `json:"canvas_id"`
+	NodeID   string           `json:"node_id"`
+	Status   string           `json:"status"`
+	Model    string           `json:"model"`
+	Shots    []StoryboardShot `json:"shots,omitempty"`
+	Credits  int              `json:"credits"`
+	Error    string           `json:"error,omitempty"`
 }

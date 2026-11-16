@@ -21,6 +21,8 @@ const (
 	TypeMarketingRound  = "marketing.round"  // 营销轮次或环节状态、拆解、脚本列表变化：{project_id, round}
 	TypeMarketingScript = "marketing.script" // 营销脚本保存、出片开始 / 结束、软问题变化：{project_id, round_id, script}
 
+	TypeStoryboardSplit = "storyboard.split" // 分镜表拆分镜任务状态变化：{job_id, canvas_id, node_id, status, shots?, credits?, error?, model?}
+
 	// 以下是连接控制类消息（订阅协议与心跳）。
 	TypePing         = "ping"         // 客户端 → 服务端：应用层心跳
 	TypePong         = "pong"         // 服务端 → 客户端：心跳应答
