@@ -171,3 +171,31 @@ describe("批量生成分镜脚本弹窗", () => {
     await m.unmount();
   });
 });
+
+describe("批量生成分镜脚本弹窗的开关", () => {
+  test("关闭时内容不先卸载：退出动画期间弹窗里仍是原来的内容", async () => {
+    const { StoryboardBatchButton } =
+      await import("@/pages/drama/workspace/storyboard-batch-dialog");
+    // 让退出动画一直不结束，定格在「正在关闭」这一刻
+    const proto = dom.win.Element.prototype as unknown as { getAnimations?: () => unknown[] };
+    proto.getAnimations = () => [{ finished: new Promise(() => {}) }];
+    try {
+      const m = await dom.mount(
+        <DramaWorkspaceContext.Provider
+          value={{ drama, jobs: [], refresh: async () => {} } as never}
+        >
+          <StoryboardBatchButton current={1} maxSeconds={15} />
+        </DramaWorkspaceContext.Provider>,
+      );
+      const body = dom.win.document.body;
+      await dom.click(byText(m.container, "批量生成脚本"));
+      await dom.click(byText(body, "取消"));
+      const popup = body.querySelector('[data-slot="dialog-content"]');
+      expect(popup?.hasAttribute("data-ending-style")).toBe(true);
+      expect(popup?.textContent).toContain("选择集数");
+      await m.unmount();
+    } finally {
+      delete proto.getAnimations;
+    }
+  });
+});

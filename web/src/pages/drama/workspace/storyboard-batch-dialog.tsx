@@ -225,28 +225,32 @@ export function StoryboardBatchBody({
   );
 }
 
-/** 批量生成分镜脚本对话框：常驻挂载，open 开关；主体每次打开重新挂载 */
+/**
+ * 批量生成分镜脚本对话框：常驻挂载，open 开关。
+ * @param session 每次打开换一个值，主体按它重新挂载、重置选择；关闭时主体不卸载，留给退出动画
+ */
 export function StoryboardBatchDialog({
   open,
   onOpenChange,
+  session,
   initial,
   maxSeconds,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  session: number;
   initial: number;
   maxSeconds: number;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {open && (
-          <StoryboardBatchBody
-            initial={initial}
-            maxSeconds={maxSeconds}
-            onClose={() => onOpenChange(false)}
-          />
-        )}
+        <StoryboardBatchBody
+          key={session}
+          initial={initial}
+          maxSeconds={maxSeconds}
+          onClose={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -265,15 +269,21 @@ export function StoryboardBatchButton({
   maxSeconds: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [session, setSession] = useState(0);
+  const openDialog = () => {
+    setSession((n) => n + 1);
+    setOpen(true);
+  };
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="outline" size="sm" onClick={openDialog}>
         <Layers />
         批量生成脚本
       </Button>
       <StoryboardBatchDialog
         open={open}
         onOpenChange={setOpen}
+        session={session}
         initial={current}
         maxSeconds={maxSeconds}
       />
