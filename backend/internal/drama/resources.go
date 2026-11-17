@@ -39,15 +39,15 @@ var promptTemplates = map[string]string{
 	"outline":     loadPrompt("plan_draft"),
 	"plan":        loadPrompt("plan_draft"),
 	"plan_format": loadPrompt("plan_format"),
-	// 第二期：剧本、资产拆解、资产图提示词同样两段。无后缀的是创作段（用户正文只替换它的正文，输出纯文本），
-	// _format 是系统固定的格式段（输出 JSON）
+	// 无后缀的是创作段：用户正文只替换它的正文，输出纯文本，写法（含内置剧本格式、分栏写法）都在内置正文里。
+	// _format 是系统固定的格式段，只把创作稿装进代码要读的 JSON 字段，不规定写法。
+	// 剧本没有格式段：代码只要整段文本，创作稿原样就是本集剧本。
 	"scripts":              loadPrompt("scripts_draft"),
-	"scripts_format":       loadPrompt("scripts_format"),
 	"breakdown":            loadPrompt("breakdown_draft"),
 	"breakdown_format":     loadPrompt("breakdown_format"),
 	"asset_prompts":        loadPrompt("asset_prompts_draft"),
 	"asset_prompts_format": loadPrompt("asset_prompts_format"),
-	// 分镜两段：storyboard 是创作段（用户正文只替换它的风格部分，输出纯文本），storyboard_format 是系统固定的格式段
+	// 分镜两段：storyboard 是创作段（内置正文是即梦 / Seedance 分栏写法），storyboard_format 切段并输出 segments JSON
 	"storyboard":        loadPrompt("storyboard_draft"),
 	"storyboard_format": loadPrompt("storyboard_format"),
 	// 片场把 Seedance 原稿转写成其他平台写法；输入是单个片段，输出只有 prompt

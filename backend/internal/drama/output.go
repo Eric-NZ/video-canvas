@@ -37,11 +37,6 @@ type OutlineOutput struct {
 	Episodes     []OutlineEpisode `json:"episodes"`
 }
 
-// ScriptOutput 是一次单集生成的完整剧本。
-type ScriptOutput struct {
-	ScriptMD string `json:"script_md"`
-}
-
 // Asset 是一次拆解识别出的角色造型、场景或道具；Episodes 空数组表示全集。
 type Asset struct {
 	Type        string   `json:"type"`
@@ -95,14 +90,6 @@ func (o OutlineOutput) Validate() error {
 		if !nonemptyText(episode.Title) || !nonemptyText(episode.Synopsis) || !utf8.ValidString(episode.ScriptMD) {
 			return invalidOutput(fmt.Sprintf("第 %d 集标题、梗概或剧本文本无效", episode.No))
 		}
-	}
-	return nil
-}
-
-// Validate 检查单集剧本包含非空正文。
-func (o ScriptOutput) Validate() error {
-	if !nonemptyText(o.ScriptMD) {
-		return invalidOutput("script_md 必须为非空文本")
 	}
 	return nil
 }
@@ -264,8 +251,6 @@ func definitionForStep(step string) (outputDefinition, error) {
 	case "outline":
 		return outputDefinition{value: &OutlineOutput{}, fields: []string{"outline_md", "characters_md", "episodes"},
 			listKey: "episodes", itemFields: []string{"no", "title", "synopsis", "script_md"}}, nil
-	case "scripts_format":
-		return outputDefinition{value: &ScriptOutput{}, fields: []string{"script_md"}}, nil
 	case "breakdown_format":
 		return outputDefinition{value: &BreakdownOutput{}, fields: []string{"assets"}, listKey: "assets",
 			itemFields: []string{"type", "name", "look", "aliases", "episodes", "description", "voice_prompt"}}, nil
@@ -308,8 +293,6 @@ func outputValue(output any) (any, error) {
 	case *AnalyzeOutput:
 		return *value, nil
 	case *OutlineOutput:
-		return *value, nil
-	case *ScriptOutput:
 		return *value, nil
 	case *BreakdownOutput:
 		return *value, nil

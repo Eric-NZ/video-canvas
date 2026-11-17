@@ -76,7 +76,7 @@ func TestStoryboardCreativePromptHasNoFormat(t *testing.T) {
 			t.Fatalf("创作提示词缺少 %s", word)
 		}
 	}
-	for _, word := range []string{"segments", "@[", "【画幅风格】", "【时间轴】", "即梦", "shots", "shot_size", "## 输出 JSON Schema"} {
+	for _, word := range []string{"segments", "@[", "shots", "shot_size", "## 输出 JSON Schema"} {
 		if strings.Contains(prompt, word) {
 			t.Fatalf("创作提示词不该出现 %s", word)
 		}
@@ -89,7 +89,7 @@ func TestStoryboardFormatPromptResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, word := range []string{"segments", "max_seconds", "@[名称](node_id)", "【画幅风格】", "【时间轴】", "女子抬头。", "不增加"} {
+	for _, word := range []string{"segments", "max_seconds", "@[名称](node_id)", "女子抬头。", "不增加"} {
 		if !strings.Contains(prompt, word) {
 			t.Fatalf("格式提示词缺少 %s", word)
 		}
@@ -125,16 +125,16 @@ func TestStoryboardCustomBodyKeepsProtocol(t *testing.T) {
 	}
 }
 
-// 创作段的内置正文不带格式，界面看到的视频提示词只有创作方法。
-func TestStoryboardBuiltinBodyHasNoFormat(t *testing.T) {
+// 内置视频提示词正文就是即梦 / Seedance 分栏写法，界面上可以看到并整段替换；资产引用语法归格式段。
+func TestStoryboardBuiltinBodyIsSeedance(t *testing.T) {
 	body := drama.PromptBody("storyboard")
-	if body == "" {
-		t.Fatal("内置视频提示词正文为空")
-	}
-	for _, word := range []string{"【画幅风格】", "【时间轴】", "@[名称](node_id)", "Seedance"} {
-		if strings.Contains(body, word) {
-			t.Fatalf("内置创作正文不该出现 %s", word)
+	for _, word := range []string{"【画幅风格】", "【时间轴】", "Seedance"} {
+		if !strings.Contains(body, word) {
+			t.Fatalf("内置正文缺少 %s", word)
 		}
+	}
+	if strings.Contains(body, "@[名称](node_id)") {
+		t.Fatal("资产引用语法应只在格式段")
 	}
 }
 
@@ -172,15 +172,24 @@ func TestStoryboardTimelineOverrun(t *testing.T) {
 	}
 }
 
-// 分镜固定写 Seedance 原稿，平台适配挪到片场转写；旧的平台变体不再存在。
+// 内置分镜正文写 Seedance 分栏原稿（平台适配在片场转写）；格式段只管切段和 JSON。旧的平台变体不再存在。
 func TestStoryboardPromptIsSeedance(t *testing.T) {
+	creative, err := drama.Prompt("storyboard", map[string]any{"max_seconds": 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"即梦 / Seedance", "【画幅风格】", "【时间轴】"} {
+		if !strings.Contains(creative, want) {
+			t.Fatalf("内置分镜正文缺少 %s", want)
+		}
+	}
 	prompt, err := drama.Prompt("storyboard_format", map[string]any{"max_seconds": 12, "draft_md": "村口。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"即梦 / Seedance", `"required":["segments"]`, "max_seconds", "@[名称](node_id)", "放不下就拆"} {
+	for _, want := range []string{`"required":["segments"]`, "max_seconds", "@[名称](node_id)", "放不下就拆"} {
 		if !strings.Contains(prompt, want) {
-			t.Fatalf("分镜模板缺少 %s", want)
+			t.Fatalf("分镜格式段缺少 %s", want)
 		}
 	}
 	for _, gone := range []string{"storyboard_seedance", "storyboard_h3"} {

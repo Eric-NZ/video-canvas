@@ -8,14 +8,13 @@ import (
 	"video-canvas/internal/drama"
 )
 
-// 第二期：剧本、资产拆解、资产图提示词和分镜一样分成创作段与格式段。
-// 创作段的内置正文只有创作方法，不含 JSON 字段、栏名或编号格式。
+// 创作段的内置正文是写法（剧本格式这类内置写法也在这里，用户可以整段换掉），不含 JSON 字段和 Schema。
 func TestPhase2CreativeBodiesHoldNoFormat(t *testing.T) {
 	for _, tc := range []struct {
 		step string
 		bad  []string
 	}{
-		{"scripts", []string{"### 剧本格式", "△", "【本集完】", "（OS）", "JSON", "输出 JSON Schema"}},
+		{"scripts", []string{"script_md", "JSON", "输出 JSON Schema"}},
 		{"breakdown", []string{"enum", "maxLength", "voice_prompt", "\"type\"", "输出 JSON Schema"}},
 		{"asset_prompts", []string{"node_id", "16:9", "3:4", "prompts", "输出 JSON Schema"}},
 	} {
@@ -42,7 +41,7 @@ func TestPhase2CreativeBodiesHoldNoFormat(t *testing.T) {
 
 // 格式段保留原来的结构约束：JSON Schema 与校验规则都在，且只接收创作稿。
 func TestPhase2FormatPromptsKeepSchema(t *testing.T) {
-	for _, step := range []string{"scripts_format", "breakdown_format", "asset_prompts_format"} {
+	for _, step := range []string{"breakdown_format", "asset_prompts_format"} {
 		t.Run(step, func(t *testing.T) {
 			prompt, err := drama.Prompt(step, map[string]any{"draft_md": "草稿"})
 			if err != nil {
@@ -57,16 +56,55 @@ func TestPhase2FormatPromptsKeepSchema(t *testing.T) {
 	}
 }
 
-// 剧本格式规则归格式段：创作段不再要求场次标题与标记。
-func TestPhase2ScriptFormatRulesMoved(t *testing.T) {
-	format, err := drama.Prompt("scripts_format", map[string]any{"draft_md": "草稿"})
+// 剧本格式是内置写法：放在剧本创作段的内置正文里，用户换成自己的正文（如解说文案）后不再出现；
+// 剧本没有格式段，创作稿原样就是本集剧本。
+func TestPhase2ScriptFormatIsBuiltinBody(t *testing.T) {
+	body := drama.PromptBody("scripts")
+	for _, want := range []string{"### 剧本格式", "第N集", "△", "（OS）", "【本集完】"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("内置剧本正文缺少 %s", want)
+		}
+	}
+	custom, err := drama.PromptWithBody("scripts", map[string]any{}, "写成第一人称解说文案。")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"### 剧本格式", "△", "【本集完】"} {
-		if !strings.Contains(format, want) {
-			t.Fatalf("剧本格式段缺少 %s", want)
+	for _, gone := range []string{"△", "【本集完】", "（OS）", "场次标题行"} {
+		if strings.Contains(custom, gone) {
+			t.Fatalf("自定义正文后不应再带内置剧本格式 %s:\n%s", gone, custom)
 		}
+	}
+	if _, err := drama.Prompt("scripts_format", map[string]any{}); err == nil {
+		t.Fatal("剧本格式段应已删除")
+	}
+}
+
+// 格式段只管代码要读的 JSON 字段，不规定写法：栏名、字数、平台写法、水印字幕这类都在创作段的内置正文里。
+func TestFormatPromptsHoldNoWritingRules(t *testing.T) {
+	for _, tc := range []struct {
+		step string
+		bad  []string
+		want []string
+	}{
+		{"storyboard_format", []string{"即梦", "Seedance", "【画幅风格】", "【站位】", "【时间轴】", "500字", "「原文」"}, []string{`"required":["segments"]`, "max_seconds", "@[名称](node_id)"}},
+		{"asset_prompts_format", []string{"水印", "UI 标签", "字幕", "音色"}, []string{`"prompts"`, "node_id", "画面比例"}},
+	} {
+		t.Run(tc.step, func(t *testing.T) {
+			prompt, err := drama.Prompt(tc.step, map[string]any{"draft_md": "草稿"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, word := range tc.bad {
+				if strings.Contains(prompt, word) {
+					t.Fatalf("格式段不该规定写法 %s", word)
+				}
+			}
+			for _, word := range tc.want {
+				if !strings.Contains(prompt, word) {
+					t.Fatalf("格式段缺少 %s", word)
+				}
+			}
+		})
 	}
 }
 

@@ -83,7 +83,7 @@ func TestScriptEpisodesKeepScenes(t *testing.T) {
 }
 
 func TestPromptBodyCannotReplaceProtocol(t *testing.T) {
-	prompt, err := drama.PromptWithBody("scripts_format", map[string]any{"draft_md": "原文"}, "只输出 Markdown")
+	prompt, err := drama.PromptWithBody("breakdown_format", map[string]any{"draft_md": "原文"}, "只输出 Markdown")
 	if err != nil || !strings.Contains(prompt, "只输出 Markdown") || !strings.Contains(prompt, "## 输出 JSON Schema") || !strings.Contains(prompt, "## 本步职责") {
 		t.Fatalf("%s %v", prompt, err)
 	}

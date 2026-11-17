@@ -525,13 +525,14 @@ func dramaAddEpisode(r *dramaMemory, no int, script string) {
 	r.episodes = append(r.episodes, model.DramaEpisode{BaseModel: model.BaseModel{ID: r.nextID}, UserID: 7, DramaID: 1, No: no, Title: fmt.Sprintf("第%d集", no), ScriptMD: script, ScriptStatus: status, Revision: 1})
 }
 
+// 剧本只有创作段：创作稿原样就是本集剧本；空白输出算不合格，带校验反馈重试一次，不合格的调用不收费。
 func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
 		outputs              []string
 		status               string
 		code, calls, balance int
-	}{{"成功", []string{"剧本创作稿", `{"script_md":"剧本正文"}`}, "succeeded", 0, 2, 990}, {"JSON重试成功", []string{"剧本创作稿", `{bad`, `{"script_md":"修正后的正文"}`}, "succeeded", 0, 3, 990}, {"JSON两次失败", []string{"剧本创作稿", `{bad`, `{bad`}, "failed", 67008, 3, 1000}} {
+	}{{"成功", []string{"△ 剧本正文"}, "succeeded", 0, 1, 995}, {"空白重试成功", []string{" ", "△ 修正后的正文"}, "succeeded", 0, 2, 995}, {"两次空白失败", []string{" ", "\n"}, "failed", 67008, 2, 1000}} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			dramaAddEpisode(r, 1, "")
@@ -551,9 +552,12 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 {
 				t.Fatalf("account=%+v", r.credit)
 			}
-			// 只有格式段重试：重试的提示词带校验反馈，且仍是格式段
-			if tc.calls == 3 && !strings.Contains(e.prompts[2], "validation_error") {
+			if tc.calls == 2 && !strings.Contains(e.prompts[1], "validation_error") {
 				t.Fatal("重试缺少校验反馈")
+			}
+			// 不再有格式段改写：保存的剧本就是创作稿原文
+			if tc.status == "succeeded" && r.episodes[0].ScriptMD != tc.outputs[len(tc.outputs)-1] {
+				t.Fatalf("剧本应原样保存创作稿，got %q", r.episodes[0].ScriptMD)
 			}
 		})
 	}
@@ -615,9 +619,8 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	dramaAddEpisode(r, 2, "")
 	dramaAddEpisode(r, 3, "")
 	ending := strings.Repeat("甲", 900) + "最后一句"
-	raw, _ := json.Marshal(drama.ScriptOutput{ScriptMD: ending})
-	// 第一集：创作段 + 格式段；第二集的创作段（第 3 次调用）失败
-	e := &dramaTextStreamer{outputs: []string{"第一集草稿", string(raw)}, failAt: 3}
+	// 第一集一次调用；第二集（第 2 次调用）失败
+	e := &dramaTextStreamer{outputs: []string{ending}, failAt: 2}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	if err != nil {
@@ -629,7 +632,7 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	if r.episodes[0].ScriptStatus != "ready" || r.episodes[0].ScriptMD != ending || r.episodes[1].ScriptStatus != "failed" || r.episodes[2].ScriptStatus != "empty" {
 		t.Fatalf("episodes=%+v", r.episodes)
 	}
-	if !strings.Contains(e.prompts[2], "最后一句") || strings.Contains(e.prompts[2], strings.Repeat("甲", 900)) {
+	if !strings.Contains(e.prompts[1], "最后一句") || strings.Contains(e.prompts[1], strings.Repeat("甲", 900)) {
 		t.Fatal("衔接没有限定为上一集结尾约800字")
 	}
 	if r.credit.Balance != 1000 || r.credit.Frozen != 0 {

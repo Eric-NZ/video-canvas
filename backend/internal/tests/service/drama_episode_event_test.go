@@ -58,13 +58,13 @@ func TestDramaService_ScriptEpisodeEvents(t *testing.T) {
 			e := &dramaTextStreamer{failAt: tc.failAt}
 			for no := 1; no <= tc.count; no++ {
 				dramaAddEpisode(r.dramaMemory, no, "")
-				e.outputs = append(e.outputs, "这一集的创作稿", `{"script_md":"这一集的正文"}`)
+				e.outputs = append(e.outputs, "这一集的正文")
 			}
 			_, registry := dramaTestService(r.dramaMemory, e, nil)
 			var notified []int
 			e.onCall = func() {
-				// 每集两次调用（创作段、格式段），完成的集数是已经发出的调用里的整集数
-				if len(notified) != (e.calls-1)/2 {
+				// 每集一次调用，完成的集数就是已经发出的调用数
+				if len(notified) != e.calls-1 {
 					t.Fatalf("第 %d 次请求开始前仅收到 %d 集通知", e.calls, len(notified))
 				}
 			}

@@ -131,13 +131,13 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 		return nil, err
 	}
 	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds
-	// 创作段：用户风格只作用于这一段，输出纯文本分镜稿，不解析结构。
+	// 创作段：写法都在这一段（内置正文是即梦 / Seedance 分栏，用户可以整段换掉），输出纯文本分镜稿，不解析结构。
 	draft, draftCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", "", vars, nil)
 	if err != nil {
 		return nil, err
 	}
-	// 格式段：系统固定，只拿创作稿与资产清单，负责切段、栏名和 JSON。校验失败只重试这一段，不重跑创作段。
-	formatVars := map[string]any{"draft_md": draft, "episode_no": ep.No, "assets": assets, "max_seconds": input.MaxSeconds, "ratio": vars["ratio"], "style": vars["style"]}
+	// 格式段：系统固定，只拿创作稿与资产清单，负责切段、时长、资产引用和 JSON，不改写法。校验失败只重试这一段，不重跑创作段。
+	formatVars := map[string]any{"draft_md": draft, "episode_no": ep.No, "assets": assets, "max_seconds": input.MaxSeconds}
 	output, formatCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard_format", "", formatVars, func(value any) error {
 		return value.(drama.StoryboardOutput).ValidateMaxSeconds(input.MaxSeconds)
 	})

@@ -19,9 +19,9 @@ func TestDramaLedgerConservation(t *testing.T) {
 		status  string
 		settled int
 	}{
-		// 每次成功调用各计费 5：创作段与格式段
-		{"成功只结算实际费用", []string{"剧本创作稿", `{"script_md":"剧本"}`}, "succeeded", 10},
-		{"校验两次失败整笔退回", []string{"剧本创作稿", `{bad`, `{bad`}, "failed", 0},
+		// 每次成功调用计费 5；剧本只有创作段一次调用
+		{"成功只结算实际费用", []string{"剧本创作稿"}, "succeeded", 5},
+		{"校验两次失败整笔退回", []string{" ", " \n "}, "failed", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()

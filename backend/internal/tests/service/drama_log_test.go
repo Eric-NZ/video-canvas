@@ -72,7 +72,7 @@ func TestDramaLog_InvalidOutputTwice(t *testing.T) {
 	read := serviceLog(t)
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
-	s, _ := dramaTestService(r, &dramaTextStreamer{outputs: []string{"剧本创作稿", `{bad`, `{"script_md":""}`}}, nil)
+	s, _ := dramaTestService(r, &dramaTextStreamer{outputs: []string{" ", " \n "}}, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestDramaLog_Success(t *testing.T) {
 	read := serviceLog(t)
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
-	s, _ := dramaTestService(r, &dramaTextStreamer{outputs: []string{"剧本创作稿", `{"script_md":"剧本"}`}}, nil)
+	s, _ := dramaTestService(r, &dramaTextStreamer{outputs: []string{"剧本"}}, nil)
 	j, _ := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
 	if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestDramaLog_Success(t *testing.T) {
 	if len(fins) != 1 {
 		t.Fatalf("应有 1 行 run.finish：%v", fins)
 	}
-	wantFields(t, "run.finish", fins[0], map[string]any{"status": "succeeded", "level": "info", "credits": float64(10)})
+	wantFields(t, "run.finish", fins[0], map[string]any{"status": "succeeded", "level": "info", "credits": float64(5)})
 	if _, ok := fins[0]["last_call_id"]; ok {
 		t.Errorf("成功收尾不带 last_call_id：%v", fins[0])
 	}

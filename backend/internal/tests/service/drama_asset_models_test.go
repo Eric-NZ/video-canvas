@@ -261,18 +261,18 @@ func runStoryboardWithFormat(t *testing.T, format string, promptSettings string)
 	return e.prompts[0], e.prompts[1]
 }
 
-// 分镜固定写 Seedance 原稿：不管项目视频模型声明哪种写法，格式段都用 Seedance 模板，平台适配交给片场转写。
-// 创作段不带任何格式，格式只出现在格式段。
+// 内置分镜正文固定写 Seedance 分栏原稿：不管项目视频模型声明哪种写法都一样，平台适配交给片场转写。
+// 格式段只切段、补资产引用、输出 segments JSON，不规定写法。
 func TestDramaStoryboardAlwaysSeedance(t *testing.T) {
 	const seedanceMark, h3Mark = "即梦 / Seedance", "integrated_multimodal_description"
 	for _, format := range []string{"seedance", "h3", "", "sora"} {
 		t.Run("模型写法="+format, func(t *testing.T) {
 			creative, prompt := runStoryboardWithFormat(t, format, "")
-			if !strings.Contains(prompt, seedanceMark) || strings.Contains(prompt, h3Mark) {
-				t.Fatalf("格式段应固定用 Seedance 模板:\n%s", prompt)
+			if !strings.Contains(creative, seedanceMark) || strings.Contains(creative, h3Mark) || strings.Contains(creative, `"required":["segments"]`) {
+				t.Fatalf("内置创作正文应是 Seedance 分栏写法、不带 JSON:\n%s", creative)
 			}
-			if strings.Contains(creative, seedanceMark) || strings.Contains(creative, h3Mark) || strings.Contains(creative, `"required":["segments"]`) {
-				t.Fatalf("创作段不应带任何格式:\n%s", creative)
+			if strings.Contains(prompt, seedanceMark) || strings.Contains(prompt, h3Mark) {
+				t.Fatalf("格式段不应规定平台写法:\n%s", prompt)
 			}
 			for _, want := range []string{`"max_seconds":12`, "一段的时长不超过 `max_seconds`", `"required":["segments"]`} {
 				if !strings.Contains(prompt, want) {
@@ -280,6 +280,22 @@ func TestDramaStoryboardAlwaysSeedance(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// 用户换成自己的分镜正文后，提示词里不再出现内置的 Seedance 分栏写法。
+func TestDramaStoryboardCustomBodyDropsSeedance(t *testing.T) {
+	custom := `{"video":{"source":"mine","label":"我的","bodies":{"storyboard":"每段一句话描述画面，不分栏。"}}}`
+	creative, prompt := runStoryboardWithFormat(t, "", custom)
+	if !strings.Contains(creative, "每段一句话描述画面，不分栏。") {
+		t.Fatalf("应使用用户正文:\n%s", creative)
+	}
+	for _, text := range []string{creative, prompt} {
+		for _, gone := range []string{"即梦 / Seedance", "【画幅风格】", "【时间轴】"} {
+			if strings.Contains(text, gone) {
+				t.Fatalf("自定义正文后不应再出现 %s:\n%s", gone, text)
+			}
+		}
 	}
 }
 
@@ -305,8 +321,8 @@ func TestDramaStoryboardCustomPromptNotOverriddenByFormat(t *testing.T) {
 		if !strings.Contains(creative, "自写正文：只写一句话") || strings.Contains(creative, "目标平台是即梦 / Seedance") || strings.Contains(creative, "integrated_multimodal_description") {
 			t.Fatalf("用户正文被平台模板覆盖或平台模板泄漏进创作段:\n%s", creative)
 		}
-		// 用户正文只替换创作段；格式段仍是系统固定的 Seedance 格式，并拿到时长上限
-		if strings.Contains(prompt, "自写正文：只写一句话") || !strings.Contains(prompt, "目标平台是即梦 / Seedance") {
+		// 用户正文只替换创作段；格式段系统固定、不带平台写法，并拿到时长上限
+		if strings.Contains(prompt, "自写正文：只写一句话") || strings.Contains(prompt, "即梦 / Seedance") {
 			t.Fatalf("格式段被用户正文改动:\n%s", prompt)
 		}
 		if !strings.Contains(prompt, `"max_seconds":12`) {

@@ -158,7 +158,7 @@ func TestDramaScriptsUseUnitAndPreviousSynopsis(t *testing.T) {
 	r.episodes[1].UnitTo = 1
 	r.episodes[1].Hook = "开场钩子"
 	r.units = []model.DramaUnit{{UserID: 7, DramaID: 1, No: 1, Text: "本集必须出现的原文对白", Chars: 12}}
-	e := &dramaTextStreamer{outputs: []string{`{"script_md":"本集剧本"}`}}
+	e := &dramaTextStreamer{outputs: []string{"本集剧本"}}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{2}})
 	if err != nil {
