@@ -247,6 +247,9 @@ func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.Drama
 	for _, j := range jobs {
 		v.ActiveJobs = append(v.ActiveJobs, jobView(j))
 	}
+	if v.Eta, err = s.planningEta(ctx, p); err != nil {
+		return nil, err
+	}
 	return v, nil
 }
 
@@ -486,7 +489,7 @@ func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpiso
 
 // jobView 映射任务状态并保证空范围为[]。
 func jobView(j model.DramaJob) model.DramaJobView {
-	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, StartedAt: j.StartedAt, FinishedAt: j.FinishedAt}
 	if j.Step == "compose" && j.Status == "succeeded" {
 		var result model.DramaComposeResult
 		if json.Unmarshal(j.Output, &result) == nil && result.Asset.ID != 0 {

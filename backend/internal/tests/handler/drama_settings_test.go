@@ -271,6 +271,9 @@ func (r *settingsHTTPRepo) CleanupDrafts(context.Context) error { return nil }
 func (r *settingsHTTPRepo) RecentDramaDurations(context.Context, uint64, string) ([]int, error) {
 	return nil, nil
 }
+func (r *settingsHTTPRepo) UnitSizes(ctx context.Context, user, id uint64, from, to int) ([]model.DramaUnit, error) {
+	return r.Units(ctx, user, id, from, to)
+}
 
 func (r *httpDramaRepo) Segments(context.Context, uint64, uint64) ([]model.DramaSegment, error) {
 	return nil, nil

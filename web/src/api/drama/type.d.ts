@@ -135,6 +135,8 @@ export interface BackendJobView {
   error_code: number;
   error_message: string;
   created_at: string;
+  /** 开始执行的时间；排队中为 null，老后端没有这个字段 */
+  started_at?: string | null;
   finished_at: string | null;
   /** compose 成功时 `{asset, skipped_seqs}`；其他步骤为 null（契约 §14） */
   result?: { asset: BackendAssetDto; skipped_seqs: number[] | null } | null;
@@ -193,6 +195,12 @@ export interface BackendDramaView {
   pause_code?: PauseCode | "";
   /** 各环节当前的提示词设置 */
   prompt_settings?: PromptSettings;
+  /** 自动规划中的预计耗时原料；不在规划中为 null，老后端没有 */
+  eta?: {
+    analyze_seconds: number;
+    plan_seconds: number;
+    plan_batches_left: number;
+  } | null;
 }
 
 export interface BackendDramaStyles {
@@ -263,6 +271,8 @@ export interface DramaJob {
   errorCode: number;
   errorMessage: string;
   createdAt: string;
+  /** 开始执行的时间；排队中为 null */
+  startedAt: string | null;
   finishedAt: string | null;
   /** compose 成功的结果；其他步骤为 null */
   result: DramaJobResult | null;
@@ -325,6 +335,15 @@ export interface Drama {
   pauseCode: PauseCode | "";
   /** 各环节当前的提示词设置；老数据全是内置 */
   promptSettings: PromptSettings;
+  /** 自动规划中的预计耗时原料；不在规划中为 null */
+  eta: DramaEta | null;
+}
+
+/** 预计耗时原料：同模型粗读 / 每批规划的历史中位耗时（秒，历史不足为 0）和剩余规划批次数 */
+export interface DramaEta {
+  analyzeSeconds: number;
+  planSeconds: number;
+  planBatchesLeft: number;
 }
 
 export interface DramaStyles {

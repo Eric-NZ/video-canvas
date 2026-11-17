@@ -26,6 +26,8 @@ type DramaSettingsRepo interface {
 	Draft(context.Context, uint64, string, bool) (*model.DramaSourceDraft, error)
 	// Units 返回本人项目原文范围。
 	Units(context.Context, uint64, uint64, int, int) ([]model.DramaUnit, error)
+	// UnitSizes 返回本人项目单元的序号、标题和字数，不读正文。
+	UnitSizes(context.Context, uint64, uint64, int, int) ([]model.DramaUnit, error)
 	// Prompts 按用户及环节返回个人提示词。
 	Prompts(context.Context, uint64, string) ([]model.DramaPrompt, error)
 	// Prompt 读取本人提示词。

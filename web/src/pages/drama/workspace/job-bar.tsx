@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ChevronDown, Pause, Play, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
@@ -10,16 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TaskIdTag } from "@/components/task-id-tag";
 import { SPRING } from "@/lib/motion";
+import { useNow } from "@/hooks/use-now";
 import { useDramaJobsStore } from "@/store/drama";
 import { cn } from "@/lib/utils";
-import { durationLabel } from "@/utils/drama/start-settings";
 import {
   episodesLabel,
+  etaLabel,
   failedJobs,
   isActiveJob,
   jobStage,
   jobTitle,
-  planningEtaMinutes,
+  pipelineEta,
   planningRow,
   retryEpisodes,
   stepName,
@@ -290,6 +291,9 @@ function FailedRow({ job }: { job: DramaJob }) {
   );
 }
 
+/** 自动规划中刷新「还需多久」和粗读推算进度的节拍（毫秒） */
+const PLANNING_TICK = 2000;
+
 /**
  * 自动规划（pipeline 线）那一组：研读 / 正在规划第 a–b 章 · 已出 N 集目录 · 还需多久 · 暂停；
  * 暂停或失败时写原因，给「继续 / 重试」，自定义提示词导致失败时多一个「改用内置重试」。
@@ -297,13 +301,8 @@ function FailedRow({ job }: { job: DramaJob }) {
 function PlanningRows() {
   const { drama, jobs, refresh } = useWorkspace();
   const [busy, setBusy] = useState(false);
-  /** 当前时间，每 30 秒更新一次：只用来估「还需多久」 */
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-  const row = planningRow(drama, jobs);
+  const now = useNow(drama.phase === "running", PLANNING_TICK);
+  const row = planningRow(drama, jobs, now);
   if (!row) return null;
 
   const run = async (task: () => Promise<void>, failure: string) => {
@@ -321,7 +320,7 @@ function PlanningRows() {
     if (action === "builtin") return run(() => retryBuiltin(drama.id, "plan"), "重试失败");
     return run(() => resumePlanning(drama.id), "继续失败");
   };
-  const eta = row.kind === "running" ? planningEtaMinutes(drama, now) : null;
+  const eta = row.kind === "running" ? pipelineEta(drama, jobs, now).total : null;
   const error = row.kind === "paused" && row.tone === "error";
 
   return (
@@ -356,7 +355,7 @@ function PlanningRows() {
           {row.kind === "running" ? (
             <>
               {row.detail}
-              {eta !== null && ` · 还需约 ${durationLabel(eta)}`}
+              {eta !== null && ` · ${etaLabel(eta)}`}
             </>
           ) : (
             row.reason
@@ -453,7 +452,8 @@ export function TaskPanel({ onEpisode }: { onEpisode: (step: DramaStep, no: numb
 export function TaskPill({ onGo }: { onGo: (stage: WorkspaceStage, ep?: number) => void }) {
   const { drama, jobs } = useWorkspace();
   const [open, setOpen] = useState(false);
-  const summary = taskSummary(jobs, planningRow(drama, jobs));
+  const now = useNow(drama.phase === "running", PLANNING_TICK);
+  const summary = taskSummary(jobs, planningRow(drama, jobs, now));
   if (!summary) return null;
 
   const onEpisode = (step: DramaStep, no: number) => {

@@ -40,6 +40,7 @@ const job = (patch: Partial<DramaJob> = {}): DramaJob => ({
   errorCode: 0,
   errorMessage: "",
   createdAt: "2026-11-04T10:00:00Z",
+  startedAt: null,
   finishedAt: null,
   result: null,
   lane: "pipeline",
@@ -69,7 +70,7 @@ const drama = (patch: Partial<Drama> = {}) =>
     pauseReason: "",
     pauseCode: "",
     unitKind: "chapter",
-    createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+    eta: { analyzeSeconds: 40, planSeconds: 120, planBatchesLeft: 75 },
     ratio: "9:16",
     episodes: Array.from({ length: 52 }, (_, i) => ({ no: i + 1 })),
     ...patch,
@@ -136,11 +137,20 @@ describe("任务胶囊：自动规划", () => {
     const panel = await openPanel(m.container);
     const row = panel.querySelector('[data-slot="planning-row"]') as HTMLElement;
     expect(row.textContent).toContain("已出 52 集目录");
-    expect(row.textContent).toContain("还需约");
+    expect(row.textContent).toContain("还需约 2.5 小时");
     await dom.click(byText(row, "暂停"));
     await dom.flush();
     expect(post.mock.calls[0][0]).toBe("/dramas/d1/planning/pause");
     expect(refreshed).toBe(1);
+    await m.unmount();
+  });
+
+  test("历史不足（没有预计原料）：不写还需多久", async () => {
+    const m = await mountPill(drama({ eta: null }), [job()]);
+    const panel = await openPanel(m.container);
+    const row = panel.querySelector('[data-slot="planning-row"]') as HTMLElement;
+    expect(row.textContent).toContain("已出 52 集目录");
+    expect(row.textContent).not.toContain("还需");
     await m.unmount();
   });
 

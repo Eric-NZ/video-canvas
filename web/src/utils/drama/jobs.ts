@@ -1,7 +1,7 @@
 import type { Drama, DramaJob, DramaStep, EpisodeSummary } from "@/api/drama/type";
 
 import type { WorkspaceStage } from "./stages";
-import { unitWord } from "./start-settings";
+import { durationLabel, unitWord } from "./start-settings";
 
 /** 排队中或进行中 */
 export const isActiveJob = (job: Pick<DramaJob, "status">): boolean =>
@@ -318,7 +318,7 @@ export function runningByEpisode(jobs: readonly DramaJob[]): Map<number, DramaJo
 type PlanningDrama = Pick<
   Drama,
   "phase" | "planCursor" | "rangeEnd" | "pauseReason" | "pauseCode" | "unitKind"
-> & { episodes: readonly unknown[] };
+> & { episodes: readonly unknown[]; eta?: Drama["eta"] };
 
 /** 规划行上的操作：继续 / 重试 / 改用内置重试 */
 export type PlanningAction = "resume" | "retry" | "builtin";
@@ -348,21 +348,58 @@ export type PlanningRowView =
       actions: PlanningAction[];
     };
 
+/** 任务已经跑了多少秒；还在排队（没有开始时间）算 0 */
+const elapsedSeconds = (job: DramaJob, now: number) =>
+  job.startedAt ? Math.max(0, (now - new Date(job.startedAt).getTime()) / 1000) : 0;
+
+/** 自动规划里正在研读（粗读）的任务 */
+const analyzeJob = (jobs: readonly DramaJob[]) =>
+  jobs.find(
+    (job) =>
+      isPipelineJob(job) && isActiveJob(job) && (job.step === "analyze" || job.step === "outline"),
+  );
+
 /**
- * 规划还要多久（分钟）：按「已规划的单元数 ÷ 已用时间」估出速度，再乘剩余单元数。
- * 还没规划出任何单元（速度未知）或已规划完时返回 null；用时含暂停期间，所以只是粗估
- * @param drama 创建时间、已规划到第几个单元、范围终点
+ * 自动规划还要多久（秒）：粗读 = 同模型粗读中位耗时 − 已跑时间；规划 = 当前批剩余 + 后面批次 × 每批中位耗时。
+ * 中位耗时为 0（历史不足）的步骤不估；合计要求正在做和之后的步骤都能估。跑超了按 0 算，不出现负数
+ * @param drama 规划阶段与预计耗时原料
+ * @param jobs 任务卡
  * @param now 当前时间（毫秒）
  */
-export function planningEtaMinutes(
-  drama: { createdAt: string; planCursor: number; rangeEnd: number },
+export function pipelineEta(
+  drama: { phase: Drama["phase"]; eta?: Drama["eta"] },
+  jobs: readonly DramaJob[],
   now: number,
-): number | null {
-  const remaining = drama.rangeEnd - drama.planCursor;
-  if (drama.planCursor <= 0 || remaining <= 0) return null;
-  const elapsed = now - new Date(drama.createdAt).getTime();
-  if (!(elapsed > 0)) return null;
-  return Math.max(1, Math.round(((elapsed / drama.planCursor) * remaining) / 60_000));
+): { analyze: number | null; plan: number | null; total: number | null } {
+  const eta = drama.eta;
+  if (drama.phase !== "running" || !eta) return { analyze: null, plan: null, total: null };
+  const reading = analyzeJob(jobs);
+  const analyze =
+    reading && eta.analyzeSeconds > 0
+      ? Math.max(0, Math.round(eta.analyzeSeconds - elapsedSeconds(reading, now)))
+      : null;
+  let plan: number | null = null;
+  if (eta.planSeconds > 0) {
+    const batch = jobs.find((job) => isPipelineJob(job) && isActiveJob(job) && job.step === "plan");
+    const current =
+      eta.planBatchesLeft > 0 && batch
+        ? Math.max(0, eta.planSeconds - elapsedSeconds(batch, now))
+        : 0;
+    const rest = batch ? Math.max(0, eta.planBatchesLeft - 1) : eta.planBatchesLeft;
+    plan = Math.round(current + rest * eta.planSeconds);
+  }
+  const total = plan === null || (reading && analyze === null) ? null : (analyze ?? 0) + plan;
+  return { analyze, plan, total };
+}
+
+/**
+ * 还需多久的文案：跑超了写「即将完成」，不到一分钟写「还需不到 1 分钟」
+ * @param seconds 剩余秒数
+ */
+export function etaLabel(seconds: number): string {
+  if (seconds <= 0) return "即将完成";
+  if (seconds < 60) return "还需不到 1 分钟";
+  return `还需约 ${durationLabel(seconds / 60)}`;
 }
 
 const batchRange = (from: number, to: number, word: string) =>
@@ -374,10 +411,12 @@ const batchRange = (from: number, to: number, word: string) =>
  * 自定义提示词导致失败 → 重试 + 改用内置重试）。
  * @param drama 短剧的规划相关字段
  * @param jobs 任务卡
+ * @param now 当前时间（毫秒），用来推算粗读进度
  */
 export function planningRow(
   drama: PlanningDrama,
   jobs: readonly DramaJob[],
+  now = Date.now(),
 ): PlanningRowView | null {
   if (drama.phase === "done") return null;
   const word = unitWord(drama.unitKind);
@@ -386,11 +425,15 @@ export function planningRow(
     const analyze = active.find((job) => job.step === "analyze" || job.step === "outline");
     const plan = active.find((job) => job.step === "plan");
     if (analyze && !plan) {
+      // 粗读只有一次模型调用，中途没有进度：有历史耗时就按已用时间走，最多到 90%
+      const median = drama.eta?.analyzeSeconds ?? 0;
+      const guess =
+        median > 0 ? Math.min(90, Math.round((elapsedSeconds(analyze, now) / median) * 100)) : 0;
       return {
         kind: "running",
         title: "正在粗读全书",
         detail: "研读 · 抽样读开篇与后文，整理人物与梗概",
-        progress: analyze.progress,
+        progress: Math.max(analyze.progress, guess),
       };
     }
     const progress =

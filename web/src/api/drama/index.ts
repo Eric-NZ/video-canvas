@@ -88,6 +88,7 @@ export const mapJob = (raw: BackendJobView): DramaJob => ({
   errorCode: raw.error_code,
   errorMessage: raw.error_message ?? "",
   createdAt: raw.created_at,
+  startedAt: raw.started_at ?? null,
   finishedAt: raw.finished_at ?? null,
   result: raw.result
     ? { asset: mapAsset(raw.result.asset), skippedSeqs: raw.result.skipped_seqs ?? [] }
@@ -144,6 +145,13 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
   pauseReason: raw.pause_reason ?? "",
   pauseCode: raw.pause_code ?? "",
   promptSettings: mapPromptSettings(raw.prompt_settings),
+  eta: raw.eta
+    ? {
+        analyzeSeconds: raw.eta.analyze_seconds,
+        planSeconds: raw.eta.plan_seconds,
+        planBatchesLeft: raw.eta.plan_batches_left,
+      }
+    : null,
 });
 
 export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
