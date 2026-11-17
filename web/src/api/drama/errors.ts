@@ -36,7 +36,7 @@ export const DRAMA_ERR = {
   promptNotFound: 67016,
   /** 提示词正文为空、超长或名称重复（Msg 写具体原因） */
   promptInvalid: 67017,
-  /** 技能不可用（未启用或没标这个环节） */
+  /** 技能不可用（后台没打开这个环节，或没有生效版本） */
   skillUnavailable: 67018,
   /** 当前阶段不允许这个操作（规划中增删集、暂停 / 继续状态不对等） */
   phaseNotAllowed: 67019,

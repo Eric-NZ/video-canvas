@@ -664,7 +664,7 @@ export interface MyPromptInput {
   revision?: number;
 }
 
-/** 后台已启用且标了该环节的技能 */
+/** 后台打开了该环节、且有生效版本的技能 */
 export interface DramaSkill {
   /** 技能 name */
   name: string;

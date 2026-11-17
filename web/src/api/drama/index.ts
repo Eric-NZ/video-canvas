@@ -608,7 +608,7 @@ export const deleteMyPrompt = async (id: string): Promise<void> => {
 };
 
 /**
- * 某个环节可用的技能：后台已启用且标了该环节的
+ * 某个环节可用的技能：后台打开了该环节、且有生效版本的
  * @param step 环节
  */
 export const listDramaSkills = async (step: PromptStep): Promise<DramaSkill[]> => {

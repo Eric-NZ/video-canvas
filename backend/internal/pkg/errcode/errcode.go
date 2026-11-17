@@ -204,7 +204,7 @@ var (
 	ErrSkillBuiltin        = New(61007, "内置技能不可修改", http.StatusConflict)
 	ErrSkillActiveVersion  = New(61008, "生效版本不能删除", http.StatusConflict)
 	ErrSkillCannotEnable   = New(61009, "无法启用", http.StatusConflict) // 原因写进 Msg
-	ErrSkillNeedDisable    = New(61010, "技能需先停用才能删除", http.StatusConflict)
+	ErrSkillNeedDisable    = New(61010, "请先关闭所有使用场景再删除", http.StatusConflict)
 	ErrSkillTooLarge       = New(61011, "技能包超过大小限制", http.StatusRequestEntityTooLarge)
 )
 

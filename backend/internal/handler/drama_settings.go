@@ -140,7 +140,7 @@ func (h *DramaHandler) DeletePrompt(c *gin.Context) {
 	response.NoContent(c)
 }
 
-// Skills 返回启用且管理员标记本环节的技能。
+// Skills 返回管理员打开了本环节、且有生效版本的技能（与画布 Agent 开关无关）。
 func (h *DramaHandler) Skills(c *gin.Context) {
 	var req struct {
 		Step string `form:"step" binding:"required,oneof=adapt assets asset_prompts video"`
