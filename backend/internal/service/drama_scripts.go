@@ -42,7 +42,14 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 				return nil, 0, errcode.ErrDramaEpisodeSourceTooLong
 			}
 		}
-		v, c, e := s.callDrama(ctx, j, snap, "scripts", fmt.Sprintf("episode=%d", ep.No), vars, nil)
+		// 创作段写剧本创作稿，格式段整理成标准剧本；两段任一失败都标记本集剧本失败
+		call := fmt.Sprintf("episode=%d", ep.No)
+		draft, draftCost, e := s.callDrama(ctx, j, snap, "scripts", call, vars, nil)
+		var v any
+		var formatCost int
+		if e == nil {
+			v, formatCost, e = s.callDrama(ctx, j, snap, "scripts_format", call, map[string]any{"draft_md": draft, "episode": vars["episode"], "hook": ep.Hook, "cliffhanger": ep.Cliffhanger}, nil)
+		}
 		if e != nil {
 			if markErr := s.markScriptFailed(ctx, j, ep.No); markErr != nil {
 				return nil, 0, markErr
@@ -53,7 +60,7 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 		if e = s.saveDramaScript(ctx, j, ep.No, script.ScriptMD, "ready"); e != nil {
 			return nil, 0, e
 		}
-		cost += c
+		cost += draftCost + formatCost
 		for k := range all {
 			if all[k].No == ep.No {
 				all[k].ScriptMD = script.ScriptMD

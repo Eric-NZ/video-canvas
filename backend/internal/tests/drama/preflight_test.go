@@ -83,8 +83,13 @@ func TestScriptEpisodesKeepScenes(t *testing.T) {
 }
 
 func TestPromptBodyCannotReplaceProtocol(t *testing.T) {
-	prompt, err := drama.PromptWithBody("scripts", map[string]any{"source": "原文"}, "只输出 Markdown")
+	prompt, err := drama.PromptWithBody("scripts_format", map[string]any{"draft_md": "原文"}, "只输出 Markdown")
 	if err != nil || !strings.Contains(prompt, "只输出 Markdown") || !strings.Contains(prompt, "## 输出 JSON Schema") || !strings.Contains(prompt, "## 本步职责") {
+		t.Fatalf("%s %v", prompt, err)
+	}
+	// 创作段的协议是输出约定，用户正文替换不了它
+	draft, err := drama.PromptWithBody("scripts", map[string]any{"source": "原文"}, "只输出 Markdown")
+	if err != nil || !strings.Contains(draft, "只输出 Markdown") || !strings.Contains(draft, "## 输出约定") {
 		t.Fatalf("%s %v", prompt, err)
 	}
 	block := drama.SkillBlock("连续性", strings.Repeat("字", 20000))

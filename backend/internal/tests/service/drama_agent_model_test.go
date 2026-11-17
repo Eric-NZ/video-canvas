@@ -24,7 +24,7 @@ func TestDramaIgnoresTextModels(t *testing.T) {
 func TestDramaCallsAgentChannel(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
-	e := &dramaTextStreamer{outputs: []string{`{"script_md":"剧本"}`}}
+	e := &dramaTextStreamer{outputs: []string{"剧本创作稿", `{"script_md":"剧本"}`}}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
 	if err != nil {
@@ -33,7 +33,8 @@ func TestDramaCallsAgentChannel(t *testing.T) {
 	if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.targets) != 1 {
+	// 创作段与格式段都走同一个智能体渠道
+	if len(e.targets) != 2 {
 		t.Fatalf("calls=%d", len(e.targets))
 	}
 	got := e.targets[0]
@@ -46,7 +47,7 @@ func TestDramaCallsAgentChannel(t *testing.T) {
 func TestDramaSettlesAgentModelByTokenUsage(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
-	e := &dramaTextStreamer{outputs: []string{`{"script_md":"剧本"}`}, usage: llmgateway.Usage{InputTokens: 1000, OutputTokens: 500}}
+	e := &dramaTextStreamer{outputs: []string{"剧本创作稿", `{"script_md":"剧本"}`}, usage: llmgateway.Usage{InputTokens: 1000, OutputTokens: 500}}
 	s, registry := dramaTestService(r, e, nil)
 	registry.snap.Model.Pricing = modelcfg.Pricing{Billing: modelcfg.BillingToken, Token: &modelcfg.TokenPrice{In: 1000, Out: 4000}}
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
@@ -59,7 +60,8 @@ func TestDramaSettlesAgentModelByTokenUsage(t *testing.T) {
 	if err := s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if r.jobs[0].Status != "succeeded" || r.credit.Balance != 1000-3 || r.credit.Frozen != 0 {
+	// 两次调用各按 1000 入 500 出结算 3 点
+	if r.jobs[0].Status != "succeeded" || r.credit.Balance != 1000-2*3 || r.credit.Frozen != 0 {
 		t.Fatalf("job=%+v credit=%+v", r.jobs[0], r.credit)
 	}
 }

@@ -221,7 +221,7 @@ func TestDramaBreakdownPassesProjectImageModels(t *testing.T) {
 	r.project.ImageModels = []byte(`{"character":"img","scene":"","prop":"img"}`)
 	canvas := &dramaPipelineCanvas{}
 	raw, _ := json.Marshal(drama.BreakdownOutput{Assets: []drama.Asset{{Type: "scene", Name: "街道", Aliases: []string{}, Episodes: []int{1}, Description: "街道"}}})
-	e := &dramaTextStreamer{outputs: []string{string(raw)}}
+	e := &dramaTextStreamer{outputs: []string{"拆解稿", string(raw)}}
 	s, _ := dramaTestService(r, e, canvas)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1}})
 	if err != nil {
@@ -235,12 +235,12 @@ func TestDramaBreakdownPassesProjectImageModels(t *testing.T) {
 	}
 }
 
-// 用指定提示词写法的视频模型跑一次分镜，返回发给文本模型的提示词与任务。
-func runStoryboardWithFormat(t *testing.T, format string, promptSettings string) string {
+// 用指定提示词写法的视频模型跑一次分镜，返回创作段与格式段发给文本模型的提示词。
+func runStoryboardWithFormat(t *testing.T, format string, promptSettings string) (creative, formatPrompt string) {
 	t.Helper()
 	r := newDramaMemory()
 	storyboardReady(r)
-	e := &dramaTextStreamer{outputs: []string{`{"segments":[{"seconds":12,"prompt":"@[村口](n_scene) 0-12秒：中景，村民走近。"}]}`}}
+	e := &dramaTextStreamer{outputs: []string{"村口，村民走近。", `{"segments":[{"seconds":12,"prompt":"@[村口](n_scene) 0-12秒：中景，村民走近。"}]}`}}
 	s, registry := dramaTestService(r, e, nil)
 	dramaModelRegistry(registry, &modelcfg.ParamField{Type: modelcfg.ParamNumber, Max: intPtr(12)})
 	registry.snaps["vid"].Model.Capabilities.PromptFormat = format
@@ -255,24 +255,28 @@ func runStoryboardWithFormat(t *testing.T, format string, promptSettings string)
 	if err = s.HandleDrama(context.Background(), 7, 1, uint64(job.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if r.jobs[0].Status != "succeeded" || len(e.prompts) != 1 {
+	if r.jobs[0].Status != "succeeded" || len(e.prompts) != 2 {
 		t.Fatalf("status=%s code=%d prompts=%d", r.jobs[0].Status, r.jobs[0].ErrorCode, len(e.prompts))
 	}
-	return e.prompts[0]
+	return e.prompts[0], e.prompts[1]
 }
 
-// 分镜固定写 Seedance 原稿：不管项目视频模型声明哪种写法，都用 Seedance 模板，平台适配交给片场转写。
+// 分镜固定写 Seedance 原稿：不管项目视频模型声明哪种写法，格式段都用 Seedance 模板，平台适配交给片场转写。
+// 创作段不带任何格式，格式只出现在格式段。
 func TestDramaStoryboardAlwaysSeedance(t *testing.T) {
 	const seedanceMark, h3Mark = "即梦 / Seedance", "integrated_multimodal_description"
 	for _, format := range []string{"seedance", "h3", "", "sora"} {
 		t.Run("模型写法="+format, func(t *testing.T) {
-			prompt := runStoryboardWithFormat(t, format, "")
+			creative, prompt := runStoryboardWithFormat(t, format, "")
 			if !strings.Contains(prompt, seedanceMark) || strings.Contains(prompt, h3Mark) {
-				t.Fatalf("应固定用 Seedance 模板:\n%s", prompt)
+				t.Fatalf("格式段应固定用 Seedance 模板:\n%s", prompt)
 			}
-			for _, want := range []string{`"prompt_format":"seedance"`, `"max_seconds":12`, "硬约束：每段seconds不得超过max_seconds", `"required":["segments"]`} {
+			if strings.Contains(creative, seedanceMark) || strings.Contains(creative, h3Mark) || strings.Contains(creative, `"required":["segments"]`) {
+				t.Fatalf("创作段不应带任何格式:\n%s", creative)
+			}
+			for _, want := range []string{`"max_seconds":12`, "一段的时长不超过 `max_seconds`", `"required":["segments"]`} {
 				if !strings.Contains(prompt, want) {
-					t.Fatalf("提示词缺少 %s", want)
+					t.Fatalf("格式段提示词缺少 %s", want)
 				}
 			}
 		})
@@ -284,12 +288,12 @@ func TestDramaStoryboardAlwaysSeedance(t *testing.T) {
 func TestDramaBuiltinPromptIgnoresStaleSnapshotBody(t *testing.T) {
 	stale := `{"video":{"source":"builtin","label":"内置","bodies":{"storyboard":"旧版内置正文：已过期"}}}`
 	for _, format := range []string{"", "seedance", "h3"} {
-		prompt := runStoryboardWithFormat(t, format, stale)
-		if strings.Contains(prompt, "旧版内置正文：已过期") {
-			t.Fatalf("format=%q 仍在用快照里的旧内置正文:\n%s", format, prompt)
+		creative, _ := runStoryboardWithFormat(t, format, stale)
+		if strings.Contains(creative, "旧版内置正文：已过期") {
+			t.Fatalf("format=%q 仍在用快照里的旧内置正文:\n%s", format, creative)
 		}
-		if !strings.Contains(prompt, "硬约束：每段seconds不得超过max_seconds") {
-			t.Fatalf("format=%q 没有用当前内置提示词", format)
+		if !strings.Contains(creative, "## 输出约定") || !strings.Contains(creative, "镜头写法") {
+			t.Fatalf("format=%q 没有用当前内置创作正文", format)
 		}
 	}
 }
@@ -297,15 +301,16 @@ func TestDramaBuiltinPromptIgnoresStaleSnapshotBody(t *testing.T) {
 func TestDramaStoryboardCustomPromptNotOverriddenByFormat(t *testing.T) {
 	custom := `{"video":{"source":"mine","id":3,"label":"我的 · 自写","bodies":{"storyboard":"自写正文：只写一句话"}}}`
 	for _, format := range []string{"seedance", "h3"} {
-		prompt := runStoryboardWithFormat(t, format, custom)
-		if !strings.Contains(prompt, "自写正文：只写一句话") || strings.Contains(prompt, "目标平台是即梦 / Seedance") || strings.Contains(prompt, "integrated_multimodal_description") {
-			t.Fatalf("用户正文被平台模板覆盖:\n%s", prompt)
+		creative, prompt := runStoryboardWithFormat(t, format, custom)
+		if !strings.Contains(creative, "自写正文：只写一句话") || strings.Contains(creative, "目标平台是即梦 / Seedance") || strings.Contains(creative, "integrated_multimodal_description") {
+			t.Fatalf("用户正文被平台模板覆盖或平台模板泄漏进创作段:\n%s", creative)
 		}
-		// 用户提示词也能拿到时长上限；写法固定为 seedance
-		for _, want := range []string{`"prompt_format":"seedance"`, `"max_seconds":12`} {
-			if !strings.Contains(prompt, want) {
-				t.Fatalf("变量缺少 %s", want)
-			}
+		// 用户正文只替换创作段；格式段仍是系统固定的 Seedance 格式，并拿到时长上限
+		if strings.Contains(prompt, "自写正文：只写一句话") || !strings.Contains(prompt, "目标平台是即梦 / Seedance") {
+			t.Fatalf("格式段被用户正文改动:\n%s", prompt)
+		}
+		if !strings.Contains(prompt, `"max_seconds":12`) {
+			t.Fatal("格式段变量缺少 max_seconds")
 		}
 	}
 }

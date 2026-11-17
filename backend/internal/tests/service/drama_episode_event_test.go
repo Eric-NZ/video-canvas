@@ -50,7 +50,7 @@ func TestDramaService_ScriptEpisodeEvents(t *testing.T) {
 	}{
 		{name: "每集保存后在下一集请求前通知", count: 2, wantEvents: 2},
 		{name: "二十集不受百分比合并限制", count: 20, wantEvents: 20},
-		{name: "后续失败保留成功集并通知失败状态", count: 2, failAt: 2, wantEvents: 2},
+		{name: "后续失败保留成功集并通知失败状态", count: 2, failAt: 3, wantEvents: 2},
 		{name: "事务失败不通知", count: 1, failSave: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -58,12 +58,13 @@ func TestDramaService_ScriptEpisodeEvents(t *testing.T) {
 			e := &dramaTextStreamer{failAt: tc.failAt}
 			for no := 1; no <= tc.count; no++ {
 				dramaAddEpisode(r.dramaMemory, no, "")
-				e.outputs = append(e.outputs, `{"script_md":"这一集的正文"}`)
+				e.outputs = append(e.outputs, "这一集的创作稿", `{"script_md":"这一集的正文"}`)
 			}
 			_, registry := dramaTestService(r.dramaMemory, e, nil)
 			var notified []int
 			e.onCall = func() {
-				if len(notified) != e.calls-1 {
+				// 每集两次调用（创作段、格式段），完成的集数是已经发出的调用里的整集数
+				if len(notified) != (e.calls-1)/2 {
 					t.Fatalf("第 %d 次请求开始前仅收到 %d 集通知", e.calls, len(notified))
 				}
 			}

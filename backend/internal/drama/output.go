@@ -212,6 +212,14 @@ func promptRatio(prompt string) string {
 // DecodeOutput 严格解析单个 JSON 对象，拒绝未知、重复、缺失或 null 字段，并执行步骤语义校验。
 // 返回对应步骤的非指针输出，包括 StoryboardOutput。
 func DecodeOutput(step string, data []byte) (any, error) {
+	// 创作段输出纯文本，不走 JSON 解码；格式段才解析结构
+	if draftStep(step) {
+		text, err := decodeDraft(data)
+		if err != nil {
+			return nil, err
+		}
+		return text, nil
+	}
 	if !utf8.Valid(data) {
 		return nil, invalidOutput("JSON 必须使用 UTF-8 编码")
 	}
@@ -256,15 +264,15 @@ func definitionForStep(step string) (outputDefinition, error) {
 	case "outline":
 		return outputDefinition{value: &OutlineOutput{}, fields: []string{"outline_md", "characters_md", "episodes"},
 			listKey: "episodes", itemFields: []string{"no", "title", "synopsis", "script_md"}}, nil
-	case "scripts":
+	case "scripts_format":
 		return outputDefinition{value: &ScriptOutput{}, fields: []string{"script_md"}}, nil
-	case "breakdown":
+	case "breakdown_format":
 		return outputDefinition{value: &BreakdownOutput{}, fields: []string{"assets"}, listKey: "assets",
 			itemFields: []string{"type", "name", "look", "aliases", "episodes", "description", "voice_prompt"}}, nil
-	case "asset_prompts":
+	case "asset_prompts_format":
 		return outputDefinition{value: &AssetPromptsOutput{}, fields: []string{"prompts"},
 			listKey: "prompts", itemFields: []string{"node_id", "prompt"}}, nil
-	case "storyboard":
+	case "storyboard_format":
 		return outputDefinition{value: &StoryboardOutput{}, fields: []string{"segments"},
 			listKey: "segments", itemFields: []string{"seconds", "prompt"}}, nil
 	case "adapt":

@@ -531,7 +531,7 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 		outputs              []string
 		status               string
 		code, calls, balance int
-	}{{"成功", []string{`{"script_md":"剧本正文"}`}, "succeeded", 0, 1, 995}, {"JSON重试成功", []string{`{bad`, `{"script_md":"修正后的正文"}`}, "succeeded", 0, 2, 995}, {"JSON两次失败", []string{`{bad`, `{bad`}, "failed", 67008, 2, 1000}} {
+	}{{"成功", []string{"剧本创作稿", `{"script_md":"剧本正文"}`}, "succeeded", 0, 2, 990}, {"JSON重试成功", []string{"剧本创作稿", `{bad`, `{"script_md":"修正后的正文"}`}, "succeeded", 0, 3, 990}, {"JSON两次失败", []string{"剧本创作稿", `{bad`, `{bad`}, "failed", 67008, 3, 1000}} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newDramaMemory()
 			dramaAddEpisode(r, 1, "")
@@ -551,7 +551,8 @@ func TestDramaPipelineJSONRetryAndNoCharge(t *testing.T) {
 			if r.credit.Balance != tc.balance || r.credit.Frozen != 0 {
 				t.Fatalf("account=%+v", r.credit)
 			}
-			if tc.calls == 2 && !strings.Contains(e.prompts[1], "validation_error") {
+			// 只有格式段重试：重试的提示词带校验反馈，且仍是格式段
+			if tc.calls == 3 && !strings.Contains(e.prompts[2], "validation_error") {
 				t.Fatal("重试缺少校验反馈")
 			}
 		})
@@ -615,7 +616,8 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	dramaAddEpisode(r, 3, "")
 	ending := strings.Repeat("甲", 900) + "最后一句"
 	raw, _ := json.Marshal(drama.ScriptOutput{ScriptMD: ending})
-	e := &dramaTextStreamer{outputs: []string{string(raw)}, failAt: 2}
+	// 第一集：创作段 + 格式段；第二集的创作段（第 3 次调用）失败
+	e := &dramaTextStreamer{outputs: []string{"第一集草稿", string(raw)}, failAt: 3}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts"})
 	if err != nil {
@@ -627,7 +629,7 @@ func TestDramaScriptsSerialContinuationAndPartialSuccess(t *testing.T) {
 	if r.episodes[0].ScriptStatus != "ready" || r.episodes[0].ScriptMD != ending || r.episodes[1].ScriptStatus != "failed" || r.episodes[2].ScriptStatus != "empty" {
 		t.Fatalf("episodes=%+v", r.episodes)
 	}
-	if !strings.Contains(e.prompts[1], "最后一句") || strings.Contains(e.prompts[1], strings.Repeat("甲", 900)) {
+	if !strings.Contains(e.prompts[2], "最后一句") || strings.Contains(e.prompts[2], strings.Repeat("甲", 900)) {
 		t.Fatal("衔接没有限定为上一集结尾约800字")
 	}
 	if r.credit.Balance != 1000 || r.credit.Frozen != 0 {
@@ -674,7 +676,8 @@ func TestDramaModelFallbackAndEstimate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if credits != 10 || len(registry.requested) != 2 || registry.requested[1] != "text" {
+	// 两集，每集两次调用（创作段、格式段）各 5 点
+	if credits != 20 || len(registry.requested) != 2 || registry.requested[1] != "text" {
 		t.Fatalf("estimate=%d requested=%v", credits, registry.requested)
 	}
 	r.credit.Balance = 0
@@ -700,6 +703,8 @@ type dramaFakeModel struct {
 var (
 	dramaNodeRe    = regexp.MustCompile(`"node_id":\s*"(node-[^"]+)"`)
 	dramaEpisodeRe = regexp.MustCompile(`第(\d+)集正文`)
+	// 资产拆解格式段只带集号范围，没有剧本正文
+	dramaEpisodeNosRe = regexp.MustCompile(`"episode_numbers":\[(\d+)`)
 )
 
 func (m *dramaFakeModel) filter(names ...string) {
@@ -730,7 +735,12 @@ func (m *dramaFakeModel) respond(ctx context.Context, prompt string) (*llmgatewa
 		raw, _ := json.Marshal(out)
 		return &llmgateway.Result{Text: string(raw)}, nil
 	}
-	first, _ := strconv.Atoi(dramaEpisodeRe.FindStringSubmatch(prompt)[1])
+	first := 0
+	if m := dramaEpisodeRe.FindStringSubmatch(prompt); m != nil {
+		first, _ = strconv.Atoi(m[1])
+	} else if m := dramaEpisodeNosRe.FindStringSubmatch(prompt); m != nil {
+		first, _ = strconv.Atoi(m[1])
+	}
 	m.mu.Lock()
 	m.inFlight++
 	m.peak = max(m.peak, m.inFlight)
@@ -845,8 +855,9 @@ func TestDramaBreakdownRunsBatchesInParallelAndPromptsEachBatch(t *testing.T) {
 	if c.applied != 3 || len(c.prompts) != 3 || c.prompts["node-角色13"] == "" {
 		t.Fatalf("三批各写一次画布并写好提示词：applied=%d prompts=%v", c.applied, c.prompts)
 	}
-	if got.Credits != 30 || r.credit.Balance != 970 || r.credit.Frozen != 0 {
-		t.Fatalf("三次拆解加三次提示词共 30 积分：credits=%d account=%+v", got.Credits, r.credit)
+	// 每批拆解与提示词各两次调用（创作段、格式段），每次 5 积分
+	if got.Credits != 60 || r.credit.Balance != 940 || r.credit.Frozen != 0 {
+		t.Fatalf("三次拆解加三次提示词共 60 积分：credits=%d account=%+v", got.Credits, r.credit)
 	}
 }
 
@@ -875,7 +886,7 @@ func TestDramaBreakdownResumesFromCommittedBatches(t *testing.T) {
 	if err := s.HandleDrama(context.Background(), 7, 1, jobID); err != nil {
 		t.Fatal(err)
 	}
-	if e.calls-calls != 2 || c.applied != 2 {
+	if e.calls-calls != 4 || c.applied != 2 {
 		t.Fatalf("重跑只应调用第二批的拆解和提示词：calls=%d applied=%d", e.calls-calls, c.applied)
 	}
 	for _, p := range e.prompts[calls:] {
@@ -883,8 +894,8 @@ func TestDramaBreakdownResumesFromCommittedBatches(t *testing.T) {
 			t.Fatal("重跑不应再处理第一批")
 		}
 	}
-	if got := r.jobs[0]; got.Status != "succeeded" || got.Credits != 20 || len(c.prompts) != 2 {
-		t.Fatalf("两批各一次拆解加一次提示词共 20 积分：status=%s credits=%d prompts=%v", got.Status, got.Credits, c.prompts)
+	if got := r.jobs[0]; got.Status != "succeeded" || got.Credits != 40 || len(c.prompts) != 2 {
+		t.Fatalf("两批各一次拆解加一次提示词共 40 积分：status=%s credits=%d prompts=%v", got.Status, got.Credits, c.prompts)
 	}
 }
 
@@ -911,8 +922,8 @@ func TestDramaBreakdownCancelKeepsCommittedBatchesAndChargesThem(t *testing.T) {
 	if got.Status != "canceled" || c.applied != 1 || !c.hasPrompt("node-角色1") {
 		t.Fatalf("取消后保留第一批：status=%s applied=%d", got.Status, c.applied)
 	}
-	if got.Credits != 10 || r.credit.Balance != 990 || r.credit.Frozen != 0 {
-		t.Fatalf("只扣第一批的拆解和提示词 10 积分：credits=%d account=%+v", got.Credits, r.credit)
+	if got.Credits != 20 || r.credit.Balance != 980 || r.credit.Frozen != 0 {
+		t.Fatalf("只扣第一批的拆解和提示词 20 积分：credits=%d account=%+v", got.Credits, r.credit)
 	}
 }
 
@@ -949,7 +960,7 @@ func TestDramaPromptsIsolateFilteredAssets(t *testing.T) {
 	if follow.Status != "failed" || follow.ErrorCode != errcode.ErrDramaContentFiltered.Code || !strings.Contains(follow.ErrorMessage, "苏星月") {
 		t.Fatalf("应以安全过滤失败并点名资产：%s %d %q", follow.Status, follow.ErrorCode, follow.ErrorMessage)
 	}
-	if follow.Credits != 5 || r.credit.Balance != balance-5 || r.credit.Frozen != 0 {
+	if follow.Credits != 10 || r.credit.Balance != balance-10 || r.credit.Frozen != 0 {
 		t.Fatalf("只扣成功写入的那次：credits=%d account=%+v", follow.Credits, r.credit)
 	}
 
@@ -969,7 +980,8 @@ func TestDramaContentFilterFailsWithoutRetry(t *testing.T) {
 	r := newDramaMemory()
 	dramaAddEpisode(r, 1, "")
 	e := &dramaTextStreamer{respond: func(context.Context, string) (*llmgateway.Result, error) {
-		return &llmgateway.Result{Text: `{"script_md":"开头`, FinishReason: "content_filter"}, nil
+		// 空输出被安全过滤截断：创作段就失败，不再进入格式段
+		return &llmgateway.Result{Text: "", FinishReason: "content_filter"}, nil
 	}}
 	s, _ := dramaTestService(r, e, nil)
 	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "scripts", Episodes: []int{1}})
