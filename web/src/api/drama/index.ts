@@ -215,6 +215,7 @@ export const toCreateDramaBody = (input: CreateDramaInput) =>
     text_model: input.textModel ?? "",
     video_model: input.videoModel || undefined,
     image_models: imageModelsBody(input.imageModels),
+    image_params: input.imageParams,
     prompts: input.prompts,
   });
 

@@ -6,6 +6,7 @@ import {
   MIN_MODEL_CONTEXT,
   START_RATIOS,
   buildCreateInput,
+  closestRatio,
   durationLabel,
   episodesLabel,
   loadStartPrefs,
@@ -15,6 +16,7 @@ import {
   reconcilePrompts,
   saveStartPrefs,
   secondsLock,
+  settleAssetParams,
   startBlockReason,
   unitWord,
   type StartForm,
@@ -51,6 +53,11 @@ const form = (patch: Partial<StartForm> = {}): StartForm => ({
   textModel: "",
   videoModel: "",
   imageModels: { character: "", scene: "", prop: "" },
+  imageParams: {
+    character: { ratio: "", resolution: "" },
+    scene: { ratio: "", resolution: "" },
+    prop: { ratio: "", resolution: "" },
+  },
   prompts: {
     plan: { source: "builtin" },
     scripts: { source: "builtin" },
@@ -355,5 +362,119 @@ describe("开拍设置：视频 / 图片模型", () => {
     const bare = buildCreateInput(preflight(), form());
     expect(bare.videoModel).toBeUndefined();
     expect(bare.imageModels).toBeUndefined();
+  });
+});
+
+describe("资产图片参数", () => {
+  const store = new Map<string, string>();
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  beforeEach(() => {
+    store.clear();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+      },
+    });
+  });
+  afterEach(() => {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  const caps = (ratios: string[], resolutions?: string[], ratioName = "aspect_ratio") =>
+    ({
+      params: {
+        [ratioName]: {
+          type: "enum",
+          label: "比例",
+          open: true,
+          options: ratios,
+          default: ratios[0],
+        },
+        ...(resolutions
+          ? {
+              resolution: {
+                type: "enum",
+                label: "分辨率",
+                open: true,
+                options: resolutions,
+                default: resolutions[0],
+              },
+            }
+          : {}),
+        count: { type: "enum", label: "生成数量", open: true, options: [1, 2], default: 1 },
+      },
+    }) as never;
+
+  test("最接近的比例：有就用它，没有按宽高比取最近的，认不出返回 undefined", () => {
+    expect(closestRatio(["1:1", "16:9", "21:9"], "21:9")).toBe("21:9");
+    expect(closestRatio(["1:1", "16:9", "9:16"], "21:9")).toBe("16:9");
+    expect(closestRatio(["1:1", "3:2", "2:3"], "16:9")).toBe("3:2");
+    expect(closestRatio(["Auto"], "16:9")).toBeUndefined();
+  });
+
+  test("没手动选：比例按类型默认（人物 16:9、场景 21:9、物品 16:9）落到最近的，分辨率用模型默认", () => {
+    const wide = caps(["1:1", "16:9", "21:9"], ["1K", "2K"]);
+    const empty = { ratio: "", resolution: "" };
+    expect(settleAssetParams(wide, "character", empty)).toEqual({
+      aspect_ratio: "16:9",
+      resolution: "1K",
+    });
+    expect(settleAssetParams(wide, "scene", empty)).toEqual({
+      aspect_ratio: "21:9",
+      resolution: "1K",
+    });
+    expect(settleAssetParams(caps(["1:1", "16:9"]), "scene", empty)).toEqual({
+      aspect_ratio: "16:9",
+    });
+    expect(settleAssetParams(caps(["1:1", "3:2"], undefined, "ratio"), "prop", empty)).toEqual({
+      ratio: "3:2",
+    });
+  });
+
+  test("手动选过：模型有就用，没有比例取最近、分辨率回到模型默认；比例认不出用模型默认", () => {
+    const model = caps(["1:1", "16:9", "9:16"], ["2K", "4K"]);
+    expect(settleAssetParams(model, "character", { ratio: "9:16", resolution: "4K" })).toEqual({
+      aspect_ratio: "9:16",
+      resolution: "4K",
+    });
+    expect(settleAssetParams(model, "character", { ratio: "21:9", resolution: "1K" })).toEqual({
+      aspect_ratio: "16:9",
+      resolution: "2K",
+    });
+    expect(
+      settleAssetParams(caps(["Auto", "1:1"]), "scene", { ratio: "", resolution: "" }),
+    ).toEqual({
+      aspect_ratio: "1:1",
+    });
+    expect(settleAssetParams(undefined, "scene", { ratio: "21:9", resolution: "" })).toEqual({});
+  });
+
+  test("建剧请求带上算好的参数，空的类型不发；手动选择会被记住", () => {
+    const input = buildCreateInput(preflight(), form(), {
+      character: { aspect_ratio: "16:9", resolution: "2K" },
+      scene: {},
+      prop: { aspect_ratio: "16:9" },
+    });
+    expect(input.imageParams).toEqual({
+      character: { aspect_ratio: "16:9", resolution: "2K" },
+      prop: { aspect_ratio: "16:9" },
+    });
+    expect(buildCreateInput(preflight(), form()).imageParams).toBeUndefined();
+
+    const picks = {
+      character: { ratio: "9:16", resolution: "2K" },
+      scene: { ratio: "", resolution: "" },
+      prop: { ratio: "1:1", resolution: "" },
+    };
+    saveStartPrefs(form({ imageParams: picks }));
+    expect(loadStartPrefs()?.imageParams).toEqual(picks);
+    localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({ imageParams: { scene: { ratio: 3 } } }),
+    );
+    expect(loadStartPrefs()?.imageParams.scene).toEqual({ ratio: "", resolution: "" });
   });
 });

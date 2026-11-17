@@ -330,3 +330,124 @@ func TestDramaStoryboardCustomPromptNotOverriddenByFormat(t *testing.T) {
 		}
 	}
 }
+
+// 图片模型 img 带比例和分辨率两个枚举参数，用来校验资产图片参数。
+func dramaImageParamRegistry(registry *dramaRegistry) {
+	dramaModelRegistry(registry, nil)
+	registry.snaps["img"].Model.Capabilities.Params = modelcfg.ParamSet{
+		{Name: "aspect_ratio", ParamField: modelcfg.ParamField{Type: modelcfg.ParamEnum, Options: []any{"1:1", "16:9", "21:9"}}},
+		{Name: "resolution", ParamField: modelcfg.ParamField{Type: modelcfg.ParamEnum, Options: []any{"1K", "2K"}}},
+	}
+}
+
+func TestDramaCreateValidatesImageParams(t *testing.T) {
+	models := model.DramaImageModels{Character: "img", Scene: "img"}
+	for _, tc := range []struct {
+		name   string
+		params model.DramaImageParams
+		ok     bool
+	}{
+		{"全空放行", model.DramaImageParams{}, true},
+		{"在模型选项里", model.DramaImageParams{Character: map[string]string{"aspect_ratio": "16:9", "resolution": "2K"}, Scene: map[string]string{"aspect_ratio": "21:9"}}, true},
+		{"跟随默认模型只查写法", model.DramaImageParams{Prop: map[string]string{"aspect_ratio": "3:2", "resolution": "4K"}}, true},
+		{"比例不在选项里", model.DramaImageParams{Character: map[string]string{"aspect_ratio": "9:16"}}, false},
+		{"分辨率不在选项里", model.DramaImageParams{Scene: map[string]string{"resolution": "4K"}}, false},
+		{"模型没有这个参数", model.DramaImageParams{Character: map[string]string{"ratio": "16:9"}}, false},
+		{"不认识的参数名", model.DramaImageParams{Prop: map[string]string{"seed": "1"}}, false},
+		{"空值", model.DramaImageParams{Prop: map[string]string{"resolution": ""}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newDramaMemory()
+			s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
+			dramaImageParamRegistry(registry)
+			_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: seedDramaDraft(r, "第一章\n正文"), SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实", ImageModels: models, ImageParams: tc.params})
+			if !tc.ok {
+				dramaCheckCode(t, err, 10001)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got model.DramaImageParams
+			if err = json.Unmarshal(r.project.ImageParams, &got); err != nil || !reflect.DeepEqual(got.ByType(), tc.params.ByType()) {
+				t.Fatalf("params=%s err=%v", r.project.ImageParams, err)
+			}
+		})
+	}
+}
+
+func TestDramaGetAndUpdateImageParams(t *testing.T) {
+	r := newDramaMemory()
+	s, registry := dramaTestService(r, &dramaTextStreamer{}, nil)
+	dramaImageParamRegistry(registry)
+	imgs := model.DramaImageModels{Scene: "img"}
+	params := model.DramaImageParams{Scene: map[string]string{"aspect_ratio": "21:9"}}
+	view, err := s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: 1, ImageModels: &imgs, ImageParams: &params})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(view.ImageParams.ByType(), params.ByType()) {
+		t.Fatalf("view=%+v", view.ImageParams)
+	}
+	raw, _ := json.Marshal(view)
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &fields)
+	if string(fields["image_params"]) != `{"character":{},"scene":{"aspect_ratio":"21:9"},"prop":{}}` {
+		t.Fatalf("json=%s", fields["image_params"])
+	}
+	// 只改参数时按项目已存的模型校验
+	bad := model.DramaImageParams{Scene: map[string]string{"aspect_ratio": "9:16"}}
+	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: view.Revision, ImageParams: &bad})
+	dramaCheckCode(t, err, 10001)
+}
+
+// 新建资产节点按类型带上项目的默认图片参数，写进 data.params；已有节点不动。
+func TestDramaCanvasBreakdownAppliesDefaultImageParams(t *testing.T) {
+	f := newDramaCanvasFake()
+	f.canvas.PayloadJSON = []byte(`{"nodes":[{"id":"old","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"image","label":"街道","params":{"aspect_ratio":"1:1"},"drama":{"type":"scene","name":"街道","look":"","episodes":[2],"aliases":[],"description":""}}}],"edges":[]}`)
+	svc := service.NewDramaCanvasService(f, &dramaCanvasBroadcast{})
+	assets := append(dramaCanvasAssets(1), drama.Asset{Type: "prop", Name: "玉佩", Aliases: []string{}, Episodes: []int{1}, Description: "双鱼玉佩"})
+	params := map[string]map[string]string{"character": {"aspect_ratio": "16:9", "resolution": "2K"}, "scene": {"aspect_ratio": "21:9"}}
+	created, err := svc.ApplyBreakdown(context.Background(), 1, 3, 7, 9, service.DramaBreakdownBatch{Episodes: []int{1}, Assets: assets, Params: params})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := canvasgraph.Parse(f.canvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, c := range created {
+		got[c.Asset.Type] = g.Node(c.NodeID).Data()["params"]
+	}
+	want := map[string]any{"character": map[string]any{"aspect_ratio": "16:9", "resolution": "2K"}, "prop": nil}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("new nodes=%v", got)
+	}
+	if !reflect.DeepEqual(g.Node("old").Data()["params"], map[string]any{"aspect_ratio": "1:1"}) {
+		t.Fatalf("已有节点被改: %+v", g.Node("old").Data())
+	}
+}
+
+// 拆解步骤把项目配置的图片参数交给画布服务。
+func TestDramaBreakdownPassesProjectImageParams(t *testing.T) {
+	r := newDramaMemory()
+	dramaAddEpisode(r, 1, "剧本")
+	r.project.Ratio = "9:16"
+	r.project.ImageParams = []byte(`{"character":{"aspect_ratio":"16:9"},"scene":{},"prop":{"resolution":"2K"}}`)
+	canvas := &dramaPipelineCanvas{}
+	raw, _ := json.Marshal(drama.BreakdownOutput{Assets: []drama.Asset{{Type: "scene", Name: "街道", Aliases: []string{}, Episodes: []int{1}, Description: "街道"}}})
+	e := &dramaTextStreamer{outputs: []string{"拆解稿", string(raw)}}
+	s, _ := dramaTestService(r, e, canvas)
+	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]map[string]string{"character": {"aspect_ratio": "16:9"}, "prop": {"resolution": "2K"}}
+	if canvas.applied != 1 || !reflect.DeepEqual(canvas.params, want) {
+		t.Fatalf("applied=%d params=%v", canvas.applied, canvas.params)
+	}
+}

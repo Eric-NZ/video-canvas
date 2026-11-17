@@ -366,6 +366,12 @@ export interface CreateDramaInput {
   videoModel?: string;
   /** 人物 / 场景 / 物品资产用的图片模型 key；省略的项 = 不指定 */
   imageModels?: { character?: string; scene?: string; prop?: string };
+  /** 人物 / 场景 / 物品资产新建节点默认的生成参数（参数名 → 取值，如 aspect_ratio: 16:9）；省略的项 = 用模型默认 */
+  imageParams?: {
+    character?: Record<string, string>;
+    scene?: Record<string, string>;
+    prop?: Record<string, string>;
+  };
   /** 各环节的提示词选择；省略的环节 = 内置 */
   prompts?: PromptChoices;
 }

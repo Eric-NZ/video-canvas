@@ -147,6 +147,8 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 			r.project.VideoModel = v.(string)
 		case "image_models":
 			r.project.ImageModels = v.([]byte)
+		case "image_params":
+			r.project.ImageParams = v.([]byte)
 		}
 	}
 	r.project.Revision++
@@ -405,6 +407,7 @@ type dramaPipelineCanvas struct {
 	prompted int
 	created  []service.DramaCanvasAsset // 非空时每批都返回它；为空时按资产名生成节点 node-<名字>
 	models   map[string]string
+	params   map[string]map[string]string
 	assets   []drama.Asset     // 各批收到的资产，按提交顺序
 	prompts  map[string]string // 已写入的节点提示词
 	filtered []service.DramaCanvasAsset
@@ -423,6 +426,7 @@ func (c *dramaPipelineCanvas) ApplyBreakdown(_ context.Context, _, _, _, jobID u
 	c.applied++
 	c.assets = append(c.assets, batch.Assets...)
 	c.models = batch.Models
+	c.params = batch.Params
 	created := c.created
 	if created == nil {
 		for _, a := range batch.Assets {

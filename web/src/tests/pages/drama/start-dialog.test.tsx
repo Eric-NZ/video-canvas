@@ -337,14 +337,47 @@ describe("开拍设置：视频 / 图片模型", () => {
     await dom.flush();
   };
 
-  test("文本模型下面依次是视频模型、资产图片模型（人物 / 场景 / 物品）", async () => {
+  test("图片模型跟随默认：胶囊显示默认模型，下拉里仍是「跟随默认」打勾", async () => {
+    const m = await mountBody(pre());
+    await dom.click(byText(m.container, "人物 · img-a"));
+    await dom.flush();
+    const active = (b: HTMLElement | undefined) => b?.className.split(/\s+/).includes("bg-muted");
+    expect(active(menuRows().find((b) => (b.textContent ?? "").trim() === "跟随默认"))).toBe(true);
+    expect(active(menuRows().find((b) => (b.textContent ?? "").startsWith("img-a")))).toBe(false);
+    await m.unmount();
+  });
+
+  test("视频模型跟随默认：胶囊显示第一个支持参考图的模型，下拉里仍是「跟随默认」打勾", async () => {
+    const byKind = useModelsStore.getState().byKind;
+    useModelsStore.setState({
+      byKind: {
+        ...byKind,
+        video: {
+          status: "ready",
+          loadedAt: Date.now(),
+          models: [videoModel("vid-text", false), videoModel("vid-a", true)],
+        },
+      },
+    });
+    const m = await mountBody(pre());
+    expect(byText(m.container, "vid-text")).toBeUndefined();
+    await dom.click(byText(m.container, "vid-a"));
+    await dom.flush();
+    const active = (b: HTMLElement | undefined) => b?.className.split(/\s+/).includes("bg-muted");
+    expect(active(menuRows().find((b) => (b.textContent ?? "").trim() === "跟随默认"))).toBe(true);
+    expect(active(menuRows().find((b) => (b.textContent ?? "").startsWith("vid-a")))).toBe(false);
+    await m.unmount();
+  });
+
+  test("文本模型下面依次是视频模型、资产图片（人物 / 场景 / 物品）", async () => {
     const m = await mountBody(pre());
     const text = m.container.textContent ?? "";
     expect(text.indexOf("文本模型")).toBeLessThan(text.indexOf("视频模型"));
-    expect(text.indexOf("视频模型")).toBeLessThan(text.indexOf("资产图片模型"));
-    expect(byText(m.container, "人物 · 跟随默认")).toBeTruthy();
-    expect(byText(m.container, "场景 · 跟随默认")).toBeTruthy();
-    expect(byText(m.container, "物品 · 跟随默认")).toBeTruthy();
+    expect(text.indexOf("视频模型")).toBeLessThan(text.indexOf("资产图片"));
+    // 跟随默认时胶囊上直接显示默认模型（清单第一个）
+    expect(byText(m.container, "人物 · img-a")).toBeTruthy();
+    expect(byText(m.container, "场景 · img-a")).toBeTruthy();
+    expect(byText(m.container, "物品 · img-a")).toBeTruthy();
     await m.unmount();
   });
 
@@ -357,9 +390,9 @@ describe("开拍设置：视频 / 图片模型", () => {
     const m = await mountBody(pre(), async (input) => {
       calls.push(input);
     });
-    await pickFromPopover(byText(m.container, "跟随默认"), "vid-a");
-    await pickFromPopover(byText(m.container, "人物 · 跟随默认"), "img-a");
-    await pickFromPopover(byText(m.container, "物品 · 跟随默认"), "img-b");
+    await pickFromPopover(byText(m.container, "vid-a"), "vid-a");
+    await pickFromPopover(byText(m.container, "人物 · img-a"), "img-a");
+    await pickFromPopover(byText(m.container, "物品 · img-a"), "img-b");
     await dom.click(startButton(m.container));
     await dom.flush();
     expect(calls[0].videoModel).toBe("vid-a");
@@ -370,7 +403,7 @@ describe("开拍设置：视频 / 图片模型", () => {
 
   test("不支持参考图的视频模型置灰并写原因，可用的副文案带时长上限", async () => {
     const m = await mountBody(pre());
-    await dom.click(byText(m.container, "跟随默认"));
+    await dom.click(byText(m.container, "vid-a"));
     await dom.flush();
     const rows = menuRows();
     const ok = rows.find((b) => (b.textContent ?? "").startsWith("vid-a"))!;
@@ -396,13 +429,107 @@ describe("开拍设置：视频 / 图片模型", () => {
     const m = await mountBody(pre(), async (input) => {
       calls.push(input);
     });
-    expect(byText(m.container, "人物 · 跟随默认")).toBeTruthy();
+    expect(byText(m.container, "人物 · img-a")).toBeTruthy();
     expect(byText(m.container, "场景 · img-a")).toBeTruthy();
     await dom.click(startButton(m.container));
     await dom.flush();
     expect(calls[0].videoModel).toBeUndefined();
     expect(calls[0].imageModels?.character).toBeUndefined();
     expect(calls[0].imageModels?.scene).toBe("img-a");
+    await m.unmount();
+  });
+});
+
+describe("开拍设置：资产图片的比例与分辨率", () => {
+  const enumParam = (label: string, options: string[]) => ({
+    type: "enum",
+    label,
+    open: true,
+    options,
+    default: options[0],
+  });
+  const imageModel = (key: string, ratios: string[], resolutions?: string[]) =>
+    ({
+      key,
+      kind: "image",
+      label: key,
+      pricing: {},
+      capabilities: {
+        params: {
+          aspect_ratio: enumParam("比例", ratios),
+          ...(resolutions ? { resolution: enumParam("分辨率", resolutions) } : {}),
+        },
+      },
+    }) as never;
+
+  beforeEach(() => {
+    const byKind = useModelsStore.getState().byKind;
+    useModelsStore.setState({
+      byKind: {
+        ...byKind,
+        image: {
+          status: "ready",
+          loadedAt: Date.now(),
+          models: [
+            imageModel("wide", ["1:1", "16:9", "21:9"], ["1K", "2K", "4K"]),
+            imageModel("narrow", ["1:1", "3:2", "2:3"]),
+          ],
+        },
+      },
+    });
+  });
+
+  const paramChip = (container: HTMLElement, index: number) =>
+    buttons(container).filter((b) => b.getAttribute("aria-label") === "图片参数")[index];
+
+  test("跟随默认模型：比例按类型默认、分辨率用模型默认，开始时一起提交", async () => {
+    dom.win.localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({ styleKey: "real_city_film" }),
+    );
+    const calls: CreateDramaInput[] = [];
+    const m = await mountBody(pre(), async (input) => {
+      calls.push(input);
+    });
+    expect(paramChip(m.container, 0).textContent).toContain("16:9 · 1K");
+    expect(paramChip(m.container, 1).textContent).toContain("21:9 · 1K");
+    expect(paramChip(m.container, 2).textContent).toContain("16:9 · 1K");
+    await dom.click(startButton(m.container));
+    await dom.flush();
+    expect(calls[0].imageParams).toEqual({
+      character: { aspect_ratio: "16:9", resolution: "1K" },
+      scene: { aspect_ratio: "21:9", resolution: "1K" },
+      prop: { aspect_ratio: "16:9", resolution: "1K" },
+    });
+    await m.unmount();
+  });
+
+  test("模型没有默认比例时选中最接近的；在浮层里改比例、分辨率后提交改过的值", async () => {
+    dom.win.localStorage.setItem(
+      "drama-start-prefs",
+      JSON.stringify({ styleKey: "real_city_film", imageModels: { scene: "narrow" } }),
+    );
+    const calls: CreateDramaInput[] = [];
+    const m = await mountBody(pre(), async (input) => {
+      calls.push(input);
+    });
+    // narrow 没有 21:9 也没有分辨率：选中最接近的 3:2
+    expect(paramChip(m.container, 1).textContent?.trim()).toBe("3:2");
+
+    await dom.click(paramChip(m.container, 0));
+    await dom.flush();
+    const radios = [...dom.win.document.body.querySelectorAll("[role='radio']")] as HTMLElement[];
+    const ratio21 = radios.find((r) => r.textContent === "21:9");
+    expect(radios.find((r) => r.textContent === "16:9")?.getAttribute("aria-checked")).toBe("true");
+    await dom.click(ratio21);
+    await dom.click(radios.find((r) => r.textContent === "4K"));
+    await dom.flush();
+    expect(paramChip(m.container, 0).textContent).toContain("21:9 · 4K");
+
+    await dom.click(startButton(m.container));
+    await dom.flush();
+    expect(calls[0].imageParams?.character).toEqual({ aspect_ratio: "21:9", resolution: "4K" });
+    expect(calls[0].imageParams?.scene).toEqual({ aspect_ratio: "3:2" });
     await m.unmount();
   });
 });

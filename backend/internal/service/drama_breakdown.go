@@ -33,6 +33,7 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 	batches := drama.ScriptBatches(units)
 	cp := readDramaCheckpoint(run.job.Output)
 	models := dramaImageModels(run.project).ByType()
+	params := dramaImageParams(run.project).ByType()
 	var mu sync.Mutex // 保护 finished 与 run.job.Progress
 	finished := 0
 	g, gctx := errgroup.WithContext(ctx)
@@ -65,7 +66,7 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 			}
 			cost := draftCost + formatCost
 			created, err := s.canvas.ApplyBreakdown(gctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID,
-				DramaBreakdownBatch{Episodes: scope, Assets: out.(drama.BreakdownOutput).Assets, Cost: cost, Models: models})
+				DramaBreakdownBatch{Episodes: scope, Assets: out.(drama.BreakdownOutput).Assets, Cost: cost, Models: models, Params: params})
 			if err != nil {
 				return err
 			}

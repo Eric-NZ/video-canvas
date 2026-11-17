@@ -244,7 +244,8 @@ function NumberControl({
   );
 }
 
-function ParamRow({
+/** 一个生成参数的标题和控件；开拍设置的资产图片参数也用它，和画布节点的参数面板长得一样 */
+export function ParamRow({
   field,
   params,
   error,

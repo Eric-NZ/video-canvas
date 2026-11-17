@@ -61,6 +61,73 @@ func (s *DramaService) checkDramaModels(ctx context.Context, video *string, imag
 	return nil
 }
 
+// dramaImageParamNames 是资产图片能预设的参数：比例（两种写法）和分辨率。
+var dramaImageParamNames = map[string]bool{"aspect_ratio": true, "ratio": true, "resolution": true}
+
+// checkDramaImageParams 校验三类资产的默认生成参数：参数名限比例、分辨率，值非空；
+// 该类指定了模型时，值必须是这个模型对应枚举参数的选项。跟随默认模型的类型只查写法，由前端按默认模型选好。
+func (s *DramaService) checkDramaImageParams(ctx context.Context, models model.DramaImageModels, params model.DramaImageParams) error {
+	for _, item := range []struct {
+		key    string
+		params map[string]string
+		label  string
+	}{{models.Character, params.Character, "人物"}, {models.Scene, params.Scene, "场景"}, {models.Prop, params.Prop, "物品"}} {
+		if err := s.checkAssetParams(ctx, item.key, item.params, item.label); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkAssetParams 校验一类资产的默认生成参数，key 为这类资产的图片模型（空串表示跟随默认）。
+func (s *DramaService) checkAssetParams(ctx context.Context, key string, params map[string]string, label string) error {
+	invalid := errcode.ErrInvalidParams.WithMsg(label + "图片参数不可用，请重新选择")
+	for name, value := range params {
+		if !dramaImageParamNames[name] || value == "" || len(value) > 32 {
+			return invalid
+		}
+	}
+	if key == "" || len(params) == 0 {
+		return nil
+	}
+	if s.registry == nil {
+		return invalid
+	}
+	snap, err := s.registry.Snapshot(ctx, key)
+	if err != nil && !errors.Is(err, provider.ErrModelUnavailable) {
+		return err
+	}
+	if snap == nil {
+		return invalid
+	}
+	for name, value := range params {
+		field, ok := snap.Model.Capabilities.Params.Get(name)
+		if !ok || field.Type != modelcfg.ParamEnum || !hasOption(field.Options, value) {
+			return invalid
+		}
+	}
+	return nil
+}
+
+// hasOption 判断枚举选项里有没有 value（数字与字符串写法互认）。
+func hasOption(options []any, value string) bool {
+	for _, option := range options {
+		if fmt.Sprint(option) == value {
+			return true
+		}
+	}
+	return false
+}
+
+// dramaImageParams 解码项目保存的三类图片参数；坏数据按未指定处理。
+func dramaImageParams(p *model.DramaProject) model.DramaImageParams {
+	var out model.DramaImageParams
+	if len(p.ImageParams) > 0 {
+		_ = json.Unmarshal(p.ImageParams, &out)
+	}
+	return out.Normalized()
+}
+
 // dramaImageModels 解码项目保存的三类图片模型；坏数据按未指定处理。
 func dramaImageModels(p *model.DramaProject) model.DramaImageModels {
 	var out model.DramaImageModels

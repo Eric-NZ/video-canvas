@@ -25,6 +25,8 @@ import {
   type PromptLibrary,
 } from "@/components/drama/prompts/use-prompt-library";
 import { ModelMenu, VideoModelMenu } from "@/components/drama/video-model-menu";
+import { ParamRow } from "@/components/canvas/video-param-panel";
+import { RatioIcon } from "@/components/ratio-icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,11 +43,13 @@ import {
 import {
   DEFAULT_START_RATIO,
   START_RATIOS,
+  assetParamFields,
   buildCreateInput,
   builtinPrompts,
   charsLabel,
   durationLabel,
   emptyImageModels,
+  emptyImageParams,
   episodesLabel,
   loadStartPrefs,
   modelDisabledReason,
@@ -53,11 +57,15 @@ import {
   reconcilePrompts,
   saveStartPrefs,
   secondsLock,
+  settleAssetParams,
   startBlockReason,
   unitWord,
+  type AssetParamPicks,
+  type AssetSlot,
   type StartForm,
   type StartKind,
 } from "@/utils/drama/start-settings";
+import { pickVideoModel } from "@/utils/drama/video-models";
 
 import { useSourceEstimate } from "./use-source-estimate";
 
@@ -79,11 +87,12 @@ function initialForm(pre: SourcePreflight): StartForm {
     textModel: prefs?.textModel ?? "",
     videoModel: prefs?.videoModel ?? "",
     imageModels: prefs?.imageModels ?? emptyImageModels(),
+    imageParams: prefs?.imageParams ?? emptyImageParams(),
     prompts: prefs?.prompts ?? builtinPrompts(),
   };
 }
 
-/** 资产图片模型三个胶囊：键对应请求里的 image_models，前缀是胶囊上的字样 */
+/** 资产图片的三行：键对应请求里的 image_models / image_params，前缀是模型胶囊上的字样 */
 const IMAGE_MODEL_SLOTS = [
   { key: "character", prefix: "人物" },
   { key: "scene", prefix: "场景" },
@@ -93,6 +102,54 @@ const IMAGE_MODEL_SLOTS = [
 /** 选的模型已被下线（清单加载完且里面没有）时回落为空串；只在读取时推导，不回写 */
 const liveModelKey = (key: string, remote: { status: string; models: ModelInfo[] }): string =>
   key && remote.status === "ready" && !remote.models.some((m) => m.key === key) ? "" : key;
+
+/**
+ * 一类资产的比例、分辨率：胶囊上显示落好的取值，点开是和画布节点一样的参数面板。
+ * 模型两个参数都没有时不显示。
+ */
+function AssetParamChip({
+  model,
+  settled,
+  onPick,
+}: {
+  model: ModelInfo | undefined;
+  /** settleAssetParams 落好的取值 */
+  settled: Record<string, string>;
+  onPick: (change: Partial<AssetParamPicks>) => void;
+}) {
+  const { ratio, resolution } = assetParamFields(model?.capabilities);
+  if (!ratio && !resolution) return null;
+  const ratioValue = ratio && settled[ratio.name];
+  const label = [ratioValue, resolution && settled[resolution.name]].filter(Boolean).join(" · ");
+  return (
+    <ChipPopover
+      variant="field"
+      ariaLabel="图片参数"
+      icon={ratioValue ? <RatioIcon ratio={ratioValue} /> : undefined}
+      label={label}
+      width="w-80"
+      contentClassName="gap-2.5 p-3"
+    >
+      {() =>
+        [ratio, resolution].map(
+          (field) =>
+            field && (
+              <ParamRow
+                key={field.name}
+                field={field}
+                params={settled}
+                onChange={(name, value) =>
+                  onPick(
+                    name === ratio?.name ? { ratio: String(value) } : { resolution: String(value) },
+                  )
+                }
+              />
+            ),
+        )
+      }
+    </ChipPopover>
+  );
+}
 
 /** 两行之间的分隔线 */
 const Divider = () => <div className="bg-chrome-border h-px" />;
@@ -268,6 +325,17 @@ export function StartBody({
     scene: liveModelKey(form.imageModels.scene, imageRemote),
     prop: liveModelKey(form.imageModels.prop, imageRemote),
   };
+  /** 跟随默认的类型按默认图片模型（清单第一个）落参数，和画布节点没选模型时一致 */
+  const imageModelInfo = (slot: AssetSlot) =>
+    imageRemote.models.find((m) => m.key === imageModels[slot]) ?? imageRemote.models[0];
+  const imageParams = {} as Record<AssetSlot, Record<string, string>>;
+  for (const { key } of IMAGE_MODEL_SLOTS) {
+    imageParams[key] = settleAssetParams(
+      imageModelInfo(key)?.capabilities,
+      key,
+      form.imageParams[key],
+    );
+  }
   const modelsLoading = (remote: { status: string }) =>
     remote.status === "idle" || remote.status === "loading";
 
@@ -299,7 +367,7 @@ export function StartBody({
     setError(null);
     try {
       const next = { ...form, styleKey, prompts, videoModel, imageModels };
-      await onSubmit(buildCreateInput(pre, next));
+      await onSubmit(buildCreateInput(pre, next, imageParams));
       saveStartPrefs(next);
     } catch (e) {
       setError(dramaErrorMessage(e, "创建失败，请稍后重试"));
@@ -517,26 +585,41 @@ export function StartBody({
                 models={videoRemote.models}
                 loading={modelsLoading(videoRemote)}
                 model={videoRemote.models.find((m) => m.key === videoModel)}
+                fallback={pickVideoModel(videoRemote.models, "")}
                 onPick={(key) => patch({ videoModel: key })}
                 defaultLabel="跟随默认"
               />
             </div>
           </Field>
 
-          <Field label="资产图片模型">
-            <div className="flex flex-wrap gap-2">
+          <Field label="资产图片">
+            <div className="grid gap-2">
               {IMAGE_MODEL_SLOTS.map(({ key, prefix }) => (
-                <ModelMenu
-                  key={key}
-                  variant="field"
-                  prefix={prefix}
-                  kindName="图片"
-                  models={imageRemote.models}
-                  loading={modelsLoading(imageRemote)}
-                  model={imageRemote.models.find((m) => m.key === imageModels[key])}
-                  onPick={(picked) => patch({ imageModels: { ...imageModels, [key]: picked } })}
-                  defaultLabel="跟随默认"
-                />
+                <div key={key} className="flex flex-wrap gap-2">
+                  <ModelMenu
+                    variant="field"
+                    prefix={prefix}
+                    kindName="图片"
+                    models={imageRemote.models}
+                    loading={modelsLoading(imageRemote)}
+                    model={imageRemote.models.find((m) => m.key === imageModels[key])}
+                    fallback={imageModelInfo(key)}
+                    onPick={(picked) => patch({ imageModels: { ...imageModels, [key]: picked } })}
+                    defaultLabel="跟随默认"
+                  />
+                  <AssetParamChip
+                    model={imageModelInfo(key)}
+                    settled={imageParams[key]}
+                    onPick={(change) =>
+                      patch({
+                        imageParams: {
+                          ...form.imageParams,
+                          [key]: { ...form.imageParams[key], ...change },
+                        },
+                      })
+                    }
+                  />
+                </div>
               ))}
             </div>
           </Field>

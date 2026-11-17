@@ -191,6 +191,23 @@ describe("api/drama 开拍设置：建剧", () => {
     expect("image_models" in bare).toBe(false);
   });
 
+  test("建剧请求体：资产图片参数原样发 image_params，没有就不发", () => {
+    const base = {
+      sourceToken: "t",
+      sourceKind: "novel" as const,
+      rangeEnd: 0,
+      ratio: "9:16" as const,
+      styleKey: "xianxia",
+      episodeSeconds: 60,
+    };
+    const body = toCreateDramaBody({
+      ...base,
+      imageParams: { character: { aspect_ratio: "16:9", resolution: "2K" } },
+    });
+    expect(body.image_params).toEqual({ character: { aspect_ratio: "16:9", resolution: "2K" } });
+    expect("image_params" in toCreateDramaBody(base)).toBe(false);
+  });
+
   test("建剧：POST /dramas（JSON），67002 等错误由调用方展示", async () => {
     post.mockResolvedValue({ id: "d1", title: "霜刃", episodes: null, active_jobs: null });
     const drama = await createDrama({

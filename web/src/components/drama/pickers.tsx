@@ -75,6 +75,7 @@ export function ChipPopover({
   size = "default",
   disabled,
   title,
+  ariaLabel,
   width,
   contentClassName,
   children,
@@ -94,6 +95,8 @@ export function ChipPopover({
   size?: "default" | "lg";
   disabled?: boolean;
   title?: string;
+  /** 按钮上的字说不清用途时（如只显示取值）给读屏用的名称 */
+  ariaLabel?: string;
   width?: string;
   /** 弹层额外的样式，如限高滚动 */
   contentClassName?: string;
@@ -105,6 +108,7 @@ export function ChipPopover({
       <PopoverTrigger
         disabled={disabled}
         title={title}
+        aria-label={ariaLabel}
         className={cn(
           "focus-visible:ring-ring/50 inline-flex items-center gap-1.5 text-[13px] outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
           variant === "chip"
