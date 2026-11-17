@@ -90,6 +90,8 @@ export async function installDom(): Promise<DomEnv> {
   }
   /** jsdom 没有的浏览器 API：给个最小实现，够组件挂载即可 */
   const extras: Record<string, unknown> = {
+    // Base UI 的开关点击时会 new PointerEvent，jsdom 没有，用 MouseEvent 顶上
+    PointerEvent: (win as unknown as Record<string, unknown>).PointerEvent ?? win.MouseEvent,
     ResizeObserver: class {
       observe() {}
       unobserve() {}

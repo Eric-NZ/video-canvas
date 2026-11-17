@@ -131,9 +131,14 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 		return nil, err
 	}
 	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds
-	// 分镜固定写 Seedance 原稿，平台适配在片场转写；变量保留给引用了它的自写提示词。
-	vars["prompt_format"] = drama.PromptFormatSeedance
-	output, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", "", vars, func(value any) error {
+	// 创作段：写法都在这一段（内置正文是即梦 / Seedance 分栏，用户可以整段换掉），输出纯文本分镜稿，不解析结构。
+	draft, draftCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", "", vars, nil)
+	if err != nil {
+		return nil, err
+	}
+	// 格式段：系统固定，只拿创作稿与资产清单，负责切段、时长、资产引用和 JSON，不改写法。校验失败只重试这一段，不重跑创作段。
+	formatVars := map[string]any{"draft_md": draft, "episode_no": ep.No, "assets": assets, "max_seconds": input.MaxSeconds}
+	output, formatCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard_format", "", formatVars, func(value any) error {
 		return value.(drama.StoryboardOutput).ValidateMaxSeconds(input.MaxSeconds)
 	})
 	if err != nil {
@@ -145,7 +150,7 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 		ids[asset.NodeID] = true
 	}
 	result.SanitizeReferences(ids)
-	return &dramaResult{output: result, cost: cost}, nil
+	return &dramaResult{output: result, cost: draftCost + formatCost}, nil
 }
 
 // storyboardAssets 过滤本集或全集节点，并截取提示词摘要以避免把完整画布送进文本模型。

@@ -34,8 +34,8 @@ export type PauseCode = "user" | "credits" | "failed" | "context" | "custom_prom
 /** 原文切出来的单元种类：集 / 场次 / 章 / 段 */
 export type UnitKind = "episode" | "scene" | "chapter" | "chunk";
 
-/** 提示词的四个环节：剧本改编 / 资产拆解 / 资产图提示词 / 视频提示词 */
-export type PromptStep = "adapt" | "assets" | "asset_prompts" | "video";
+/** 提示词的五个环节：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词 */
+export type PromptStep = "plan" | "scripts" | "assets" | "asset_prompts" | "video";
 
 /** 任务状态 */
 export type DramaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -68,7 +68,7 @@ export interface PromptChoice {
   skill?: string;
 }
 
-/** 四个环节的提示词选择；省略的环节等于内置 */
+/** 各环节的提示词选择；省略的环节等于内置 */
 export type PromptChoices = Partial<Record<PromptStep, PromptChoice>>;
 
 /** 已建剧的一个环节提示词设置（快照来源与展示名） */
@@ -79,7 +79,7 @@ export interface PromptSetting extends PromptChoice {
   missing?: boolean;
 }
 
-/** 已建剧的四个环节提示词设置 */
+/** 已建剧的各环节提示词设置 */
 export type PromptSettings = Record<PromptStep, PromptSetting>;
 
 export interface BackendDramaSummary {
@@ -191,7 +191,7 @@ export interface BackendDramaView {
   pause_reason?: string;
   /** 暂停原因分类 */
   pause_code?: PauseCode | "";
-  /** 四个环节当前的提示词设置 */
+  /** 各环节当前的提示词设置 */
   prompt_settings?: PromptSettings;
 }
 
@@ -323,7 +323,7 @@ export interface Drama {
   pauseReason: string;
   /** 暂停原因分类，没有为空串 */
   pauseCode: PauseCode | "";
-  /** 四个环节当前的提示词设置；老数据全是内置 */
+  /** 各环节当前的提示词设置；老数据全是内置 */
   promptSettings: PromptSettings;
 }
 
@@ -366,7 +366,13 @@ export interface CreateDramaInput {
   videoModel?: string;
   /** 人物 / 场景 / 物品资产用的图片模型 key；省略的项 = 不指定 */
   imageModels?: { character?: string; scene?: string; prop?: string };
-  /** 四个环节的提示词选择；省略的环节 = 内置 */
+  /** 人物 / 场景 / 物品资产新建节点默认的生成参数（参数名 → 取值，如 aspect_ratio: 16:9）；省略的项 = 用模型默认 */
+  imageParams?: {
+    character?: Record<string, string>;
+    scene?: Record<string, string>;
+    prop?: Record<string, string>;
+  };
+  /** 各环节的提示词选择；省略的环节 = 内置 */
   prompts?: PromptChoices;
 }
 
@@ -618,7 +624,7 @@ export interface SourceEstimateInput {
   textModel: string;
 }
 
-/** 内置提示词的一页（剧本改编有「分集规划 / 分集剧本」两页，其他环节一页） */
+/** 内置提示词的一页（现在每个环节一页） */
 export interface PromptPage {
   /** 页 key：plan / scripts / breakdown / asset_prompts / storyboard */
   key: string;
@@ -664,7 +670,7 @@ export interface MyPromptInput {
   revision?: number;
 }
 
-/** 后台已启用且标了该环节的技能 */
+/** 后台打开了该环节、且有生效版本的技能 */
 export interface DramaSkill {
   /** 技能 name */
   name: string;

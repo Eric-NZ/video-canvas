@@ -187,7 +187,18 @@ func (s *DramaService) executeDrama(ctx context.Context, run *dramaRun) (*dramaR
 		if err = json.Unmarshal(run.job.InputJSON, &vars); err != nil {
 			return nil, err
 		}
-		result.output, result.cost, err = s.callDrama(ctx, run.job, &run.snapshot, "plan", "", vars, func(v any) error { return v.(drama.PlanOutput).ValidateCoverage(run.job.BatchFrom, run.job.BatchTo) })
+		// 创作段写分集目录，格式段整理成 episodes；单元覆盖只在格式段校验，校验失败只重试格式段
+		draft, draftCost, planErr := s.callDrama(ctx, run.job, &run.snapshot, "plan", "", vars, nil)
+		if planErr != nil {
+			return nil, planErr
+		}
+		// 创作段是整批里最耗时的部分，写完先上报进度，格式段很快
+		if err = s.dramaProgress(ctx, run.job, 50); err != nil {
+			return nil, err
+		}
+		var formatCost int
+		result.output, formatCost, err = s.callDrama(ctx, run.job, &run.snapshot, "plan_format", "", map[string]any{"draft_md": draft, "batch_from": run.job.BatchFrom, "batch_to": run.job.BatchTo}, func(v any) error { return v.(drama.PlanOutput).ValidateCoverage(run.job.BatchFrom, run.job.BatchTo) })
+		result.cost = draftCost + formatCost
 	case "scripts":
 		result.output, result.cost, err = s.runScripts(ctx, run.project, run.job, &run.snapshot, run.episodes, selected)
 	case "breakdown":

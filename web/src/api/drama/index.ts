@@ -97,12 +97,13 @@ export const mapJob = (raw: BackendJobView): DramaJob => ({
   batchTo: raw.batch_to ? raw.batch_to : null,
 });
 
-/** 没有提示词设置（老项目）时四个环节都是内置 */
+/** 没有提示词设置（老项目）时各环节都是内置 */
 const BUILTIN_SETTING = { source: "builtin", label: "内置" } as const;
 
-/** 四个环节的提示词设置：缺的环节补成内置 */
+/** 五个环节的提示词设置：缺的环节补成内置 */
 export const mapPromptSettings = (raw: Partial<PromptSettings> | undefined): PromptSettings => ({
-  adapt: raw?.adapt ?? BUILTIN_SETTING,
+  plan: raw?.plan ?? BUILTIN_SETTING,
+  scripts: raw?.scripts ?? BUILTIN_SETTING,
   assets: raw?.assets ?? BUILTIN_SETTING,
   asset_prompts: raw?.asset_prompts ?? BUILTIN_SETTING,
   video: raw?.video ?? BUILTIN_SETTING,
@@ -214,6 +215,7 @@ export const toCreateDramaBody = (input: CreateDramaInput) =>
     text_model: input.textModel ?? "",
     video_model: input.videoModel || undefined,
     image_models: imageModelsBody(input.imageModels),
+    image_params: input.imageParams,
     prompts: input.prompts,
   });
 
@@ -608,7 +610,7 @@ export const deleteMyPrompt = async (id: string): Promise<void> => {
 };
 
 /**
- * 某个环节可用的技能：后台已启用且标了该环节的
+ * 某个环节可用的技能：后台打开了该环节、且有生效版本的
  * @param step 环节
  */
 export const listDramaSkills = async (step: PromptStep): Promise<DramaSkill[]> => {

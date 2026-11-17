@@ -152,12 +152,16 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if err = s.checkDramaModels(ctx, &req.VideoModel, &req.ImageModels); err != nil {
 		return nil, err
 	}
+	if err = s.checkDramaImageParams(ctx, req.ImageModels, req.ImageParams); err != nil {
+		return nil, err
+	}
 	settings, err := s.snapshotPrompts(ctx, userID, req.SourceKind, req.Prompts)
 	if err != nil {
 		return nil, err
 	}
 	raw, _ := json.Marshal(settings)
 	imageModels, _ := json.Marshal(req.ImageModels)
+	imageParams, _ := json.Marshal(req.ImageParams.Normalized())
 	initial, err := s.dramaInitialCredits(ctx)
 	if err != nil {
 		return nil, err
@@ -174,7 +178,7 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if seconds == 0 {
 		seconds = 60
 	}
-	p := &model.DramaProject{UserID: userID, Title: title, SourceText: parsed.Text, SourceKind: req.SourceKind, SourceChars: draft.Chars, SourceSHA256: draft.SHA256, SourceFilename: draft.Filename, UnitsTotal: len(parsed.Units), UnitKind: parsed.UnitKind, Phase: "running", RangeEnd: end, PromptSettings: raw, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, EpisodeSeconds: seconds, TextModel: req.TextModel, VideoModel: req.VideoModel, ImageModels: imageModels, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
+	p := &model.DramaProject{UserID: userID, Title: title, SourceText: parsed.Text, SourceKind: req.SourceKind, SourceChars: draft.Chars, SourceSHA256: draft.SHA256, SourceFilename: draft.Filename, UnitsTotal: len(parsed.Units), UnitKind: parsed.UnitKind, Phase: "running", RangeEnd: end, PromptSettings: raw, Genre: req.Genre, StyleKey: req.StyleKey, StyleCustom: req.StyleCustom, Ratio: req.Ratio, EpisodeSeconds: seconds, TextModel: req.TextModel, VideoModel: req.VideoModel, ImageModels: imageModels, ImageParams: imageParams, Status: "analyzing", Revision: 1, TextModelID: &snap.ModelRevisionID}
 	if p.SourceChars == 0 {
 		p.SourceChars = utf8.RuneCountInString(parsed.Text)
 	}
@@ -230,7 +234,7 @@ func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.Drama
 	if err != nil {
 		return nil, err
 	}
-	v := &model.DramaView{SourceChars: p.SourceChars, UnitsTotal: p.UnitsTotal, UnitKind: p.UnitKind, Phase: p.Phase, PlanCursor: p.PlanCursor, RangeEnd: p.RangeEnd, PauseReason: p.PauseReason, PauseCode: p.PauseCode, PromptSettings: settings, ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, VideoModel: p.VideoModel, ImageModels: dramaImageModels(p), OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
+	v := &model.DramaView{SourceChars: p.SourceChars, UnitsTotal: p.UnitsTotal, UnitKind: p.UnitKind, Phase: p.Phase, PlanCursor: p.PlanCursor, RangeEnd: p.RangeEnd, PauseReason: p.PauseReason, PauseCode: p.PauseCode, PromptSettings: settings, ID: idcodec.ID(p.ID), Title: p.Title, CanvasID: idcodec.ID(p.CanvasID), Status: p.Status, SourceKind: p.SourceKind, Genre: p.Genre, StyleKey: p.StyleKey, StyleCustom: p.StyleCustom, Ratio: p.Ratio, TargetEpisodes: p.TargetEpisodes, EpisodeSeconds: p.EpisodeSeconds, TextModel: p.TextModel, VideoModel: p.VideoModel, ImageModels: dramaImageModels(p), ImageParams: dramaImageParams(p), OutlineMD: p.OutlineMD, CharactersMD: p.CharactersMD, Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, Episodes: []model.DramaEpisodeSummary{}, ActiveJobs: []model.DramaJobView{}}
 	for _, e := range eps {
 		summary, err := s.dramaEpisodeView(ctx, e)
 		if err != nil {
@@ -312,6 +316,20 @@ func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model
 	if err := s.checkDramaModels(ctx, req.VideoModel, req.ImageModels); err != nil {
 		return nil, err
 	}
+	if req.ImageParams != nil {
+		models := req.ImageModels
+		if models == nil {
+			p, err := s.repo.Project(ctx, userID, id, false)
+			if err != nil {
+				return nil, dramaError(err)
+			}
+			stored := dramaImageModels(p)
+			models = &stored
+		}
+		if err := s.checkDramaImageParams(ctx, *models, *req.ImageParams); err != nil {
+			return nil, err
+		}
+	}
 	var changed map[string]model.DramaPromptSetting
 	if req.Prompts != nil {
 		p, err := s.repo.Project(ctx, userID, id, false)
@@ -371,6 +389,13 @@ func dramaProjectPatch(p *model.DramaProject, req *model.UpdateDramaReq) (map[st
 			return nil, err
 		}
 		fields["image_models"] = raw
+	}
+	if req.ImageParams != nil {
+		raw, err := json.Marshal(req.ImageParams.Normalized())
+		if err != nil {
+			return nil, err
+		}
+		fields["image_params"] = raw
 	}
 	if req.Title != nil {
 		title := strings.TrimSpace(*req.Title)

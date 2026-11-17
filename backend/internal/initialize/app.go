@@ -193,6 +193,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 	// 片场转写用短剧服务的文本模型调用；两者互相依赖，组装完再注入。
 	dramaSegments.SetAdapter(dramaSvc)
+	// 「剧本改编」拆成分集规划 / 分集剧本后，修补项目快照里的旧设置（迁移 0041 只能拆提示词表，编码 id 要在这里换）。
+	// 失败不阻塞启动：读取时会按旧 id 兜底拆分，下次启动再修补。
+	if n, err := service.SplitAdaptPromptSettings(context.Background(), dramaRepo); err != nil {
+		logger.Warn("修补短剧项目的剧本改编提示词设置失败，下次启动重试", zap.Error(err))
+	} else if n > 0 {
+		logger.Info("已把短剧项目的剧本改编提示词设置拆成分集规划和分集剧本", zap.Int("projects", n))
+	}
 
 	// 环节协议层（stepkit）：注册表在这里创建，业务包（营销等）在 registerSteps 里登记自己的环节；
 	// 后台「环节技能」页读写绑定与试跑，业务运行环节前用 stepSvc.Resolver() 取当前生效的方法。

@@ -318,7 +318,7 @@ function PlanningRows() {
     }
   };
   const act = (action: PlanningAction) => {
-    if (action === "builtin") return run(() => retryBuiltin(drama.id, "adapt"), "重试失败");
+    if (action === "builtin") return run(() => retryBuiltin(drama.id, "plan"), "重试失败");
     return run(() => resumePlanning(drama.id), "继续失败");
   };
   const eta = row.kind === "running" ? planningEtaMinutes(drama, now) : null;

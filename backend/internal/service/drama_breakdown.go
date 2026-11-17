@@ -33,6 +33,7 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 	batches := drama.ScriptBatches(units)
 	cp := readDramaCheckpoint(run.job.Output)
 	models := dramaImageModels(run.project).ByType()
+	params := dramaImageParams(run.project).ByType()
 	var mu sync.Mutex // 保护 finished 与 run.job.Progress
 	finished := 0
 	g, gctx := errgroup.WithContext(ctx)
@@ -53,12 +54,19 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 		g.Go(func() error {
 			v := maps.Clone(vars)
 			v["episodes"] = dramaScriptInputs(eps)
-			out, cost, err := s.callDrama(gctx, run.job, &run.snapshot, "breakdown", "batch="+episodeRange(scope), v, func(x any) error { return validateBreakdownScope(x.(drama.BreakdownOutput), scope) })
+			// 创作段写资产设定稿，格式段整理成标准资产清单；集号范围只在格式段校验
+			call := "batch=" + episodeRange(scope)
+			draft, draftCost, err := s.callDrama(gctx, run.job, &run.snapshot, "breakdown", call, v, nil)
 			if err != nil {
 				return err
 			}
+			out, formatCost, err := s.callDrama(gctx, run.job, &run.snapshot, "breakdown_format", call, map[string]any{"draft_md": draft, "episode_numbers": scope}, func(x any) error { return validateBreakdownScope(x.(drama.BreakdownOutput), scope) })
+			if err != nil {
+				return err
+			}
+			cost := draftCost + formatCost
 			created, err := s.canvas.ApplyBreakdown(gctx, run.job.UserID, run.job.DramaID, run.project.CanvasID, run.job.ID,
-				DramaBreakdownBatch{Episodes: scope, Assets: out.(drama.BreakdownOutput).Assets, Cost: cost, Models: models})
+				DramaBreakdownBatch{Episodes: scope, Assets: out.(drama.BreakdownOutput).Assets, Cost: cost, Models: models, Params: params})
 			if err != nil {
 				return err
 			}
@@ -105,7 +113,14 @@ func (s *DramaService) promptAssets(ctx context.Context, run *dramaRun, vars map
 	}
 	v := maps.Clone(vars)
 	v["assets"] = assets
-	out, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "asset_prompts", "", v, func(x any) error { return validatePromptCoverage(x.(drama.AssetPromptsOutput), assets) })
+	// 创作段写画面描述，格式段按节点编号整理成提示词条目；安全过滤可能发生在任一段
+	draft, cost, err := s.callDrama(ctx, run.job, &run.snapshot, "asset_prompts", "", v, nil)
+	var out any
+	if err == nil {
+		var formatCost int
+		out, formatCost, err = s.callDrama(ctx, run.job, &run.snapshot, "asset_prompts_format", "", map[string]any{"draft_md": draft, "assets": assets}, func(x any) error { return validatePromptCoverage(x.(drama.AssetPromptsOutput), assets) })
+		cost += formatCost
+	}
 	if contentFiltered(err) {
 		if len(assets) == 1 {
 			return s.canvas.ApplyPrompts(ctx, run.job.UserID, run.project.CanvasID, run.job.ID, run.job.Step, nil, assets, 0)

@@ -29,6 +29,7 @@ export function ModelMenu({
   size,
   prefix,
   defaultLabel,
+  fallback,
   title,
 }: {
   models: readonly ModelInfo[];
@@ -47,18 +48,21 @@ export function ModelMenu({
   prefix?: string;
   /** 「不指定」项的文案（如「跟随默认」）；不传则没有这一项 */
   defaultLabel?: string;
+  /** 没选时胶囊上显示的模型（如「跟随默认」实际会用的那个）；下拉里仍是「跟随默认」打勾 */
+  fallback?: ModelInfo;
   title?: string;
 }) {
+  const shown = model ?? fallback;
   const name =
-    model?.label ??
+    shown?.label ??
     (defaultLabel && !loading ? defaultLabel : loading ? "加载模型…" : `没有可用的${kindName}模型`);
   return (
     <ChipPopover
       variant={variant}
       size={size}
       icon={
-        model && (
-          <ModelLogo vendor={model.vendor} name={model.label} className="size-5 rounded-md" />
+        shown && (
+          <ModelLogo vendor={shown.vendor} name={shown.label} className="size-5 rounded-md" />
         )
       }
       label={prefix ? `${prefix} · ${name}` : name}
@@ -139,6 +143,7 @@ export function VideoModelMenu({
   onPick,
   variant = "bar",
   defaultLabel,
+  fallback,
 }: {
   models: readonly ModelInfo[];
   loading: boolean;
@@ -147,6 +152,8 @@ export function VideoModelMenu({
   variant?: "chip" | "bar" | "chrome" | "field";
   /** 开拍设置用：多一项「不指定」 */
   defaultLabel?: string;
+  /** 没选时胶囊上显示的模型，见 ModelMenu */
+  fallback?: ModelInfo;
 }) {
   return (
     <ModelMenu
@@ -160,6 +167,7 @@ export function VideoModelMenu({
       variant={variant}
       size={variant === "bar" ? "lg" : undefined}
       defaultLabel={defaultLabel}
+      fallback={fallback}
       title={variant === "bar" ? "生成片段视频用的模型" : undefined}
     />
   );

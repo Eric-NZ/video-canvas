@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -156,4 +157,33 @@ func (r *DramaRepository) DeletePrompt(ctx context.Context, userID, id uint64) e
 		return ErrNotFound
 	}
 	return nil
+}
+
+// AdaptPromptProjects 返回提示词快照里还带「剧本改编」(adapt) 的项目，只取 ID 与快照。
+func (r *DramaRepository) AdaptPromptProjects(ctx context.Context) ([]model.DramaProject, error) {
+	var rows []model.DramaProject
+	err := r.db.WithContext(ctx).Select("id", "prompt_settings").Where("jsonb_exists(prompt_settings, ?)", "adapt").Find(&rows).Error
+	return rows, err
+}
+
+// DramaPromptSplits 返回迁移 0041 拆分「剧本改编」提示词留下的旧 id → 新 id 对照，按旧 id 索引。
+func (r *DramaRepository) DramaPromptSplits(ctx context.Context) (map[uint64]model.DramaPromptSplit, error) {
+	var rows []model.DramaPromptSplit
+	if err := r.db.WithContext(ctx).
+		Select("old_id", "COALESCE(plan_id, 0) AS plan_id", "COALESCE(scripts_id, 0) AS scripts_id").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]model.DramaPromptSplit, len(rows))
+	for _, row := range rows {
+		out[row.OldID] = row
+	}
+	return out, nil
+}
+
+// SaveAdaptPromptSettings 写回修补后的提示词快照；只改仍带 adapt 的行，重复执行不会覆盖之后的修改。
+func (r *DramaRepository) SaveAdaptPromptSettings(ctx context.Context, id uint64, raw []byte) error {
+	return r.db.WithContext(ctx).Model(&model.DramaProject{}).
+		Where("id = ? AND jsonb_exists(prompt_settings, ?)", id, "adapt").
+		UpdateColumn("prompt_settings", datatypes.JSON(raw)).Error
 }

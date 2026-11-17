@@ -27,12 +27,14 @@ type DramaCanvasAsset struct {
 	Asset  drama.Asset `json:"asset"`
 }
 
-// DramaBreakdownBatch 是一批拆解结果：这批集号、模型给出的资产、这次调用的费用、各类资产新建节点的默认图片模型 key（可为 nil）。
+// DramaBreakdownBatch 是一批拆解结果：这批集号、模型给出的资产、这次调用的费用、
+// 各类资产新建节点的默认图片模型 key 和默认生成参数（都可为 nil）。
 type DramaBreakdownBatch struct {
 	Episodes []int
 	Assets   []drama.Asset
 	Cost     int
 	Models   map[string]string
+	Params   map[string]map[string]string
 }
 
 // DramaCanvasService 提供不依赖 Agent run 的短剧画布写入口，复用公共图差异、CAS 重放和 patch 协议。
@@ -155,7 +157,7 @@ func breakdownTx(ctx context.Context, tx repository.DramaCanvasTx, g *canvasgrap
 	for i, a := range assets {
 		graphAssets[i] = canvasgraph.DramaAsset{Type: a.Type, Name: a.Name, Look: a.Look, Aliases: a.Aliases, Episodes: a.Episodes, Description: a.Description, VoicePrompt: a.VoicePrompt}
 	}
-	merged, err := canvasgraph.MergeDrama(g, graphAssets, canvasgraph.Options{DramaModels: batch.Models})
+	merged, err := canvasgraph.MergeDrama(g, graphAssets, canvasgraph.Options{DramaModels: batch.Models, DramaParams: batch.Params})
 	if err != nil {
 		return errcode.ErrDramaOutputInvalid
 	}

@@ -40,6 +40,7 @@ type DramaProject struct {
 	TextModel      string         `gorm:"size:128;not null;default:''"`
 	VideoModel     string         `gorm:"size:128;not null;default:''"`
 	ImageModels    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	ImageParams    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	OutlineMD      string         `gorm:"type:text;not null;default:''"`
 	CharactersMD   string         `gorm:"type:text;not null;default:''"`
 	Status         string         `gorm:"size:16;not null;default:analyzing"`
@@ -120,6 +121,8 @@ type CreateDramaReq struct {
 	VideoModel string `json:"video_model" binding:"max=128"`
 	// ImageModels 人物 / 场景 / 物品资产节点新建时默认的图片模型 key；空串表示不指定
 	ImageModels DramaImageModels `json:"image_models"`
+	// ImageParams 三类资产节点新建时默认的比例、分辨率等生成参数
+	ImageParams DramaImageParams `json:"image_params"`
 }
 
 // DramaImageModels 三类资产各自默认的图片模型 key，空串表示不指定。
@@ -140,6 +143,34 @@ func (m DramaImageModels) ByType() map[string]string {
 	return out
 }
 
+// DramaImageParams 三类资产各自默认的生成参数（参数名 → 取值，如 aspect_ratio: 16:9），空表示用模型默认。
+type DramaImageParams struct {
+	Character map[string]string `json:"character"`
+	Scene     map[string]string `json:"scene"`
+	Prop      map[string]string `json:"prop"`
+}
+
+// ByType 返回资产类型（character / scene / prop）到参数的映射，只含有参数的项。
+func (p DramaImageParams) ByType() map[string]map[string]string {
+	out := map[string]map[string]string{}
+	for typ, params := range map[string]map[string]string{"character": p.Character, "scene": p.Scene, "prop": p.Prop} {
+		if len(params) > 0 {
+			out[typ] = params
+		}
+	}
+	return out
+}
+
+// Normalized 把未指定的类型补成空映射，序列化后三项都是对象而不是 null。
+func (p DramaImageParams) Normalized() DramaImageParams {
+	for _, m := range []*map[string]string{&p.Character, &p.Scene, &p.Prop} {
+		if *m == nil {
+			*m = map[string]string{}
+		}
+	}
+	return p
+}
+
 // UpdateDramaReq 部分更新项目，revision 用于乐观锁。
 type UpdateDramaReq struct {
 	Prompts      map[string]DramaPromptChoice `json:"prompts"`
@@ -152,6 +183,7 @@ type UpdateDramaReq struct {
 	TextModel    *string                      `json:"text_model" binding:"omitempty,max=128"`
 	VideoModel   *string                      `json:"video_model" binding:"omitempty,max=128"`
 	ImageModels  *DramaImageModels            `json:"image_models"`
+	ImageParams  *DramaImageParams            `json:"image_params"`
 	OutlineMD    *string                      `json:"outline_md"`
 	CharactersMD *string                      `json:"characters_md"`
 }
@@ -268,6 +300,7 @@ type DramaView struct {
 	TextModel      string                        `json:"text_model"`
 	VideoModel     string                        `json:"video_model"`
 	ImageModels    DramaImageModels              `json:"image_models"`
+	ImageParams    DramaImageParams              `json:"image_params"`
 	OutlineMD      string                        `json:"outline_md"`
 	CharactersMD   string                        `json:"characters_md"`
 	Revision       int64                         `json:"revision"`
