@@ -90,7 +90,7 @@ function EmptyFrame({
 
 /** 分段胶囊里的一段：透明底，悬停提亮（同 ChromeSegment） */
 const SEGMENT_CLASS =
-  "hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-xs transition-colors duration-150 outline-none focus-visible:ring-2 [&_svg]:size-3.5";
+  "hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-xs transition-colors duration-150 outline-none focus-visible:ring-2 [&_svg]:size-3.5 [&_svg]:shrink-0";
 
 /**
  * 空卡的上传入口：贴在封面底部的半透明分段胶囊（coding-standards 6.1），左上传、右素材库。

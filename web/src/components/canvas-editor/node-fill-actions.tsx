@@ -4,7 +4,7 @@ import type { FillUploadActions } from "@/hooks/use-fill-upload";
 
 /** 分段胶囊里的一段（同 ChromeSegment）；nodrag 让按下时不带走节点 */
 const SEGMENT_CLASS =
-  "nodrag hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs transition-colors duration-150 outline-none focus-visible:ring-2 [&_svg]:size-3.5";
+  "nodrag hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs transition-colors duration-150 outline-none focus-visible:ring-2 [&_svg]:size-3.5 [&_svg]:shrink-0";
 
 /**
  * 空节点占位里的「上传」「素材库」：一条半透明分段胶囊（coding-standards 6.1），选好的素材放进这个节点，节点变成上传素材。

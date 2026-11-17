@@ -15,6 +15,9 @@ import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
 import { ChromeButton } from "@/components/canvas/chrome/chrome";
+import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
+import { ModelMenu } from "@/components/canvas/model-menu";
+import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
 import { toggleVoice, useVoicePlaying } from "@/components/characters/voice-player";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,21 +27,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ModelLogo } from "@/components/model-logo";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCharacterMedia } from "@/hooks/use-character-media";
 import type { VoiceGeneration } from "@/hooks/use-voice-generation";
 import { useVoiceHistory } from "@/hooks/use-voice-history";
 import { cn } from "@/lib/utils";
 import type { CanvasNode, CanvasNodeData } from "@/types";
+import type { PreviewItem } from "@/utils/canvas/preview-items";
 import {
   applyPickedAssets,
   emptyCharacter,
@@ -50,8 +46,6 @@ import {
 import { setVoiceFromHistory } from "@/utils/characters/voice-history";
 import { episodesLabel } from "@/utils/drama/assets";
 
-import { priceLabel } from "@/utils/pricing/quote";
-
 import { LibraryPickerForCharacter } from "./character-library-picker";
 import { VoiceHistoryList } from "./voice-history-list";
 
@@ -62,6 +56,9 @@ import { VoiceHistoryList } from "./voice-history-list";
 const CONTENT_CLASS =
   "bg-chrome ring-chrome-border flex max-h-[min(88svh,760px)] flex-col gap-0 overflow-hidden rounded-2xl p-0 [corner-shape:squircle] shadow-2xl backdrop-blur-2xl backdrop-saturate-150 sm:max-w-[52rem]";
 
+/** 灯箱里主图那一项的 id（补充图用各自的素材 id） */
+const MAIN_ZOOM_ID = "main";
+
 /** 分区小标题 */
 const LABEL = "text-muted-foreground text-xs font-medium";
 
@@ -71,7 +68,7 @@ const FIELD_CLASS =
 
 /** 分段胶囊里的一段（同 ChromeSegment） */
 const SEGMENT_CLASS =
-  "hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-xs whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5";
+  "hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-xs whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5 [&_svg]:shrink-0";
 
 type Segment = {
   icon: React.ReactNode;
@@ -109,9 +106,9 @@ function SegmentedPill({ segments, className }: { segments: Segment[]; className
 
 /** 声音来源的说法 */
 const ORIGIN_LABEL: Record<string, string> = {
-  upload: "上传的音频",
-  generated: "AI 生成的音频",
-  library: "素材库里的音频",
+  upload: "上传",
+  generated: "AI 生成",
+  library: "素材库",
 };
 
 /** 试听条里的几根声波：播放时跳动，暂停时静止 */
@@ -199,6 +196,26 @@ export function CharacterDetailDialog({
     character.voice?.assetId,
     voiceGen.models,
   );
+  /** 放大预览：主图和补充图排成一组，点哪张从哪张开始，从被点的图的位置放大出来 */
+  const [zoom, setZoom] = useState<LightboxTarget | null>(null);
+  const zoomItems: PreviewItem[] = [
+    ...(data.src
+      ? [{ id: MAIN_ZOOM_ID, src: data.src, mediaType: "image" as const, label: character.name }]
+      : []),
+    ...character.extras.map((extra, index) => ({
+      id: extra.assetId,
+      src: extra.src,
+      mediaType: "image" as const,
+      label: `${character.name} 补充图 ${index + 1}`,
+    })),
+  ];
+  const openZoom = (zoomId: string, event: React.MouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setZoom({
+      id: zoomId,
+      origin: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    });
+  };
   /** 把一条生成记录设为音色：和上传、绑定一样直接写回节点，可以撤销 */
   const applyHistoryVoice = (asset: { id: string; url: string }) => {
     const patch = setVoiceFromHistory(data, asset);
@@ -230,12 +247,20 @@ export function CharacterDetailDialog({
           <div className="flex flex-col gap-4 p-5 sm:overflow-y-auto">
             <div className="bg-chrome-hover ring-chrome-border relative aspect-3/4 w-full overflow-hidden rounded-2xl ring-1">
               {data.src ? (
-                <img
-                  src={data.src}
-                  alt={character.name}
-                  draggable={false}
-                  className="size-full object-contain"
-                />
+                <button
+                  type="button"
+                  aria-label="放大预览形象图"
+                  title="放大预览"
+                  onClick={(event) => openZoom(MAIN_ZOOM_ID, event)}
+                  className="focus-visible:ring-ring/60 size-full cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                >
+                  <img
+                    src={data.src}
+                    alt={character.name}
+                    draggable={false}
+                    className="size-full object-contain"
+                  />
+                </button>
               ) : (
                 <div className="text-muted-foreground flex size-full flex-col items-center justify-center gap-2.5 px-6 text-sm">
                   {media.uploading === "main" ? (
@@ -296,12 +321,19 @@ export function CharacterDetailDialog({
                         key={extra.assetId}
                         className="group/extra bg-chrome-hover ring-chrome-border relative aspect-3/4 overflow-hidden rounded-xl ring-1"
                       >
-                        <img
-                          src={extra.src}
-                          alt=""
-                          draggable={false}
-                          className="size-full object-cover"
-                        />
+                        <button
+                          type="button"
+                          aria-label={`放大预览补充图 ${index + 1}`}
+                          onClick={(event) => openZoom(extra.assetId, event)}
+                          className="focus-visible:ring-ring/60 size-full cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                        >
+                          <img
+                            src={extra.src}
+                            alt=""
+                            draggable={false}
+                            className="size-full object-cover"
+                          />
+                        </button>
                         <button
                           type="button"
                           aria-label="移除补充图"
@@ -412,104 +444,86 @@ export function CharacterDetailDialog({
                 />
               </div>
 
-              <div className="bg-chrome ring-chrome-border rounded-full ring-1">
-                {character.voice ? (
-                  <VoicePlayer
-                    assetId={character.voice.assetId}
-                    src={character.voice.src}
-                    origin={character.voice.origin}
-                  />
-                ) : (
-                  <p className="text-muted-foreground flex h-12 items-center px-5 text-sm">
-                    还没有声音
-                  </p>
+              {/* 当前声音 + 历史版本：生成记录就是这个声音的各个版本，和当前声音放在一起，一直展开、列表限高 */}
+              <div className="bg-chrome ring-chrome-border overflow-hidden rounded-2xl ring-1 [corner-shape:squircle]">
+                <div className="flex items-center gap-1 pr-1.5">
+                  <div className="min-w-0 flex-1">
+                    {character.voice ? (
+                      <VoicePlayer
+                        assetId={character.voice.assetId}
+                        src={character.voice.src}
+                        origin={character.voice.origin}
+                      />
+                    ) : (
+                      <p className="text-muted-foreground flex h-12 items-center px-5 text-sm">
+                        还没有声音
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {history.length > 0 && (
+                  <div className="border-chrome-border border-t">
+                    <VoiceHistoryList rows={history} onUse={applyHistoryVoice} />
+                  </div>
                 )}
               </div>
 
+              {/* 生成新声音：输入框和底栏是一整块，模型和生成按钮收在底部 */}
               <div className="flex flex-col gap-2">
                 <label className={LABEL} htmlFor={`${id}-voice-prompt`}>
                   AI 生成
                 </label>
-                <Textarea
-                  id={`${id}-voice-prompt`}
-                  value={character.voicePrompt ?? ""}
-                  maxLength={MAX_TEXT}
-                  disabled={generating}
-                  placeholder="音色描述加一句试音台词，例如：年轻女声，偏低，语速慢，句尾轻：“我回来了。”"
-                  className="bg-chrome dark:bg-chrome border-chrome-border max-h-36 min-h-20 overflow-y-auto rounded-2xl px-4 py-3"
-                  onChange={(event) =>
-                    updateNodeData(id, {
-                      character: { ...character, voicePrompt: event.target.value },
-                    })
-                  }
-                />
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={voiceGen.model?.key ?? null}
-                    onValueChange={(value) => value && voiceGen.selectModel(value)}
-                    disabled={generating || voiceGen.models.length === 0}
-                  >
-                    <SelectTrigger
-                      className="bg-chrome dark:bg-chrome dark:hover:bg-chrome-hover border-chrome-border h-10! min-w-0 flex-1 rounded-full pl-4"
-                      aria-label="选择音频模型"
-                    >
-                      <SelectValue
-                        placeholder={
-                          voiceGen.modelsStatus === "loading" ? "加载中…" : "没有音频模型"
-                        }
+                <div className="bg-chrome ring-chrome-border focus-within:ring-ring/50 flex flex-col rounded-2xl ring-1 transition-shadow duration-150 [corner-shape:squircle]">
+                  <Textarea
+                    id={`${id}-voice-prompt`}
+                    value={character.voicePrompt ?? ""}
+                    maxLength={MAX_TEXT}
+                    disabled={generating}
+                    placeholder="音色描述加一句试音台词，例如：年轻女声，偏低，语速慢，句尾轻：“我回来了。”"
+                    className="max-h-36 min-h-16 resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3 pb-1 shadow-none focus-visible:ring-0 disabled:bg-transparent dark:bg-transparent dark:disabled:bg-transparent"
+                    onChange={(event) =>
+                      updateNodeData(id, {
+                        character: { ...character, voicePrompt: event.target.value },
+                      })
+                    }
+                  />
+                  <div className="flex items-center gap-2 p-2 pl-2.5">
+                    <ModelMenu
+                      models={voiceGen.options}
+                      model={voiceGen.options.find((item) => item.id === voiceGen.model?.key)}
+                      onModelChange={voiceGen.selectModel}
+                      placeholder={voiceGen.modelsStatus === "loading" ? "加载中…" : "没有音频模型"}
+                      disabled={generating || voiceGen.options.length === 0}
+                      className={cn(PANEL_CHIP_CLASS, "mr-auto")}
+                    />
+                    {generating ? (
+                      <Button
+                        variant="outline"
+                        className="h-9 rounded-full px-4"
+                        onClick={() => void voiceGen.cancel()}
                       >
-                        {(value: string) => {
-                          const picked = voiceGen.models.find((item) => item.key === value);
-                          const label = picked?.label ?? value;
-                          return (
-                            <>
-                              <ModelLogo
-                                vendor={picked?.vendor}
-                                name={label}
-                                className="size-5 rounded-md"
-                              />
-                              <span className="truncate">{label}</span>
-                            </>
-                          );
-                        }}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voiceGen.models.map((item) => (
-                        <SelectItem key={item.key} value={item.key}>
-                          <ModelLogo vendor={item.vendor} name={item.label} className="size-5" />
-                          {item.label} · {priceLabel(item.pricing)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {generating ? (
-                    <Button
-                      variant="outline"
-                      className="h-10 rounded-full px-4"
-                      onClick={() => void voiceGen.cancel()}
-                    >
-                      <Loader2 className="animate-spin" />
-                      {voiceGen.task.phase === "generating" && voiceGen.task.progress !== null
-                        ? `${voiceGen.task.progress}% · 取消`
-                        : "取消"}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="h-10 rounded-full px-5"
-                      disabled={
-                        voiceGen.submitting || !voiceGen.model || !!data.voiceAfterImage?.length
-                      }
-                      title={data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined}
-                      onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
-                    >
-                      {voiceGen.task.phase === "failed"
-                        ? "重试"
-                        : character.voice
-                          ? "重新生成"
-                          : "生成声音"}
-                    </Button>
-                  )}
+                        <Loader2 className="animate-spin" />
+                        {voiceGen.task.phase === "generating" && voiceGen.task.progress !== null
+                          ? `${voiceGen.task.progress}% · 取消`
+                          : "取消"}
+                      </Button>
+                    ) : (
+                      <Button
+                        className="h-9 rounded-full px-5"
+                        disabled={
+                          voiceGen.submitting || !voiceGen.model || !!data.voiceAfterImage?.length
+                        }
+                        title={data.voiceAfterImage?.length ? "出图后会接着生成音色" : undefined}
+                        onClick={() => void voiceGen.submit(character.voicePrompt ?? "")}
+                      >
+                        {voiceGen.task.phase === "failed"
+                          ? "重试"
+                          : character.voice
+                            ? "重新生成"
+                            : "生成声音"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {(voiceGen.error || voiceGen.task.phase === "failed") && (
                   <p className="text-destructive px-1 text-xs" role="alert">
@@ -518,10 +532,17 @@ export function CharacterDetailDialog({
                   </p>
                 )}
               </div>
-              <VoiceHistoryList rows={history} onUse={applyHistoryVoice} />
             </section>
           </div>
         </div>
+        {/* 放大预览：复用画布的灯箱，主图 + 补充图一起翻看；放在详情弹框里面，Esc 先关预览 */}
+        <MediaLightbox
+          items={zoomItems}
+          target={open ? zoom : null}
+          onActiveChange={(next) => setZoom({ id: next, origin: null })}
+          countLabel="形象图"
+          onClose={() => setZoom(null)}
+        />
         {/* 放在详情弹框里面：嵌套弹框才能共用焦点与 Esc 的层级，Esc 先关选素材这层 */}
         <LibraryPickerForCharacter
           request={media.library}
