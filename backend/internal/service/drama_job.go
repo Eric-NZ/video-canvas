@@ -458,6 +458,8 @@ func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, sn
 	case "analyze":
 		chars = min(40000, min(max(p.SourceChars, utf8.RuneCountInString(p.SourceText)), dramaContextLimit(snap))) + 2048
 	case "plan":
+		// 两次调用：分集目录的创作段与格式段，创作段读原文
+		requests = 2
 		chars += min(30000, p.SourceChars)
 	case "breakdown":
 		units := make([]drama.Unit, 0, len(eps))

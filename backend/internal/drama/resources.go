@@ -35,8 +35,10 @@ var builtinStyles = loadStyles()
 // promptTemplates 只在包初始化读取一次，避免每次任务复制整个嵌入模板。
 var promptTemplates = map[string]string{
 	"analyze": loadPrompt("analyze"),
-	"outline": loadPrompt("plan"),
-	"plan":    loadPrompt("plan"),
+	// 分集规划：plan 是创作段（纯文本分集目录），plan_format 是格式段（episodes JSON）；outline 与 plan 共用创作段
+	"outline":     loadPrompt("plan_draft"),
+	"plan":        loadPrompt("plan_draft"),
+	"plan_format": loadPrompt("plan_format"),
 	// 第二期：剧本、资产拆解、资产图提示词同样两段。无后缀的是创作段（用户正文只替换它的正文，输出纯文本），
 	// _format 是系统固定的格式段（输出 JSON）
 	"scripts":              loadPrompt("scripts_draft"),

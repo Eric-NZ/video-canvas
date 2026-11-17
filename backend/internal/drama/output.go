@@ -259,7 +259,7 @@ func definitionForStep(step string) (outputDefinition, error) {
 	switch step {
 	case "analyze":
 		return outputDefinition{value: &AnalyzeOutput{}, fields: []string{"source_kind", "summary", "characters_md", "outline_md"}}, nil
-	case "plan":
+	case "plan_format":
 		return outputDefinition{value: &PlanOutput{}, fields: []string{"episodes"}, listKey: "episodes", itemFields: []string{"title", "synopsis", "hook", "cliffhanger", "unit_from", "unit_to"}}, nil
 	case "outline":
 		return outputDefinition{value: &OutlineOutput{}, fields: []string{"outline_md", "characters_md", "episodes"},

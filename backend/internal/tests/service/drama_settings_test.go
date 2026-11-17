@@ -91,6 +91,7 @@ func TestDramaPlanningReadsFullBatchAndAppends(t *testing.T) {
 	seedDramaDraft(r, source)
 	e := &dramaTextStreamer{outputs: []string{
 		`{"source_kind":"script","summary":"梗概","characters_md":"人物","outline_md":"后文为抽样推断"}`,
+		"分集目录草稿",
 		`{"episodes":[{"title":"开始","synopsis":"梗概","hook":"钩子","cliffhanger":"悬念","unit_from":1,"unit_to":3}]}`,
 	}}
 	s, _ := dramaTestService(r, e, nil)
@@ -180,7 +181,8 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 	r.project.RangeEnd = 1
 	r.project.UnitsTotal = 1
 	r.units = []model.DramaUnit{{UserID: 7, DramaID: 1, No: 1, Title: "第一章", Text: "正文", Chars: 2}}
-	e := &dramaTextStreamer{outputs: []string{"Markdown", "Markdown"}}
+	// 创作段写出纯文本，格式段两次都输出 Markdown：自定义正文导致格式不合格
+	e := &dramaTextStreamer{outputs: []string{"Markdown", "Markdown", "Markdown"}}
 	s, _ := dramaTestService(r, e, nil)
 	prompt, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "adapt", Name: "我的", Bodies: map[string]string{"plan": "只输出 Markdown"}})
 	if err != nil {
@@ -209,7 +211,7 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 		t.Fatalf("%+v %+v", r.project, r.jobs)
 	}
 	// 恢复内置后重新入队同一批，已失败任务的历史快照保持不变。
-	e.outputs = []string{`{"episodes":[{"title":"首集","synopsis":"梗概","hook":"开场","cliffhanger":"结尾","unit_from":1,"unit_to":1}]}`}
+	e.outputs = []string{"分集目录草稿", `{"episodes":[{"title":"首集","synopsis":"梗概","hook":"开场","cliffhanger":"结尾","unit_from":1,"unit_to":1}]}`}
 	if _, err = s.Planning(context.Background(), 7, 1, "retry-builtin", &model.DramaPlanningReq{Step: "adapt"}); err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +281,7 @@ func TestDramaPlanningContinuesWhileUserJobQueued(t *testing.T) {
 	runPlan := func(index int) {
 		j := r.jobs[index]
 		raw, _ := json.Marshal(drama.PlanOutput{Episodes: []drama.PlanEpisode{{Title: "本批", Synopsis: "梗概", Hook: "钩子", Cliffhanger: "悬念", UnitFrom: j.BatchFrom, UnitTo: j.BatchTo}}})
-		e.outputs = []string{string(raw)}
+		e.outputs = []string{"分集目录草稿", string(raw)}
 		if err := s.HandleDrama(context.Background(), 7, 1, j.ID); err != nil {
 			t.Fatal(err)
 		}

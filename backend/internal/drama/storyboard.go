@@ -13,7 +13,7 @@ const draftMaxChars = 20000
 // draftStep 是只输出纯文本创作稿的步骤：分镜、剧本、资产拆解、资产图提示词各有一段创作稿。
 func draftStep(step string) bool {
 	switch step {
-	case "storyboard", "scripts", "breakdown", "asset_prompts":
+	case "storyboard", "scripts", "breakdown", "asset_prompts", "plan":
 		return true
 	}
 	return false

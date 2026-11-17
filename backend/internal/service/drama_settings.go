@@ -222,7 +222,7 @@ func dramaStepGroup(step string) string {
 		return "asset_prompts"
 	case "storyboard", "storyboard_format":
 		return "video"
-	case "scripts_format":
+	case "scripts_format", "plan_format":
 		return "adapt"
 	case "breakdown_format":
 		return "assets"
