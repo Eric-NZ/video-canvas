@@ -172,7 +172,7 @@ export type SkillListFilter = "all" | "agent" | "drama" | "unused" | "builtin";
 /** 技能的使用场景：画布 Agent（enabled）或一个短剧环节（drama_steps 里的一项） */
 export type SkillScopeKey = "agent" | DramaStepKey;
 
-/** 五个使用场景，顺序即界面顺序；name 是详情里的全称，short 是列表标签 */
+/** 六个使用场景，顺序即界面顺序；name 是详情里的全称，short 是列表标签 */
 export const SKILL_SCOPES: {
   key: SkillScopeKey;
   name: string;
@@ -180,7 +180,8 @@ export const SKILL_SCOPES: {
   group: "canvas" | "drama";
 }[] = [
   { key: "agent", name: "画布 Agent", short: "画布 Agent", group: "canvas" },
-  { key: "adapt", name: "剧本改编", short: "改编", group: "drama" },
+  { key: "plan", name: "分集规划", short: "规划", group: "drama" },
+  { key: "scripts", name: "分集剧本", short: "剧本", group: "drama" },
   { key: "assets", name: "资产拆解", short: "拆解", group: "drama" },
   { key: "asset_prompts", name: "资产图提示词", short: "资产图", group: "drama" },
   { key: "video", name: "视频提示词", short: "视频", group: "drama" },

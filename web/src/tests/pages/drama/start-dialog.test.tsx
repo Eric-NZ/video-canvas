@@ -58,8 +58,8 @@ const pre = (patch: Partial<SourcePreflight> = {}): SourcePreflight => ({
 const library: PromptLibrary = {
   ready: true,
   templates: [],
-  mine: { adapt: [], assets: [], asset_prompts: [], video: [] },
-  skills: { adapt: [], assets: [], asset_prompts: [], video: [] },
+  mine: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [] },
+  skills: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [] },
   save: async () => {
     throw new Error("not used");
   },
@@ -145,7 +145,7 @@ describe("开拍设置：来源与基本规则", () => {
     await m.unmount();
   });
 
-  test("剧本带「第N集」：剧本改编行置灰、单集时长锁成「按原分集 · 80 集」、规划范围一次切完", async () => {
+  test("剧本带「第N集」：分集规划、分集剧本行置灰、单集时长锁成「按原分集 · 80 集」、规划范围一次切完", async () => {
     const m = await mountBody(
       pre({
         kindGuess: "script",
@@ -180,7 +180,8 @@ describe("开拍设置：来源与基本规则", () => {
         .find((el) => el.textContent === name)
         ?.parentElement?.querySelector("button") as HTMLButtonElement;
     expect(rowButton("资产拆解").disabled).toBe(false);
-    expect(rowButton("剧本改编").disabled).toBe(true);
+    expect(rowButton("分集规划").disabled).toBe(true);
+    expect(rowButton("分集剧本").disabled).toBe(true);
     await m.unmount();
   });
 });
@@ -231,7 +232,8 @@ describe("开拍设置：点「开始」建剧", () => {
       episodeSeconds: 60,
       textModel: "",
       prompts: {
-        adapt: { source: "builtin" },
+        plan: { source: "builtin" },
+        scripts: { source: "builtin" },
         assets: { source: "builtin" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
@@ -264,11 +266,13 @@ describe("开拍设置：点「开始」建剧", () => {
     await m.unmount();
   });
 
-  test("剧本型：提交时剧本改编强制内置，规划范围恒为全部", async () => {
+  test("剧本型：提交时分集规划、分集剧本强制内置，规划范围恒为全部", async () => {
     const calls: CreateDramaInput[] = [];
     dom.win.localStorage.setItem(
       "drama-start-prefs",
-      JSON.stringify({ prompts: { adapt: { source: "mine", id: "1f" } } }),
+      JSON.stringify({
+        prompts: { plan: { source: "mine", id: "1f" }, scripts: { source: "mine", id: "2f" } },
+      }),
     );
     const m = await mountBody(
       pre({ kindGuess: "script", unitKind: "episode", unitsTotal: 80 }),
@@ -280,7 +284,8 @@ describe("开拍设置：点「开始」建剧", () => {
     await dom.flush();
     expect(calls[0].sourceKind).toBe("script");
     expect(calls[0].rangeEnd).toBe(0);
-    expect(calls[0].prompts?.adapt).toEqual({ source: "builtin" });
+    expect(calls[0].prompts?.plan).toEqual({ source: "builtin" });
+    expect(calls[0].prompts?.scripts).toEqual({ source: "builtin" });
     await m.unmount();
   });
 });

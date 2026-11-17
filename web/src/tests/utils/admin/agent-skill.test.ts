@@ -264,23 +264,26 @@ describe("列表", () => {
 });
 
 describe("使用场景", () => {
-  test("五个场景按固定顺序：画布 Agent 在前，短剧四环节随后", () => {
+  test("六个场景按固定顺序：画布 Agent 在前，短剧五环节随后", () => {
     expect(SKILL_SCOPES.map((s) => s.key)).toEqual([
       "agent",
-      "adapt",
+      "plan",
+      "scripts",
       "assets",
       "asset_prompts",
       "video",
     ]);
     expect(SKILL_SCOPES.map((s) => s.short)).toEqual([
       "画布 Agent",
-      "改编",
+      "规划",
+      "剧本",
       "拆解",
       "资产图",
       "视频",
     ]);
     expect(SKILL_SCOPES.map((s) => s.group)).toEqual([
       "canvas",
+      "drama",
       "drama",
       "drama",
       "drama",
@@ -292,22 +295,22 @@ describe("使用场景", () => {
     const it = item({ enabled: true, drama_steps: ["video"] });
     expect(scopeOn(it, "agent")).toBe(true);
     expect(scopeOn(it, "video")).toBe(true);
-    expect(scopeOn(it, "adapt")).toBe(false);
+    expect(scopeOn(it, "plan")).toBe(false);
   });
 
   test("列表标签：只列开着的场景，顺序固定，与后端返回顺序无关", () => {
-    const it = item({ enabled: true, drama_steps: ["video", "adapt"] });
-    expect(scopeTags(it).map((s) => s.key)).toEqual(["agent", "adapt", "video"]);
+    const it = item({ enabled: true, drama_steps: ["video", "scripts", "plan"] });
+    expect(scopeTags(it).map((s) => s.key)).toEqual(["agent", "plan", "scripts", "video"]);
     expect(scopeTags(item({}))).toEqual([]);
   });
 
   test("改一个场景得到新视图：短剧环节保持固定顺序，in_use 跟着变，原对象不动", () => {
     const base = item({ drama_steps: ["video"] });
-    const next = withScope(base, "adapt", true);
-    expect(next.drama_steps).toEqual(["adapt", "video"]);
+    const next = withScope(base, "plan", true);
+    expect(next.drama_steps).toEqual(["plan", "video"]);
     expect(next.in_use).toBe(true);
     expect(base.drama_steps).toEqual(["video"]);
-    const off = withScope(withScope(next, "adapt", false), "video", false);
+    const off = withScope(withScope(next, "plan", false), "video", false);
     expect(off.drama_steps).toEqual([]);
     expect(off.in_use).toBe(false);
     expect(withScope(base, "agent", true)).toMatchObject({ enabled: true, in_use: true });
@@ -318,7 +321,7 @@ describe("使用场景", () => {
     expect(scopeBlockReason(builtin, "agent")).toBe("内置技能随版本发布，不能修改");
     expect(scopeBlockReason(builtin, "video")).toBe("内置技能随版本发布，不能修改");
     const draft = item({ active_version: null, drama_steps: ["video"] });
-    expect(scopeBlockReason(draft, "adapt")).toBe("没有生效版本，无法启用");
+    expect(scopeBlockReason(draft, "plan")).toBe("没有生效版本，无法启用");
     expect(scopeBlockReason(draft, "agent")).toBe("没有生效版本，无法启用");
     expect(scopeBlockReason(draft, "video")).toBeNull();
     expect(scopeBlockReason(item({}), "agent")).toBeNull();

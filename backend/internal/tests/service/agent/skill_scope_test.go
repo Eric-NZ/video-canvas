@@ -82,7 +82,7 @@ func TestSkillService_ListScopeFilter(t *testing.T) {
 	if _, err := e.svc.SetEnabled(ctx, 1, "agent-only", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.svc.SetDramaSteps(ctx, 1, "drama-only", []string{"adapt"}); err != nil {
+	if _, err := e.svc.SetDramaSteps(ctx, 1, "drama-only", []string{"plan"}); err != nil {
 		t.Fatal(err)
 	}
 	names := func(status string) map[string]bool {
@@ -141,7 +141,7 @@ func TestSkillService_ConfirmImportWithScope(t *testing.T) {
 	})
 	t.Run("新版本忽略场景，沿用技能现有设置", func(t *testing.T) {
 		v := mustImport(t, e, 1, standardPkg(t, "demo", "第二版"))
-		it, err := e.svc.ConfirmImport(ctx, 1, v.ID, SkillScope{Enabled: false, DramaSteps: []string{"adapt"}})
+		it, err := e.svc.ConfirmImport(ctx, 1, v.ID, SkillScope{Enabled: false, DramaSteps: []string{"plan"}})
 		if err != nil {
 			t.Fatal(err)
 		}

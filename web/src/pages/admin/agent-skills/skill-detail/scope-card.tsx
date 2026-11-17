@@ -16,7 +16,7 @@ import {
 const GROUP_LABEL = { canvas: "画布", drama: "短剧工作室" } as const;
 
 /**
- * 技能详情右侧「用在哪里」：画布 Agent 与短剧四个环节，五个平级开关，点了即生效（由 onToggle 提交），没有保存按钮。
+ * 技能详情右侧「用在哪里」：画布 Agent 与短剧五个环节，六个平级开关，点了即生效（由 onToggle 提交），没有保存按钮。
  * 整行可点；不可用的开关置灰，悬停写原因；正在提交的那一行禁用，其他行照常可点。
  * @param item 技能
  * @param busy 正在提交的场景

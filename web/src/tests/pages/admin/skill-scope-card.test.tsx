@@ -52,13 +52,15 @@ describe("用在哪里", () => {
     );
     expect(switches(m.container).map((s) => s.getAttribute("aria-label"))).toEqual([
       "画布 Agent",
-      "剧本改编",
+      "分集规划",
+      "分集剧本",
       "资产拆解",
       "资产图提示词",
       "视频提示词",
     ]);
     expect(switches(m.container).map((s) => s.getAttribute("aria-checked"))).toEqual([
       "true",
+      "false",
       "false",
       "false",
       "false",
@@ -105,13 +107,14 @@ describe("用在哪里", () => {
     m = await dom.mount(
       <ScopeCard
         item={item()}
-        busy={new Set<SkillScopeKey>(["adapt"])}
+        busy={new Set<SkillScopeKey>(["plan"])}
         onToggle={(s) => calls.push(s)}
       />,
     );
     expect(switches(m.container).map((s) => s.hasAttribute("data-disabled"))).toEqual([
       false,
       true,
+      false,
       false,
       false,
       false,

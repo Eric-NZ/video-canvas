@@ -37,7 +37,7 @@ export const emptyImageModels = (): StartImageModels => ({ character: "", scene:
 /** 用户在弹窗里确认的原文类型；识别不出且没选时为 null */
 export type StartKind = "script" | "novel";
 
-/** 四个环节的提示词选择（每个环节都有值，默认内置） */
+/** 五个环节的提示词选择（每个环节都有值，默认内置） */
 export type StartPrompts = Record<PromptStep, PromptChoice>;
 
 /** 开拍设置弹窗里用户可改的全部内容 */
@@ -62,16 +62,17 @@ export interface StartForm {
   videoModel: string;
   /** 人物 / 场景 / 物品资产各自的图片模型 key，空串 = 不指定 */
   imageModels: StartImageModels;
-  /** 四个环节的提示词选择 */
+  /** 五个环节的提示词选择 */
   prompts: StartPrompts;
 }
 
 /** 记住的上次选择：规划范围每本书不同，不记 */
 export type StartPrefs = Omit<StartForm, "kind" | "rangeEnd">;
 
-/** 四个环节全是内置 */
+/** 五个环节全是内置 */
 export const builtinPrompts = (): StartPrompts => ({
-  adapt: { source: "builtin" },
+  plan: { source: "builtin" },
+  scripts: { source: "builtin" },
   assets: { source: "builtin" },
   asset_prompts: { source: "builtin" },
   video: { source: "builtin" },
@@ -159,7 +160,7 @@ export function startBlockReason(state: {
   return null;
 }
 
-/** 提示词选择转成请求里的 prompts：四个环节都显式带上 */
+/** 提示词选择转成请求里的 prompts：各环节都显式带上 */
 export function promptsToChoices(prompts: StartPrompts): Record<PromptStep, PromptChoice> {
   const out = {} as Record<PromptStep, PromptChoice>;
   for (const { key } of PROMPT_STEPS) out[key] = { ...prompts[key] };
@@ -173,7 +174,7 @@ function pickedImageModels(models: StartImageModels): CreateDramaInput["imageMod
 }
 
 /**
- * 弹窗内容转成建剧请求。剧本型输入：剧本改编强制内置、规划范围恒为全部（剧本一次切完）。
+ * 弹窗内容转成建剧请求。剧本型输入：分集规划、分集剧本强制内置，规划范围恒为全部（剧本一次切完）。
  * @param pre 预检结果
  * @param form 弹窗里的设置，kind 必须已确认
  */
@@ -181,7 +182,10 @@ export function buildCreateInput(pre: SourcePreflight, form: StartForm): CreateD
   if (!form.kind) throw new Error("原文类型未确认");
   const script = form.kind === "script";
   const prompts = promptsToChoices(form.prompts);
-  if (script) prompts.adapt = { source: "builtin" };
+  if (script) {
+    prompts.plan = { source: "builtin" };
+    prompts.scripts = { source: "builtin" };
+  }
   return {
     sourceToken: pre.sourceToken,
     sourceKind: form.kind,
@@ -211,8 +215,11 @@ export function loadStartPrefs(): StartPrefs | null {
     const data = JSON.parse(raw) as Partial<StartPrefs> | null;
     if (!data || typeof data !== "object") return null;
     const prompts = builtinPrompts();
+    // 老版本把分集规划和分集剧本记成一个「剧本改编」(adapt)：同时带给两个环节，找不到的由 reconcilePrompts 回落内置
+    const saved = data.prompts as (Partial<StartPrompts> & { adapt?: PromptChoice }) | undefined;
+    const legacy = saved?.adapt;
     for (const { key } of PROMPT_STEPS) {
-      const choice = data.prompts?.[key];
+      const choice = saved?.[key] ?? (key === "plan" || key === "scripts" ? legacy : undefined);
       if (choice && ["builtin", "mine", "skill"].includes(choice.source)) prompts[key] = choice;
     }
     return {

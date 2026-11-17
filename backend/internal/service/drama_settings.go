@@ -44,11 +44,16 @@ type DramaSkills interface {
 	DramaSkill(context.Context, string, string) (*model.DramaPromptSetting, error)
 }
 
-// DramaPromptPages 固定各环节允许替换的页面。
+// DramaPromptSteps 是用户可配置提示词的五个环节，顺序即界面顺序。
+var DramaPromptSteps = []string{"plan", "scripts", "assets", "asset_prompts", "video"}
+
+// DramaPromptPages 固定各环节允许替换的页面：每个环节一页。
 func DramaPromptPages(step string) []string {
 	switch step {
-	case "adapt":
-		return []string{"plan", "scripts"}
+	case "plan":
+		return []string{"plan"}
+	case "scripts":
+		return []string{"scripts"}
 	case "assets":
 		return []string{"breakdown"}
 	case "asset_prompts":
@@ -152,7 +157,8 @@ func promptError(err error) error {
 	return err
 }
 
-// snapshotPrompts 在事务外解析四环节来源并复制正文，避免入队后读到来源的新版本。
+// snapshotPrompts 在事务外解析各环节来源并复制正文，避免入队后读到来源的新版本。
+// 剧本型输入不跑分集规划和分集剧本，这两个环节强制内置。
 func (s *DramaService) snapshotPrompts(ctx context.Context, userID uint64, kind string, choices map[string]model.DramaPromptChoice) (map[string]model.DramaPromptSetting, error) {
 	for key := range choices {
 		if DramaPromptPages(key) == nil {
@@ -160,9 +166,9 @@ func (s *DramaService) snapshotPrompts(ctx context.Context, userID uint64, kind 
 		}
 	}
 	out := map[string]model.DramaPromptSetting{}
-	for _, step := range []string{"adapt", "assets", "asset_prompts", "video"} {
+	for _, step := range DramaPromptSteps {
 		choice := choices[step]
-		if kind == "script" && step == "adapt" {
+		if kind == "script" && (step == "plan" || step == "scripts") {
 			choice = model.DramaPromptChoice{Source: "builtin"}
 		}
 		setting, err := s.snapshotPrompt(ctx, userID, step, choice)
@@ -211,19 +217,19 @@ func (s *DramaService) snapshotPrompt(ctx context.Context, userID uint64, step s
 	return setting, nil
 }
 
-// dramaStepGroup 将任务步骤映射到用户可配置的四环节。
+// dramaStepGroup 将任务步骤映射到用户可配置的提示词环节。
 func dramaStepGroup(step string) string {
 	switch step {
-	case "plan", "scripts":
-		return "adapt"
+	case "plan", "plan_format":
+		return "plan"
+	case "scripts":
+		return "scripts"
 	case "breakdown":
 		return "assets"
 	case "asset_prompts":
 		return "asset_prompts"
 	case "storyboard", "storyboard_format":
 		return "video"
-	case "plan_format":
-		return "adapt"
 	case "breakdown_format":
 		return "assets"
 	case "asset_prompts_format":
@@ -233,16 +239,18 @@ func dramaStepGroup(step string) string {
 }
 
 // promptSettings 解码项目快照；旧项目空配置自然使用内置。
+// 迁移前的「剧本改编」(adapt) 设置在读取时拆成 plan / scripts（启动修补会把它持久化并换成新 id）。
 func promptSettings(p *model.DramaProject) map[string]model.DramaPromptSetting {
 	out := map[string]model.DramaPromptSetting{}
 	_ = json.Unmarshal(p.PromptSettings, &out)
+	splitAdaptSetting(out, nil)
 	return out
 }
 
 // promptViews 隐去正文并检查来源是否消失，不影响已保存快照的可用性。
 func (s *DramaService) promptViews(ctx context.Context, p *model.DramaProject) (map[string]model.DramaPromptSetting, error) {
 	out := promptSettings(p)
-	for _, step := range []string{"adapt", "assets", "asset_prompts", "video"} {
+	for _, step := range DramaPromptSteps {
 		setting, ok := out[step]
 		if !ok {
 			setting = model.DramaPromptSetting{Source: "builtin", Label: "内置"}

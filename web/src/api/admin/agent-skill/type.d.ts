@@ -63,8 +63,8 @@ export type SkillFile = {
   text: boolean;
 };
 
-/** 技能可以适用的短剧环节：剧本改编 / 资产拆解 / 资产图提示词 / 视频提示词 */
-export type DramaStepKey = "adapt" | "assets" | "asset_prompts" | "video";
+/** 技能可以适用的短剧环节：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词 */
+export type DramaStepKey = "plan" | "scripts" | "assets" | "asset_prompts" | "video";
 
 /** 管理页列表里的一行（含只读内置技能） */
 export type SkillItem = {

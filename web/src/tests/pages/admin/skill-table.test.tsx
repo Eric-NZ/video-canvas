@@ -45,7 +45,12 @@ describe("技能列表", () => {
     const m = await dom.mount(
       <SkillTable
         items={[
-          item({ name: "a", enabled: true, drama_steps: ["video", "adapt"], in_use: true }),
+          item({
+            name: "a",
+            enabled: true,
+            drama_steps: ["video", "scripts", "plan"],
+            in_use: true,
+          }),
           item({ name: "b" }),
         ]}
         loading={false}
@@ -56,7 +61,7 @@ describe("技能列表", () => {
     const tags = [...row(m.container, "a").querySelectorAll("[data-slot=scope-tag]")].map(
       (t) => t.textContent,
     );
-    expect(tags).toEqual(["画布 Agent", "改编", "视频"]);
+    expect(tags).toEqual(["画布 Agent", "规划", "剧本", "视频"]);
     expect(row(m.container, "b").textContent).toContain("未使用");
     expect(m.container.querySelector("[role=switch]")).toBeNull();
     await m.unmount();

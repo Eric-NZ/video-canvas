@@ -15,11 +15,13 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// dramaPages 只开放契约允许的四个环节。
+// dramaPages 只开放契约允许的五个环节，每个环节对应一页任务提示词。
 func dramaPages(step string) []string {
 	switch step {
-	case "adapt":
-		return []string{"plan", "scripts"}
+	case "plan":
+		return []string{"plan"}
+	case "scripts":
+		return []string{"scripts"}
 	case "assets":
 		return []string{"breakdown"}
 	case "asset_prompts":

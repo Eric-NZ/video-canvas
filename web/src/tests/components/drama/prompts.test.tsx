@@ -23,9 +23,9 @@ afterAll(() => dom.restore());
 
 const mineItem = (patch: Partial<MyPrompt> = {}): MyPrompt => ({
   id: "1f",
-  step: "adapt",
+  step: "plan",
   name: "我的改编",
-  bodies: { plan: "改过的规划", scripts: "改过的剧本" },
+  bodies: { plan: "改过的规划" },
   revision: 3,
   updatedAt: "t",
   ...patch,
@@ -37,23 +37,20 @@ const makeLibrary = (items: MyPrompt[] = []) => {
   const library: PromptLibrary = {
     ready: true,
     templates: [
-      {
-        step: "adapt",
-        pages: [
-          { key: "plan", label: "分集规划", body: "内置规划" },
-          { key: "scripts", label: "分集剧本", body: "内置剧本" },
-        ],
-      },
+      { step: "plan", pages: [{ key: "plan", label: "分集规划", body: "内置规划" }] },
+      { step: "scripts", pages: [{ key: "scripts", label: "分集剧本", body: "内置剧本" }] },
       { step: "video", pages: [{ key: "storyboard", label: "视频提示词", body: "内置视频" }] },
     ],
     mine: {
-      adapt: items.filter((i) => i.step === "adapt"),
+      plan: items.filter((i) => i.step === "plan"),
+      scripts: items.filter((i) => i.step === "scripts"),
       assets: [],
       asset_prompts: [],
       video: items.filter((i) => i.step === "video"),
     },
     skills: {
-      adapt: [],
+      plan: [],
+      scripts: [],
       assets: [{ name: "cross", title: "跨集连续性", description: "保持角色一致" }],
       asset_prompts: [],
       video: [],
@@ -97,20 +94,17 @@ describe("提示词编辑器", () => {
     await m.unmount();
   });
 
-  test("剧本改编分「分集规划 / 分集剧本」两页，切页各改各的", async () => {
+  test("分集规划、分集剧本是两个环节：各自只有一页，没有页签", async () => {
     const { library, saved } = makeLibrary();
     const m = await dom.mount(
-      <PromptEditorPane step="adapt" item={null} library={library} onClose={() => {}} />,
+      <PromptEditorPane step="scripts" item={null} library={library} onClose={() => {}} />,
     );
-    const tabs = [...m.container.querySelectorAll('[role="tab"]')];
-    expect(tabs.map((t) => t.textContent)).toEqual(["分集规划", "分集剧本"]);
-    expect(textarea(m.container).value).toBe("内置规划");
-    await dom.type(textarea(m.container), "我的规划");
-    await dom.click(tabs[1]);
+    expect(m.container.querySelectorAll('[role="tab"]').length).toBe(0);
+    expect(m.container.textContent).toContain("分集剧本 · 新建");
     expect(textarea(m.container).value).toBe("内置剧本");
     await dom.type(nameInput(m.container), "我的改编");
     await dom.click(byText(m.container, "保存"));
-    expect(saved[0].bodies).toEqual({ plan: "我的规划", scripts: "内置剧本" });
+    expect(saved[0]).toMatchObject({ step: "scripts", bodies: { scripts: "内置剧本" } });
     await m.unmount();
   });
 
@@ -165,9 +159,9 @@ describe("提示词编辑器", () => {
     const item = mineItem();
     const { library, saved } = makeLibrary([item]);
     const m = await dom.mount(
-      <PromptEditorPane step="adapt" item={item} library={library} onClose={() => {}} />,
+      <PromptEditorPane step="plan" item={item} library={library} onClose={() => {}} />,
     );
-    expect(m.container.textContent).toContain("剧本改编 · 编辑");
+    expect(m.container.textContent).toContain("分集规划 · 编辑");
     expect(nameInput(m.container).value).toBe("我的改编");
     expect(textarea(m.container).value).toBe("改过的规划");
     await dom.click(byText(m.container, "恢复内置"));
@@ -177,7 +171,7 @@ describe("提示词编辑器", () => {
     expect(saved[0]).toMatchObject({
       id: "1f",
       revision: 3,
-      bodies: { plan: "内置规划", scripts: "改过的剧本" },
+      bodies: { plan: "内置规划" },
     });
     await m.unmount();
   });
@@ -216,22 +210,24 @@ describe("四行提示词下拉", () => {
       (b.textContent ?? "").includes(text),
     ) as HTMLButtonElement | undefined;
 
-  test("四行：剧本改编 / 资产拆解 / 资产图提示词 / 视频提示词，默认都是「内置」", async () => {
+  test("五行：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词，默认都是「内置」", async () => {
     const { m } = await mount([]);
     const names = [...m.container.querySelectorAll('[data-slot="prompt-rows"] > div > span')].map(
       (el) => el.textContent,
     );
-    expect(names).toEqual(["剧本改编", "资产拆解", "资产图提示词", "视频提示词"]);
+    expect(names).toEqual(["分集规划", "分集剧本", "资产拆解", "资产图提示词", "视频提示词"]);
     expect(rowChip(m.container, "视频提示词").textContent).toBe("内置");
     await m.unmount();
   });
 
-  test("剧本型输入：剧本改编置灰并写原因", async () => {
+  test("剧本型输入：分集规划、分集剧本都置灰并写原因", async () => {
     const { m } = await mount([], { kind: "script" });
-    const chip = rowChip(m.container, "剧本改编");
-    expect(chip.disabled).toBe(true);
-    expect(chip.title).toBe("剧本直接导入，不改编");
-    expect(chip.textContent).toBe("剧本直接导入");
+    for (const name of ["分集规划", "分集剧本"]) {
+      const chip = rowChip(m.container, name);
+      expect(chip.disabled).toBe(true);
+      expect(chip.title).toBe("剧本直接导入，不改编");
+      expect(chip.textContent).toBe("剧本直接导入");
+    }
     await m.unmount();
   });
 
@@ -251,6 +247,27 @@ describe("四行提示词下拉", () => {
     await dom.flush();
     await dom.click(popupButton("新建"));
     expect(edit).toEqual([["video", null]]);
+    await m.unmount();
+  });
+
+  test("分集剧本行的下拉也能选技能", async () => {
+    const { library, saved } = makeLibrary();
+    library.skills.scripts = [{ name: "narrate", title: "解说文案", description: "第一人称" }];
+    const calls: [PromptStep, PromptChoice][] = [];
+    const m = await dom.mount(
+      <PromptRows
+        kind="novel"
+        value={builtinPrompts()}
+        library={library}
+        onChange={(step, choice) => calls.push([step, choice])}
+        onEdit={() => {}}
+      />,
+    );
+    await dom.click(rowChip(m.container, "分集剧本"));
+    await dom.flush();
+    await dom.click(popupButton("解说文案"));
+    expect(calls).toEqual([["scripts", { source: "skill", skill: "narrate" }]]);
+    expect(saved).toEqual([]);
     await m.unmount();
   });
 

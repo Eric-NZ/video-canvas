@@ -191,7 +191,8 @@ describe("任务胶囊：自动规划", () => {
     await dom.click(byText(panel, "改用内置重试"));
     await dom.flush();
     expect(post.mock.calls[0][0]).toBe("/dramas/d1/planning/retry-builtin");
-    expect(post.mock.calls[0][1]).toEqual({ step: "adapt" });
+    // 改用内置只针对分集规划
+    expect(post.mock.calls[0][1]).toEqual({ step: "plan" });
     await m.unmount();
   });
 

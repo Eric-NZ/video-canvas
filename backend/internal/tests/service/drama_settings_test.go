@@ -184,11 +184,15 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 	// 创作段写出纯文本，格式段两次都输出 Markdown：自定义正文导致格式不合格
 	e := &dramaTextStreamer{outputs: []string{"Markdown", "Markdown", "Markdown"}}
 	s, _ := dramaTestService(r, e, nil)
-	prompt, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "adapt", Name: "我的", Bodies: map[string]string{"plan": "只输出 Markdown"}})
+	scriptsPrompt, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "scripts", Name: "解说", Bodies: map[string]string{"scripts": "解说文案"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: r.project.Revision, Prompts: map[string]model.DramaPromptChoice{"adapt": {Source: "mine", ID: prompt.ID}}})
+	prompt, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "plan", Name: "我的", Bodies: map[string]string{"plan": "只输出 Markdown"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: r.project.Revision, Prompts: map[string]model.DramaPromptChoice{"plan": {Source: "mine", ID: prompt.ID}, "scripts": {Source: "mine", ID: scriptsPrompt.ID}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +204,7 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 项目更新不得影响已经排队的正文。
-	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: r.project.Revision, Prompts: map[string]model.DramaPromptChoice{"adapt": {Source: "builtin"}}})
+	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: r.project.Revision, Prompts: map[string]model.DramaPromptChoice{"plan": {Source: "builtin"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +216,20 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 	}
 	// 恢复内置后重新入队同一批，已失败任务的历史快照保持不变。
 	e.outputs = []string{"分集目录草稿", `{"episodes":[{"title":"首集","synopsis":"梗概","hook":"开场","cliffhanger":"结尾","unit_from":1,"unit_to":1}]}`}
-	if _, err = s.Planning(context.Background(), 7, 1, "retry-builtin", &model.DramaPlanningReq{Step: "adapt"}); err != nil {
+	// 改用内置只针对分集规划：传别的环节不行
+	_, err = s.Planning(context.Background(), 7, 1, "retry-builtin", &model.DramaPlanningReq{Step: "scripts"})
+	dramaCheckCode(t, err, 67019)
+	// 把项目里的分集规划改回之前的自定义，确认重试只重置分集规划
+	var cur map[string]model.DramaPromptSetting
+	_ = json.Unmarshal(r.project.PromptSettings, &cur)
+	cur["plan"] = model.DramaPromptSetting{Source: "mine", Label: "我的 · 我的", Bodies: map[string]string{"plan": "只输出 Markdown"}}
+	r.project.PromptSettings, _ = json.Marshal(cur)
+	if _, err = s.Planning(context.Background(), 7, 1, "retry-builtin", &model.DramaPlanningReq{Step: "plan"}); err != nil {
 		t.Fatal(err)
+	}
+	_ = json.Unmarshal(r.project.PromptSettings, &cur)
+	if cur["plan"].Source != "builtin" || cur["scripts"].Label != "我的 · 解说" {
+		t.Fatalf("改用内置只应重置分集规划: %+v", cur)
 	}
 	if len(r.jobs) != 2 {
 		t.Fatalf("重试应产生新任务: %d", len(r.jobs))

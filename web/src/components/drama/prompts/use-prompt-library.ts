@@ -36,7 +36,8 @@ export interface PromptLibrary {
 }
 
 const emptyByStep = <T>(): Record<PromptStep, T[]> => ({
-  adapt: [],
+  plan: [],
+  scripts: [],
   assets: [],
   asset_prompts: [],
   video: [],

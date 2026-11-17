@@ -6,9 +6,10 @@ import type {
   PromptTemplate,
 } from "@/api/drama/type";
 
-/** 提示词的四个环节，按界面显示顺序 */
+/** 提示词的五个环节，按界面显示顺序 */
 export const PROMPT_STEPS: { key: PromptStep; name: string }[] = [
-  { key: "adapt", name: "剧本改编" },
+  { key: "plan", name: "分集规划" },
+  { key: "scripts", name: "分集剧本" },
   { key: "assets", name: "资产拆解" },
   { key: "asset_prompts", name: "资产图提示词" },
   { key: "video", name: "视频提示词" },
@@ -24,7 +25,7 @@ export const PROMPT_BODY_MAX = 20_000;
 export const promptStepName = (step: PromptStep): string =>
   PROMPT_STEPS.find((item) => item.key === step)?.name ?? step;
 
-/** 剧本型输入的剧本改编行置灰的原因；其他情况返回 null */
+/** 剧本型输入的分集规划、分集剧本两行置灰的原因（剧本直接导入，这两步都不跑）；其他情况返回 null */
 export function adaptLockedReason(kind: "script" | "novel" | null): string | null {
   return kind === "script" ? "剧本直接导入，不改编" : null;
 }
@@ -60,7 +61,7 @@ export function choiceLabel(
 }
 
 /**
- * 提示词一行的显示状态：剧本型输入的剧本改编置灰并写原因
+ * 提示词一行的显示状态：剧本型输入的分集规划、分集剧本置灰并写原因
  * @param step 环节
  * @param kind 确认的原文类型
  * @param choice 当前选择
@@ -74,7 +75,7 @@ export function promptRowState(
   mine: { id: string; name: string }[],
   skills: { name: string; title: string }[],
 ): { label: string; disabledReason: string | null; missing: boolean } {
-  if (step === "adapt" && kind === "script") {
+  if ((step === "plan" || step === "scripts") && kind === "script") {
     return { label: "剧本直接导入", disabledReason: adaptLockedReason(kind), missing: false };
   }
   const label = choiceLabel(choice, mine, skills);

@@ -37,7 +37,8 @@ beforeAll(async () => {
 afterAll(() => dom.restore());
 
 const settings = (patch: Partial<PromptSettings> = {}): PromptSettings => ({
-  adapt: { source: "builtin", label: "内置" },
+  plan: { source: "builtin", label: "内置" },
+  scripts: { source: "builtin", label: "内置" },
   assets: { source: "skill", skill: "cross", label: "技能 · 跨集连续性", missing: true },
   asset_prompts: { source: "mine", id: "1f", label: "我的 · 古风资产" },
   video: { source: "builtin", label: "内置" },
@@ -48,7 +49,8 @@ const library: PromptLibrary = {
   ready: true,
   templates: [],
   mine: {
-    adapt: [],
+    plan: [],
+    scripts: [],
     assets: [],
     asset_prompts: [
       {
@@ -63,7 +65,8 @@ const library: PromptLibrary = {
     video: [],
   },
   skills: {
-    adapt: [],
+    plan: [],
+    scripts: [],
     assets: [{ name: "cross", title: "跨集连续性", description: "d" }],
     asset_prompts: [],
     video: [{ name: "tone", title: "镜头语气", description: "d" }],
@@ -111,7 +114,8 @@ describe("提示词设置：纯逻辑", () => {
   test("把已建剧的设置转成可编辑的选择；比较出改了哪些环节", () => {
     const prompts = settingsToPrompts(settings());
     expect(prompts).toEqual({
-      adapt: { source: "builtin" },
+      plan: { source: "builtin" },
+      scripts: { source: "builtin" },
       assets: { source: "skill", skill: "cross" },
       asset_prompts: { source: "mine", id: "1f" },
       video: { source: "builtin" },
@@ -137,9 +141,10 @@ describe("提示词设置：Sheet 内容", () => {
     await m.unmount();
   });
 
-  test("剧本型项目：剧本改编置灰", async () => {
+  test("剧本型项目：分集规划、分集剧本都置灰", async () => {
     const m = await mountBody(dramaOf({ sourceKind: "script" }), []);
-    expect(chip(m.container, "剧本改编").disabled).toBe(true);
+    expect(chip(m.container, "分集规划").disabled).toBe(true);
+    expect(chip(m.container, "分集剧本").disabled).toBe(true);
     await m.unmount();
   });
 
@@ -170,7 +175,8 @@ describe("提示词设置：Sheet 内容", () => {
     expect(patches).toEqual([
       {
         prompts: {
-          adapt: { source: "builtin" },
+          plan: { source: "builtin" },
+          scripts: { source: "builtin" },
           assets: { source: "skill", skill: "cross" },
           asset_prompts: { source: "mine", id: "1f" },
           video: { source: "skill", skill: "tone" },

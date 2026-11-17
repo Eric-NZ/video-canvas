@@ -66,6 +66,7 @@ func All() []any {
 		&DramaSourceDraft{},
 		&DramaUnit{},
 		&DramaPrompt{},
+		&DramaPromptSplit{},
 		&DramaEpisode{},
 		&DramaJob{},
 		&DramaSegment{},

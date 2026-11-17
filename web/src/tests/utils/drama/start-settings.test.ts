@@ -52,7 +52,8 @@ const form = (patch: Partial<StartForm> = {}): StartForm => ({
   videoModel: "",
   imageModels: { character: "", scene: "", prop: "" },
   prompts: {
-    adapt: { source: "builtin" },
+    plan: { source: "builtin" },
+    scripts: { source: "builtin" },
     assets: { source: "builtin" },
     asset_prompts: { source: "builtin" },
     video: { source: "builtin" },
@@ -148,7 +149,8 @@ describe("开拍设置：建剧请求", () => {
         seconds: 90,
         textModel: "gpt",
         prompts: {
-          adapt: { source: "mine", id: "1f" },
+          plan: { source: "mine", id: "1f" },
+          scripts: { source: "builtin" },
           assets: { source: "skill", skill: "cross" },
           asset_prompts: { source: "builtin" },
           video: { source: "builtin" },
@@ -166,7 +168,8 @@ describe("开拍设置：建剧请求", () => {
       episodeSeconds: 90,
       textModel: "gpt",
       prompts: {
-        adapt: { source: "mine", id: "1f" },
+        plan: { source: "mine", id: "1f" },
+        scripts: { source: "builtin" },
         assets: { source: "skill", skill: "cross" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
@@ -174,7 +177,7 @@ describe("开拍设置：建剧请求", () => {
     });
   });
 
-  test("剧本型：剧本改编强制内置，规划范围恒为全部；自定义画风带描述", () => {
+  test("剧本型：分集规划、分集剧本都强制内置，规划范围恒为全部；自定义画风带描述", () => {
     const body = buildCreateInput(
       preflight({ kindGuess: "script" }),
       form({
@@ -183,7 +186,8 @@ describe("开拍设置：建剧请求", () => {
         styleKey: "custom",
         styleCustom: " 黏土 ",
         prompts: {
-          adapt: { source: "mine", id: "1f" },
+          plan: { source: "mine", id: "1f" },
+          scripts: { source: "mine", id: "2f" },
           assets: { source: "builtin" },
           asset_prompts: { source: "builtin" },
           video: { source: "builtin" },
@@ -191,7 +195,8 @@ describe("开拍设置：建剧请求", () => {
       }),
     );
     expect(body.sourceKind).toBe("script");
-    expect(body.prompts?.adapt).toEqual({ source: "builtin" });
+    expect(body.prompts?.plan).toEqual({ source: "builtin" });
+    expect(body.prompts?.scripts).toEqual({ source: "builtin" });
     expect(body.rangeEnd).toBe(0);
     expect(body.styleCustom).toBe("黏土");
   });
@@ -199,7 +204,8 @@ describe("开拍设置：建剧请求", () => {
   test("提示词选择：选了内置的环节也显式带上 builtin", () => {
     expect(
       promptsToChoices({
-        adapt: { source: "builtin" },
+        plan: { source: "builtin" },
+        scripts: { source: "builtin" },
         assets: { source: "builtin" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
@@ -241,6 +247,20 @@ describe("开拍设置：记住上次选择", () => {
     expect(loadStartPrefs()).toMatchObject({ ratio: "9:16", seconds: 60 });
   });
 
+  test("老版本存的「剧本改编」选择同时带给分集规划和分集剧本", () => {
+    store.set(
+      "drama-start-prefs",
+      JSON.stringify({
+        prompts: { adapt: { source: "skill", skill: "s1" }, video: { source: "builtin" } },
+      }),
+    );
+    expect(loadStartPrefs()?.prompts).toMatchObject({
+      plan: { source: "skill", skill: "s1" },
+      scripts: { source: "skill", skill: "s1" },
+      video: { source: "builtin" },
+    });
+  });
+
   test("localStorage 抛错时不影响弹窗", () => {
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -255,20 +275,22 @@ describe("开拍设置：记住上次选择", () => {
   test("被删的我的提示词 / 停用的技能回落为内置", () => {
     const next = reconcilePrompts(
       {
-        adapt: { source: "mine", id: "gone" },
+        plan: { source: "mine", id: "gone" },
+        scripts: { source: "builtin" },
         assets: { source: "skill", skill: "off" },
         asset_prompts: { source: "mine", id: "1f" },
         video: { source: "skill", skill: "on" },
       },
       {
-        adapt: [],
+        plan: [],
+        scripts: [],
         assets: [],
         asset_prompts: [{ id: "1f" }],
         video: [],
       },
-      { adapt: [], assets: [], asset_prompts: [], video: [{ name: "on" }] },
+      { plan: [], scripts: [], assets: [], asset_prompts: [], video: [{ name: "on" }] },
     );
-    expect(next.adapt).toEqual({ source: "builtin" });
+    expect(next.plan).toEqual({ source: "builtin" });
     expect(next.assets).toEqual({ source: "builtin" });
     expect(next.asset_prompts).toEqual({ source: "mine", id: "1f" });
     expect(next.video).toEqual({ source: "skill", skill: "on" });

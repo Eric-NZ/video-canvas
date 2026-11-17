@@ -161,6 +161,7 @@ func TestSkillHandler_Endpoints(t *testing.T) {
 		{"只看画布 Agent", "GET", base + "?status=agent", "", 200, "list"},
 		{"启停", "PUT", base + "/demo/enabled", `{"enabled":false}`, 200, "enabled"},
 		{"短剧适用环节", "PUT", base + "/demo/drama-steps", `{"steps":["assets","video"]}`, 200, "drama_steps"},
+		{"五个短剧环节全开", "PUT", base + "/demo/drama-steps", `{"steps":["plan","scripts","assets","asset_prompts","video"]}`, 200, "drama_steps"},
 		{"清空短剧环节", "PUT", base + "/demo/drama-steps", `{"steps":[]}`, 200, "drama_steps"},
 		{"设为生效", "PUT", base + "/demo/active-version", `{"version":2}`, 200, "active"},
 		{"改名", "PUT", base + "/demo", `{"title":"演示"}`, 200, "rename"},

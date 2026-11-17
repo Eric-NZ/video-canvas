@@ -146,7 +146,8 @@ describe("api/drama 开拍设置：建剧", () => {
       episodeSeconds: 60,
       textModel: "",
       prompts: {
-        adapt: { source: "builtin" },
+        plan: { source: "builtin" },
+        scripts: { source: "builtin" },
         assets: { source: "skill", skill: "cross" },
         asset_prompts: { source: "mine", id: "1f" },
       },
@@ -160,7 +161,8 @@ describe("api/drama 开拍设置：建剧", () => {
       episode_seconds: 60,
       text_model: "",
       prompts: {
-        adapt: { source: "builtin" },
+        plan: { source: "builtin" },
+        scripts: { source: "builtin" },
         assets: { source: "skill", skill: "cross" },
         asset_prompts: { source: "mine", id: "1f" },
       },
@@ -225,7 +227,7 @@ describe("api/drama 开拍设置：提示词与技能", () => {
 
   test("内置正文：GET /drama-prompt-templates", async () => {
     get.mockResolvedValue({
-      items: [{ step: "adapt", pages: [{ key: "plan", label: "分集规划", body: "正文" }] }],
+      items: [{ step: "plan", pages: [{ key: "plan", label: "分集规划", body: "正文" }] }],
     });
     const items = await listPromptTemplates();
     expect(get.mock.calls[0][0]).toBe("/drama-prompt-templates");
@@ -237,7 +239,7 @@ describe("api/drama 开拍设置：提示词与技能", () => {
       items: [
         {
           id: "1f",
-          step: "adapt",
+          step: "plan",
           name: "我的改编",
           bodies: { plan: "p" },
           revision: 1,
@@ -245,9 +247,9 @@ describe("api/drama 开拍设置：提示词与技能", () => {
         },
       ],
     });
-    const items = await listMyPrompts("adapt");
+    const items = await listMyPrompts("plan");
     expect(get.mock.calls[0][0]).toBe("/drama-prompts");
-    expect(get.mock.calls[0][1]).toEqual({ step: "adapt" });
+    expect(get.mock.calls[0][1]).toEqual({ step: "plan" });
     expect(items[0]).toMatchObject({ id: "1f", updatedAt: "t", revision: 1 });
     get.mockResolvedValue({ items: null });
     expect(await listMyPrompts()).toEqual([]);
@@ -335,9 +337,9 @@ describe("api/drama 开拍设置：自动规划", () => {
     expect(post.mock.calls[3][1]).toEqual({ range_end: 0 });
     expect(est).toMatchObject({ credits: 9, minutes: 3, episodesMax: 2 });
     post.mockResolvedValue({});
-    await retryBuiltin("d1", "adapt");
+    await retryBuiltin("d1", "plan");
     expect(post.mock.calls[4][0]).toBe("/dramas/d1/planning/retry-builtin");
-    expect(post.mock.calls[4][1]).toEqual({ step: "adapt" });
+    expect(post.mock.calls[4][1]).toEqual({ step: "plan" });
   });
 
   test("任务估价：返回积分与衔接缺口 gap_episodes", async () => {
@@ -409,7 +411,8 @@ describe("api/drama 开拍设置：视图新字段映射", () => {
     pause_reason: "规划失败",
     pause_code: "custom_prompt",
     prompt_settings: {
-      adapt: { source: "builtin", label: "内置" },
+      plan: { source: "builtin", label: "内置" },
+      scripts: { source: "builtin", label: "内置" },
       assets: { source: "skill", skill: "x", label: "技能 · X", missing: true },
       asset_prompts: { source: "builtin", label: "内置" },
       video: { source: "builtin", label: "内置" },
@@ -462,7 +465,8 @@ describe("api/drama 开拍设置：视图新字段映射", () => {
     } as unknown as BackendDramaView);
     expect(old.phase).toBe("done");
     expect(old.pauseCode).toBe("");
-    expect(old.promptSettings.adapt).toMatchObject({ source: "builtin" });
+    expect(old.promptSettings.plan).toMatchObject({ source: "builtin" });
+    expect(old.promptSettings.scripts).toMatchObject({ source: "builtin" });
     expect(old.unitKind).toBe("episode");
     const job = mapJob({
       id: "j",

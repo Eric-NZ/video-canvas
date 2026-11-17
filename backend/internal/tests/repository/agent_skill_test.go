@@ -190,7 +190,7 @@ func TestAgentSkillRepo_ScopeSeedAndDeleteGuard(t *testing.T) {
 		t.Fatalf("新技能应带上确认时选的场景: %+v", s)
 	}
 	// 已有技能再预留版本：场景不被覆盖
-	in.Enabled, in.DramaSteps, in.Version.SHA256, in.Version.PackageKey = false, []string{"adapt"}, "b", "agent-skills/demo/b.zip"
+	in.Enabled, in.DramaSteps, in.Version.SHA256, in.Version.PackageKey = false, []string{"plan"}, "b", "agent-skills/demo/b.zip"
 	if s2, _, err := r.ReserveVersion(ctx, in); err != nil || !s2.Enabled || s2.DramaSteps[0] != "video" {
 		t.Fatalf("新版本不应改场景: %+v %v", s2, err)
 	}
