@@ -25,7 +25,12 @@ import type { CanvasNode, CanvasNodeData } from "@/types";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
 import { showVersionBadge } from "@/utils/canvas/versions";
 import { nodeFrameSize, paramAspect } from "@/utils/canvas/node-frame";
-import { applyPickedAssets, emptyCharacter, MAX_EXTRAS } from "@/utils/characters/node-character";
+import {
+  applyPickedAssets,
+  characterImageUploaded,
+  emptyCharacter,
+  MAX_EXTRAS,
+} from "@/utils/characters/node-character";
 import { characterNodeAspect, characterNodeView, voiceCell } from "@/utils/characters/node-view";
 import { lowestUnit } from "@/utils/pricing/quote";
 
@@ -92,54 +97,60 @@ export function CharacterCanvasNode({
   };
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
+  // 主图是用户自己上传 / 从素材库选的：没有提示词可改，不出生成面板（功能区照常）
+  const userImage = characterImageUploaded(data);
   return (
     <>
       <CharacterNodeBody id={id} data={data} vm={vm} voiceGen={voiceGen} />
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && (
           <NodeOverlays key="overlays" id={id} data={data}>
-            {(width) => (
-              <TaskPromptPanel
-                vm={vm}
-                data={data}
-                kind="image"
-                nodeId={id}
-                width={width}
-                secondarySubmit={withVoice}
-              />
-            )}
+            {userImage
+              ? undefined
+              : (width) => (
+                  <TaskPromptPanel
+                    vm={vm}
+                    data={data}
+                    kind="image"
+                    nodeId={id}
+                    width={width}
+                    secondarySubmit={withVoice}
+                  />
+                )}
           </NodeOverlays>
         )}
       </NodeOverlaysPresence>
-      <PromptEditDialog
-        id={id}
-        title={data.label}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              usePromptEditor.getState().close();
-              useCharacterDetail.getState().open(id);
-            }}
-          >
-            <AudioLines />
-            角色详情与音色
-          </Button>
-        }
-      >
-        {(width) => (
-          <TaskPromptPanel
-            vm={vm}
-            data={data}
-            kind="image"
-            nodeId={id}
-            width={width}
-            className={PROMPT_DIALOG_PANEL_CLASS}
-            secondarySubmit={withVoice}
-          />
-        )}
-      </PromptEditDialog>
+      {!userImage && (
+        <PromptEditDialog
+          id={id}
+          title={data.label}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                usePromptEditor.getState().close();
+                useCharacterDetail.getState().open(id);
+              }}
+            >
+              <AudioLines />
+              角色详情与音色
+            </Button>
+          }
+        >
+          {(width) => (
+            <TaskPromptPanel
+              vm={vm}
+              data={data}
+              kind="image"
+              nodeId={id}
+              width={width}
+              className={PROMPT_DIALOG_PANEL_CLASS}
+              secondarySubmit={withVoice}
+            />
+          )}
+        </PromptEditDialog>
+      )}
     </>
   );
 }
@@ -223,6 +234,8 @@ function CharacterNodeBody({
   const badge = showVersionBadge(data);
 
   const showTask = SHOWS_TASK_BODY.has(vm.view.phase);
+  // 主图在传：节点上自己点的，或者从短剧资产列表 / 拖放传进来的（只记在节点的 uploadProgress 上）
+  const mainUploading = media.uploading === "main" || data.uploadProgress !== undefined;
   const extraFull = character.extras.length >= MAX_EXTRAS;
 
   return (
@@ -263,11 +276,11 @@ function CharacterNodeBody({
                 variant="secondary"
                 size="sm"
                 className="w-full max-w-40"
-                disabled={media.uploading === "main"}
+                disabled={mainUploading}
                 onClick={() => media.pickFile("image", "main")}
               >
                 <Upload />
-                {media.uploading === "main" ? "上传中…" : "上传"}
+                {mainUploading ? "上传中…" : "上传"}
               </Button>
               <Button
                 variant="secondary"

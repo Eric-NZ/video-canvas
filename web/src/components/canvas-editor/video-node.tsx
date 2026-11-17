@@ -40,7 +40,9 @@ import { useTrimStore } from "@/store/trim";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskNode } from "@/hooks/use-task-node";
+import { useFillUploadActions } from "@/hooks/use-fill-upload";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
+import { canFillNode } from "@/utils/canvas/fill-upload";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
 import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
@@ -62,6 +64,7 @@ import { VersionBadge } from "@/components/canvas/version-badge";
 import { showVersionBadge } from "@/utils/canvas/versions";
 
 import { useRegisterNodeActions } from "./node-actions";
+import { NodeFillActions } from "./node-fill-actions";
 import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialog";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
@@ -413,6 +416,9 @@ function MediaTaskNode({
   }, [id, leaveFramePick, multiSelected, selected]);
 
   const badge = showVersionBadge(data);
+  // 空节点占位里给「上传」「素材库」，放进去后变成上传素材
+  const fillActions = useFillUploadActions();
+  const fillable = !!fillActions && canFillNode(data);
 
   return (
     <>
@@ -445,6 +451,9 @@ function MediaTaskNode({
             placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
             mediaType={mediaType}
             placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
+            placeholderActions={
+              fillable ? <NodeFillActions id={id} actions={fillActions} /> : undefined
+            }
             // 扩图在合成 / 上传的阶段还没有任务，没有可取消的东西（设计稿 6.17：本期不做）
             onCancel={!outpaintRunner.isActive(id) ? vm.cancel : undefined}
             cancelling={vm.cancelling}

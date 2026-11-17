@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { Hand, Plus, Search } from "lucide-react";
+import { Hand, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { ChromePill, ChromeZone } from "@/components/canvas/chrome/chrome";
@@ -29,9 +29,10 @@ import {
   type AssetItem,
 } from "@/utils/drama/assets";
 import { isActiveJob, writingAssetPrompts } from "@/utils/drama/jobs";
+import { planFileDrop } from "@/utils/canvas/fill-upload";
 import { lowestUnit } from "@/utils/pricing/quote";
 
-import { AssetCard, TYPE_ICON } from "./asset-card";
+import { AddAssetCard, AssetCard, TYPE_ICON } from "./asset-card";
 import { useAssetsUi } from "./assets-ui";
 import { useWorkspace } from "./context";
 import { useMarquee } from "./use-marquee";
@@ -238,6 +239,39 @@ function AssetList({ items }: { items: AssetItem[] }) {
     toast.info("已在短剧画布上新建节点，列表同步出现");
   };
 
+  /** 每个文件建一张当前类型的卡并传进去，归类和「新建」一样按当前 tab 和集数 */
+  const createFromFiles = (files: File[]) => {
+    if (files.length === 0 || ui.type === "text") return;
+    ui.setNewDrama({ drama: dramaForNewAsset(ui.type, ui.filter) });
+    editor.fill.createFilled(newNodeKindOf(ui.type), files);
+  };
+  /** 文件拖进列表：一个文件松在空卡上就放进那张卡，其余按文件新建卡；文本 tab 不收文件 */
+  const [fileOver, setFileOver] = useState(false);
+  const acceptsFiles = (event: React.DragEvent) =>
+    ui.type !== "text" && event.dataTransfer.types.includes("Files");
+  const onFileDragOver = (event: React.DragEvent) => {
+    if (!acceptsFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setFileOver(true);
+  };
+  const onFileDragLeave = (event: React.DragEvent) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFileOver(false);
+  };
+  const onFileDrop = (event: React.DragEvent) => {
+    setFileOver(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (!acceptsFiles(event) || files.length === 0) return;
+    event.preventDefault();
+    const id = (event.target as Element)
+      .closest?.("[data-asset-id]")
+      ?.getAttribute("data-asset-id");
+    const target = shown.find((item) => item.id === id);
+    const plan = planFileDrop(files, target ? { id: target.id, data: target.data } : null);
+    if (plan.mode === "fill") editor.fill.fillFile(plan.id, files[0]);
+    else createFromFiles(files);
+  };
+
   /** 正在拆解的是当前筛选的集（全集时任一集在拆）：空列表不说「还没有」，说拆完会出现 */
   const breaking = jobs.some(
     (job) =>
@@ -303,6 +337,9 @@ function AssetList({ items }: { items: AssetItem[] }) {
         <div
           ref={marqueeRef}
           {...marqueeHandlers}
+          onDragOver={onFileDragOver}
+          onDragLeave={onFileDragLeave}
+          onDrop={onFileDrop}
           className={cn(
             "relative min-h-full p-4",
             selectedItems.length > 0 && "pb-24",
@@ -326,26 +363,35 @@ function AssetList({ items }: { items: AssetItem[] }) {
                 onLocate={() => locate(item.id)}
                 onEditPrompt={() => usePromptEditor.getState().open(item.id)}
                 onEditCharacter={() => useCharacterDetail.getState().open(item.id)}
+                onUpload={() => editor.fill.pickFile(item.id)}
+                onPickLibrary={() => editor.fill.pickAsset(item.id)}
               />
             ))}
-            <button
-              type="button"
-              onClick={createNew}
-              className="text-muted-foreground hover:bg-muted/60 focus-visible:ring-ring/50 flex aspect-3/4 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-sm outline-none focus-visible:ring-2"
-            >
-              <Plus className="size-5" />
-              {ui.type === "character" ? "引入角色卡" : `新建${typeMeta.label}`}
-              <span className="text-xs">
-                {ui.filter.kind === "none"
+            <AddAssetCard
+              type={ui.type}
+              scope={
+                ui.filter.kind === "none"
                   ? "未分类"
                   : ui.filter.kind === "episode"
                     ? `出现在第 ${ui.filter.no} 集`
-                    : "全集出现"}
-              </span>
-            </button>
+                    : "全集出现"
+              }
+              onCreate={createNew}
+            />
           </div>
           {shown.length === 0 && (
             <div className="text-muted-foreground py-8 text-center text-sm">{hint}</div>
+          )}
+          {fileOver && (
+            <div
+              aria-hidden
+              className="ring-primary/70 bg-primary/5 text-foreground pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl ring-2 ring-inset"
+            >
+              <span className="bg-chrome ring-chrome-border flex items-center gap-1.5 rounded-full px-4 py-2 text-sm ring-1 backdrop-blur-xl">
+                <Upload className="size-4" />
+                松手上传
+              </span>
+            </div>
           )}
           {marqueeBox && (
             <div

@@ -1,4 +1,5 @@
 import type { CanvasNodeData, FlowNode, NodeDrama } from "@/types";
+import { characterImageUploaded } from "@/utils/characters/node-character";
 
 /** 资产区的类型 tab（角色 / 场景 / 道具来自拆解，其余是画布里随手建的素材） */
 export type AssetType = "character" | "scene" | "prop" | "text" | "image" | "video" | "audio";
@@ -20,7 +21,8 @@ export const GENERATED_TYPES: AssetType[] = ["character", "scene", "prop"];
 export type EpisodeFilter = { kind: "all" } | { kind: "episode"; no: number } | { kind: "none" };
 
 /** 卡片状态 */
-export type AssetStatus = "idle" | "analyzing" | "running" | "done" | "error";
+/** uploading：正在把本地文件传进这个节点 */
+export type AssetStatus = "idle" | "analyzing" | "uploading" | "running" | "done" | "error";
 
 /** 列表里的一项资产：读自画布节点，不另存 */
 export type AssetItem = {
@@ -79,8 +81,10 @@ export type StatusContext = {
   analyzing?: boolean;
 };
 
-/** 卡片状态：失败 / 生成中优先，其次看有没有素材；还在写提示词的空节点是「分析设定中」 */
+/** 卡片状态：上传中、失败 / 生成中优先，其次看有没有素材；还在写提示词的空节点是「分析设定中」 */
 export function assetStatusOf(data: CanvasNodeData, ctx: StatusContext = {}): AssetStatus {
+  // 带着上传进度就是在传文件：媒体节点同时是 running，角色卡只有进度
+  if (data.uploadProgress !== undefined) return "uploading";
   if (data.status === "running") return "running";
   if (data.status === "error") return "error";
   // 角色卡节点的主图就是节点自己的 src，和图片节点同一个判断
@@ -138,23 +142,36 @@ export function countByType(
   return counts;
 }
 
-/** 可批量生成的：角色 / 场景 / 道具里已分类、待生成或失败的 */
+/**
+ * 资产是不是用户自己给的素材（上传或从素材库选）：上传的媒体节点；
+ * 角色卡看当前主图那一版有没有生成任务，没有就是上传 / 素材库来的。
+ * 这类资产没有提示词可改，批量生成和勾选都跳过。
+ */
+export function assetUploaded(data: CanvasNodeData): boolean {
+  return !!data.uploaded || characterImageUploaded(data);
+}
+
+const isUploadedAsset = (item: AssetItem) => assetUploaded(item.data);
+
+/** 可批量生成的：角色 / 场景 / 道具里已分类、待生成或失败的；上传的不算 */
 export function pendingGenerate(items: readonly AssetItem[], type: AssetType): AssetItem[] {
   if (!GENERATED_TYPES.includes(type)) return [];
   return items.filter(
     (item) =>
       item.type === type &&
+      !isUploadedAsset(item) &&
       item.episodes !== null &&
       (item.status === "idle" || item.status === "error"),
   );
 }
 
-/** 可框选生成的：角色 / 场景 / 道具里已分类、不在生成或分析中的；已生成的再生成一次就是重新生成 */
+/** 可框选生成的：角色 / 场景 / 道具里已分类、不在生成或分析中的；已生成的再生成一次就是重新生成；上传的不算 */
 export function generatable(items: readonly AssetItem[], type: AssetType): AssetItem[] {
   if (!GENERATED_TYPES.includes(type)) return [];
   return items.filter(
     (item) =>
       item.type === type &&
+      !isUploadedAsset(item) &&
       item.episodes !== null &&
       (item.status === "idle" || item.status === "error" || item.status === "done"),
   );

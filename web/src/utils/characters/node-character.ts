@@ -8,7 +8,7 @@ import type {
 } from "@/types";
 import { takeUploadFile } from "@/utils/canvas/media";
 import { newNodeLabel } from "@/utils/canvas/node-label";
-import { appendOutput } from "@/utils/canvas/outputs";
+import { activeOutputIdOf, appendOutput, readOutputs } from "@/utils/canvas/outputs";
 import type { CharacterRefs } from "@/utils/tasks/capabilities";
 
 /** 形象（造型）名的默认值 */
@@ -232,6 +232,18 @@ export function takeCharacterFile(file: File, want: "image" | "audio"): Characte
     return { ok: false, reason: want === "image" ? "角色形象只能上传图片" : "音色只能上传音频" };
   }
   return { ok: true };
+}
+
+/**
+ * 角色卡当前的主图是不是用户自己给的（上传或从素材库选）：当前那一版没有生成任务就是。
+ * 这样的角色卡不出生成面板、没有提示词可改，短剧批量生成也跳过；在历史里切回生成的那一版就恢复。
+ * @param data 节点数据
+ */
+export function characterImageUploaded(data: CanvasNodeData): boolean {
+  if (data.kind !== "character") return false;
+  const activeId = activeOutputIdOf(data);
+  const active = readOutputs(data).find((output) => output.id === activeId);
+  return !!active && !active.taskId;
 }
 
 /** 选好 / 传好素材后写回节点：要改的字段，和被拒的素材的原因（界面就地提示） */

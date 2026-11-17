@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 import type { CanvasTool } from "@/components/canvas";
 import type { SaveStatus } from "@/hooks/use-canvas-persistence";
 import type { CanvasHistory } from "@/hooks/use-canvas-history";
+import type { FillUploadActions } from "@/hooks/use-fill-upload";
 import type { FlowNode, NodeKind } from "@/types";
 
 /**
@@ -49,6 +50,8 @@ export type CanvasEditorApi = CanvasEditorCommands & {
   openAssetPicker: () => void;
   /** 打开设置弹窗（里面按节点种类列出模型清单） */
   openSettings: () => void;
+  /** 往空节点里放素材（上传 / 素材库）、按文件新建并放好的节点 */
+  fill: FillUploadActions;
 };
 
 const CanvasEditorApiContext = createContext<CanvasEditorApi | null>(null);

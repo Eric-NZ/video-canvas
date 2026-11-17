@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { CanvasNodeData, NodeCharacter } from "@/types";
 import {
+  characterImageUploaded,
   addExtra,
   applyMainImage,
   applyPickedAssets,
@@ -471,5 +472,39 @@ describe("renameCharacter：改角色名", () => {
   test("名字超过上限按字符截断，保留首尾以外的内容不动", () => {
     const out = renameCharacter(data(), "字".repeat(80));
     expect([...(out.character?.name ?? "")]).toHaveLength(64);
+  });
+});
+
+describe("characterImageUploaded：主图是不是用户自己给的", () => {
+  const output = (id: string, taskId?: string) => ({
+    id,
+    src: `https://cdn/${id}.png`,
+    mediaType: "image" as const,
+    assetId: id,
+    createdAt: 1,
+    ...(taskId ? { taskId } : {}),
+  });
+  const node = (activeOutputId?: string) =>
+    ({
+      kind: "character",
+      label: "林晚",
+      outputs: [output("gen", "t1"), output("up")],
+      ...(activeOutputId ? { activeOutputId } : {}),
+    }) as CanvasNodeData;
+
+  test("当前主图是上传 / 素材库来的（没有生成任务）", () => {
+    expect(characterImageUploaded(node("up"))).toBe(true);
+  });
+
+  test("切回生成的那一版就不是了", () => {
+    expect(characterImageUploaded(node("gen"))).toBe(false);
+  });
+
+  test("还没有主图的空角色卡不是", () => {
+    expect(characterImageUploaded({ kind: "character", label: "x" } as CanvasNodeData)).toBe(false);
+  });
+
+  test("不是角色卡一律不是", () => {
+    expect(characterImageUploaded({ ...node("up"), kind: "image" })).toBe(false);
   });
 });
