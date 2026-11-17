@@ -282,6 +282,7 @@ var (
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
+	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），

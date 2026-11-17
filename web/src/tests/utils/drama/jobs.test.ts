@@ -16,7 +16,8 @@ import {
   jobConflictReason,
   userJobs,
   planningRow,
-  planningEtaMinutes,
+  pipelineEta,
+  etaLabel,
   jobTitle,
   mergeJob,
   pruneFinished,
@@ -35,6 +36,7 @@ const job = (patch: Partial<DramaJob> = {}): DramaJob => ({
   errorCode: 0,
   errorMessage: "",
   createdAt: "2026-10-28T10:00:00Z",
+  startedAt: null,
   finishedAt: null,
   lane: "user",
   batchFrom: null,
@@ -385,6 +387,25 @@ describe("JobBar 规划行 planningRow", () => {
     expect(row?.kind === "running" && row.detail).toContain("研读");
   });
 
+  test("研读中有粗读中位耗时：进度按已用时间 ÷ 中位耗时往前走，最多 90%", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    const eta = { analyzeSeconds: 40, planSeconds: 0, planBatchesLeft: 0 };
+    const analyze = (seconds: number) =>
+      job({
+        lane: "pipeline",
+        step: "analyze",
+        episodes: [],
+        progress: 0,
+        startedAt: new Date(now - seconds * 1000).toISOString(),
+      });
+    expect(planningRow(drama({ eta }), [analyze(10)], now)).toMatchObject({ progress: 25 });
+    expect(planningRow(drama({ eta }), [analyze(120)], now)).toMatchObject({ progress: 90 });
+    // 历史不足：保持后端给的进度
+    expect(
+      planningRow(drama({ eta: { ...eta, analyzeSeconds: 0 } }), [analyze(10)], now),
+    ).toMatchObject({ progress: 0 });
+  });
+
   test("规划中：正在规划第 a–b 章 · 已出 N 集目录，进度按规划游标 / 范围终点", () => {
     const row = planningRow(
       drama({
@@ -456,35 +477,68 @@ describe("JobBar 规划行 planningRow", () => {
   });
 });
 
-describe("规划还要多久 planningEtaMinutes", () => {
-  const hour = 3_600_000;
-  const created = (now: number, agoMs: number) => new Date(now - agoMs).toISOString();
+describe("自动规划还要多久 pipelineEta", () => {
+  const now = Date.parse("2026-11-04T12:00:00Z");
+  const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+  const eta = { analyzeSeconds: 40, planSeconds: 120, planBatchesLeft: 3 };
+  const drama = (patch: Record<string, unknown> = {}) => ({
+    phase: "running" as const,
+    eta,
+    ...patch,
+  });
+  const analyze = (startedAt: string | null) =>
+    job({ lane: "pipeline", step: "analyze", episodes: [], startedAt, progress: 0 });
+  const plan = (startedAt: string | null) =>
+    job({ lane: "pipeline", step: "plan", episodes: [], startedAt });
 
-  test("按已规划的速度推算：1 小时规划了 300 个，还剩 900 个，约 180 分钟", () => {
-    const now = Date.parse("2026-11-04T12:00:00Z");
-    expect(
-      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 300, rangeEnd: 1200 }, now),
-    ).toBe(180);
+  test("粗读中：粗读剩余 = 中位耗时 − 已跑时间；规划按批次 × 每批中位耗时；合计两者", () => {
+    expect(pipelineEta(drama(), [analyze(ago(10))], now)).toEqual({
+      analyze: 30,
+      plan: 360,
+      total: 390,
+    });
   });
 
-  test("还没规划出任何单元、或已规划完、或时间不对：没有预估", () => {
-    const now = Date.parse("2026-11-04T12:00:00Z");
-    expect(
-      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 0, rangeEnd: 100 }, now),
-    ).toBeNull();
-    expect(
-      planningEtaMinutes({ createdAt: created(now, hour), planCursor: 100, rangeEnd: 100 }, now),
-    ).toBeNull();
-    expect(
-      planningEtaMinutes({ createdAt: created(now, -hour), planCursor: 10, rangeEnd: 100 }, now),
-    ).toBeNull();
+  test("粗读还在排队：剩余就是完整的中位耗时", () => {
+    expect(pipelineEta(drama(), [analyze(null)], now).analyze).toBe(40);
   });
 
-  test("最少 1 分钟", () => {
-    const now = Date.parse("2026-11-04T12:00:00Z");
+  test("超过中位耗时：剩余为 0（界面写「即将完成」），不出现负数", () => {
+    expect(pipelineEta(drama(), [analyze(ago(90))], now)).toMatchObject({ analyze: 0, total: 360 });
+  });
+
+  test("规划中：当前批扣掉已跑时间，再加后面的批次", () => {
+    expect(pipelineEta(drama(), [plan(ago(20))], now)).toEqual({
+      analyze: null,
+      plan: 340,
+      total: 340,
+    });
+  });
+
+  test("历史不足（秒数为 0）的步骤不估：粗读不知道就没有合计，规划不知道也没有合计", () => {
     expect(
-      planningEtaMinutes({ createdAt: created(now, 1000), planCursor: 99, rangeEnd: 100 }, now),
-    ).toBe(1);
+      pipelineEta(drama({ eta: { ...eta, analyzeSeconds: 0 } }), [analyze(ago(10))], now),
+    ).toEqual({ analyze: null, plan: 360, total: null });
+    expect(pipelineEta(drama({ eta: { ...eta, planSeconds: 0 } }), [plan(ago(10))], now)).toEqual({
+      analyze: null,
+      plan: null,
+      total: null,
+    });
+  });
+
+  test("没有预计原料或不在规划中：都没有", () => {
+    const none = { analyze: null, plan: null, total: null };
+    expect(pipelineEta(drama({ eta: null }), [analyze(ago(10))], now)).toEqual(none);
+    expect(pipelineEta(drama({ phase: "paused" }), [], now)).toEqual(none);
+  });
+});
+
+describe("还需多久的文案 etaLabel", () => {
+  test("0 秒写「即将完成」，不到一分钟写「还需不到 1 分钟」，其余按分钟 / 小时", () => {
+    expect(etaLabel(0)).toBe("即将完成");
+    expect(etaLabel(30)).toBe("还需不到 1 分钟");
+    expect(etaLabel(390)).toBe("还需约 7 分钟");
+    expect(etaLabel(9000)).toBe("还需约 2.5 小时");
   });
 });
 

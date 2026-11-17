@@ -459,7 +459,8 @@ export function OverviewArea({
           )}
         </section>
 
-        <div className="grid gap-5">
+        {/* 列宽要卡住：集号提示是一整行不换行的长文本，不加 min-w-0 / minmax(0,1fr) 会把这一列撑出屏幕 */}
+        <div className="grid min-w-0 grid-cols-1 gap-5">
           <section className="bg-card border-border rounded-2xl border">
             <h2 className="px-[18px] pt-4 pb-2.5 text-[15px] font-semibold">整体完成度</h2>
             <div className="flex items-center gap-[18px] px-[18px] pb-[18px]">
@@ -483,7 +484,7 @@ export function OverviewArea({
 
           <section className="bg-card border-border rounded-2xl border pb-2">
             <h2 className="px-[18px] pt-4 pb-2 text-[15px] font-semibold">下一步</h2>
-            <div className="grid px-2">
+            <div className="grid grid-cols-1 px-2">
               {next.kind === "scripts" && (
                 <NextItem
                   icon={<ScrollText className="size-4" />}

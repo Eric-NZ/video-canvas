@@ -198,7 +198,9 @@ func promptRatio(prompt string) string {
 
 // DecodeOutput 严格解析单个 JSON 对象，拒绝未知、重复、缺失或 null 字段，并执行步骤语义校验。
 // 返回对应步骤的非指针输出，包括 StoryboardOutput。
+// 解析前先去掉思考模型常见的包装：开头的 <think> 块、包住整个 JSON 的代码围栏；围栏外再有文字仍判不合格。
 func DecodeOutput(step string, data []byte) (any, error) {
+	data = stripThink(data)
 	// 创作段输出纯文本，不走 JSON 解码；格式段才解析结构
 	if draftStep(step) {
 		text, err := decodeDraft(data)
@@ -210,6 +212,7 @@ func DecodeOutput(step string, data []byte) (any, error) {
 	if !utf8.Valid(data) {
 		return nil, invalidOutput("JSON 必须使用 UTF-8 编码")
 	}
+	data = stripFence(data)
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := checkJSONValue(decoder, 0); err != nil {
 		return nil, err
@@ -231,6 +234,35 @@ func DecodeOutput(step string, data []byte) (any, error) {
 		return nil, err
 	}
 	return outputValue(definition.value)
+}
+
+// stripThink 去掉正文开头的 <think>…</think> 块：有些渠道把思考内容直接写进正文，不走 reasoning_content。
+// 没闭合的思考块原样保留，交给后面的校验判不合格。
+func stripThink(data []byte) []byte {
+	rest, ok := bytes.CutPrefix(bytes.TrimSpace(data), []byte("<think>"))
+	if !ok {
+		return data
+	}
+	if _, after, found := bytes.Cut(rest, []byte("</think>")); found {
+		return bytes.TrimSpace(after)
+	}
+	return data
+}
+
+// stripFence 去掉包住整段输出的 Markdown 代码围栏（```json 或 ```）；不是首尾成对的围栏就原样返回。
+func stripFence(data []byte) []byte {
+	text := bytes.TrimSpace(data)
+	fence := []byte("```")
+	if !bytes.HasPrefix(text, fence) || !bytes.HasSuffix(text, fence) || len(text) < 2*len(fence) {
+		return data
+	}
+	body := text[len(fence) : len(text)-len(fence)]
+	// 首行是语言标记（json 或空），正文从下一行开始
+	lang, rest, found := bytes.Cut(body, []byte("\n"))
+	if !found || len(bytes.TrimSpace(lang)) > 0 && !bytes.EqualFold(bytes.TrimSpace(lang), []byte("json")) {
+		return data
+	}
+	return rest
 }
 
 // outputDefinition 描述一个步骤的目标类型、顶层字段和可选对象数组字段。

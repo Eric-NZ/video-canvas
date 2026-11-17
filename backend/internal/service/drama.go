@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"video-canvas/internal/drama"
@@ -111,11 +112,12 @@ type DramaService struct {
 	assets       DramaComposeAssets
 	covers       DramaCoverReader
 	coverURL     func(key string) string
+	retryDelays  []time.Duration // 文本模型遇到限流 / 上游故障时每次重试前等多久，次数即重试上限
 }
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL}
+	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL, retryDelays: dramaRetryDelays}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -244,6 +246,9 @@ func (s *DramaService) Get(ctx context.Context, userID, id uint64) (*model.Drama
 	}
 	for _, j := range jobs {
 		v.ActiveJobs = append(v.ActiveJobs, jobView(j))
+	}
+	if v.Eta, err = s.planningEta(ctx, p); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
@@ -484,7 +489,7 @@ func (s *DramaService) dramaEpisodeView(ctx context.Context, ep model.DramaEpiso
 
 // jobView 映射任务状态并保证空范围为[]。
 func jobView(j model.DramaJob) model.DramaJobView {
-	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+	v := model.DramaJobView{ID: idcodec.ID(j.ID), Lane: j.Lane, BatchFrom: j.BatchFrom, BatchTo: j.BatchTo, Step: j.Step, Episodes: append([]int{}, j.Episodes...), Status: j.Status, Progress: j.Progress, Credits: j.Credits, ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, CreatedAt: j.CreatedAt, StartedAt: j.StartedAt, FinishedAt: j.FinishedAt}
 	if j.Step == "compose" && j.Status == "succeeded" {
 		var result model.DramaComposeResult
 		if json.Unmarshal(j.Output, &result) == nil && result.Asset.ID != 0 {

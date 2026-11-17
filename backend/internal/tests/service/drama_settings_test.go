@@ -360,8 +360,18 @@ var _ service.DramaSettingsRepo = (*dramaMemory)(nil)
 var _ = drama.MaxSourceRunes
 
 func (r *dramaMemory) CleanupDrafts(context.Context) error { return nil }
-func (r *dramaMemory) RecentDramaDurations(context.Context, uint64, string) ([]int, error) {
-	return nil, nil
+func (r *dramaMemory) RecentDramaDurations(_ context.Context, modelID uint64, step string) ([]int, error) {
+	if modelID != 9 {
+		return nil, nil
+	}
+	return append([]int{}, r.durations[step]...), nil
+}
+func (r *dramaMemory) UnitSizes(ctx context.Context, user, id uint64, from, to int) ([]model.DramaUnit, error) {
+	units, err := r.Units(ctx, user, id, from, to)
+	for i := range units {
+		units[i].Text = ""
+	}
+	return units, err
 }
 
 func (r *dramaMemory) SegmentTasks(context.Context, uint64, uint64, string) ([]model.GenerationTask, error) {

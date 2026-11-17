@@ -68,7 +68,7 @@ const UPLOAD_ACCEPT = "image/*,video/*,audio/*";
  * （覆盖 DialogContent 的实心底、居中定位与圆角）
  */
 const CONTENT_CLASS = [
-  "bg-chrome ring-chrome-border flex flex-col gap-0 overflow-hidden rounded-3xl p-0 shadow-2xl backdrop-blur-2xl backdrop-saturate-150",
+  "bg-chrome ring-chrome-border flex flex-col gap-0 overflow-hidden rounded-2xl p-0 [corner-shape:squircle] shadow-2xl backdrop-blur-2xl backdrop-saturate-150",
   "sm:h-[min(48rem,calc(100dvh-4rem))] sm:max-w-[min(68rem,calc(100%-4rem))]",
   "max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:ring-0",
 ].join(" ");
@@ -284,10 +284,11 @@ function PickerBody({
         }}
       />
 
-      {/* 切来源时整块内容淡入：只做 opacity，减少动态效果时不播 */}
+      {/* 切来源时整块内容淡入：只做 opacity，减少动态效果时不播。
+          纵向 flex：空状态（flex-1）撑满剩余高度居中；其余内容不收缩（shrink-0），多了照常滚动 */}
       <div
         key={view.source}
-        className="animate-in fade-in-0 min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-4 duration-150 [scrollbar-width:thin] motion-reduce:animate-none"
+        className="animate-in fade-in-0 flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-3 pb-4 duration-150 [scrollbar-width:thin] motion-reduce:animate-none [&>*]:shrink-0"
       >
         {library ? (
           <LibraryPane
@@ -318,7 +319,7 @@ function PickerBody({
       </div>
 
       <div className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="bg-chrome-hover ring-chrome-border flex h-15 items-center gap-3 rounded-full py-2 pr-2 pl-5 ring-1">
+        <div className="bg-chrome-hover ring-chrome-border flex h-15 items-center gap-3 rounded-2xl py-2 pr-2 pl-5 ring-1 [corner-shape:squircle]">
           <SelectionTray selected={selected} onRemove={toggle} />
           <p
             aria-live="polite"

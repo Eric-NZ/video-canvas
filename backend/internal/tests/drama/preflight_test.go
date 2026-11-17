@@ -97,3 +97,25 @@ func TestPromptBodyCannotReplaceProtocol(t *testing.T) {
 		t.Fatal("技能注入未按字截断")
 	}
 }
+
+// 预计耗时只拿到单元字数和标题（不读正文），估出的剩余批次数要和真实分批一致。
+func TestCountBatchesMatchesNextBatchWithoutText(t *testing.T) {
+	p := drama.Preflight(strings.Repeat("第一段原文。\n", 9000)+strings.Repeat("短章。\n", 40), "novel")
+	for _, cursor := range []int{0, 3, len(p.Units) / 2, len(p.Units) - 1, len(p.Units)} {
+		want := 0
+		for c := cursor; c < len(p.Units); want++ {
+			batch, err := drama.NextBatch(p.Units, c, len(p.Units), 30000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c = batch[len(batch)-1].No
+		}
+		sizes := make([]drama.Unit, len(p.Units))
+		for i, u := range p.Units {
+			sizes[i] = drama.Unit{No: u.No, Title: u.Title, Chars: u.Chars}
+		}
+		if got := drama.CountBatches(sizes, cursor, len(p.Units), 30000); got != want {
+			t.Fatalf("cursor=%d 批次数 got=%d want=%d", cursor, got, want)
+		}
+	}
+}

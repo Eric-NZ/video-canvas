@@ -74,6 +74,25 @@ func NextBatch(units []Unit, cursor, end, budget int) ([]Unit, error) {
 	return out, nil
 }
 
+// CountBatches 只凭单元标题和字数估算剩余批次数，口径与 NextBatch 一致，不需要读正文；
+// 单个单元超出预算时按独占一批计。
+func CountBatches(units []Unit, cursor, end, budget int) int {
+	batches, size, used := 0, 0, 0
+	for _, u := range units {
+		if u.No <= cursor || u.No > end {
+			continue
+		}
+		n := utf8.RuneCountInString(fmt.Sprintf("## [%d] %s\n\n", u.No, u.Title)) + u.Chars
+		if size == 0 || size == 12 || used+n > min(30000, budget) {
+			batches++
+			size, used = 0, 0
+		}
+		size++
+		used += n
+	}
+	return batches
+}
+
 // PlanEpisode 是规划结果，原文区间必须连续覆盖任务批次。
 type PlanEpisode struct {
 	Title       string `json:"title"`

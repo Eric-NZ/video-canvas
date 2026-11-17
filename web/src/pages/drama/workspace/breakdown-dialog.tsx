@@ -3,6 +3,7 @@ import { Loader2, Lock } from "lucide-react";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
+import { DialogSession } from "@/components/dialog-session";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -168,7 +169,9 @@ export function BreakdownDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {open && <BreakdownBody onClose={() => onOpenChange(false)} onStarted={onStarted} />}
+        <DialogSession open={open}>
+          <BreakdownBody onClose={() => onOpenChange(false)} onStarted={onStarted} />
+        </DialogSession>
       </DialogContent>
     </Dialog>
   );

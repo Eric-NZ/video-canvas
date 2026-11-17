@@ -36,7 +36,8 @@ type dramaMemory struct {
 	segments   []model.DramaSegment
 	hasTakes   bool
 	replaceErr error
-	mu         *sync.Mutex // 并发拆解批次时由 lockedDramaMemory 和假画布共用
+	durations  map[string][]int // 按步骤给模型 9 的历史耗时（秒）
+	mu         *sync.Mutex      // 并发拆解批次时由 lockedDramaMemory 和假画布共用
 }
 
 // lockedDramaMemory 让并发的拆解批次安全地读写内存仓储：事务和事务外的单次读取共用一把锁，事务内的调用直接落到内层。

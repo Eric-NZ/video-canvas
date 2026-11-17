@@ -265,6 +265,7 @@ type DramaJobView struct {
 	ErrorCode    int                 `json:"error_code"`
 	ErrorMessage string              `json:"error_message"`
 	CreatedAt    time.Time           `json:"created_at"`
+	StartedAt    *time.Time          `json:"started_at"`
 	FinishedAt   *time.Time          `json:"finished_at"`
 	Result       *DramaComposeResult `json:"result"`
 }
@@ -273,6 +274,13 @@ type DramaJobView struct {
 type DramaComposeResult struct {
 	Asset       AssetView `json:"asset"`
 	SkippedSeqs []int     `json:"skipped_seqs"`
+}
+
+// DramaEta 是自动规划中的预计耗时原料，只在 phase=running 时返回；秒数为 0 表示历史不足，界面不显示。
+type DramaEta struct {
+	AnalyzeSeconds  int `json:"analyze_seconds"`
+	PlanSeconds     int `json:"plan_seconds"`
+	PlanBatchesLeft int `json:"plan_batches_left"`
 }
 
 // DramaView 项目详情。
@@ -306,6 +314,7 @@ type DramaView struct {
 	Revision       int64                         `json:"revision"`
 	Episodes       []DramaEpisodeSummary         `json:"episodes"`
 	ActiveJobs     []DramaJobView                `json:"active_jobs"`
+	Eta            *DramaEta                     `json:"eta"`
 	CreatedAt      time.Time                     `json:"created_at"`
 	UpdatedAt      time.Time                     `json:"updated_at"`
 }

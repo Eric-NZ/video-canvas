@@ -4,6 +4,7 @@ import type { CanvasNodeData, FlowNode } from "@/types";
 import {
   assetEpisodesOf,
   assetStatusOf,
+  assetUploaded,
   assetTypeOf,
   countByType,
   defaultDramaForNew,
@@ -300,5 +301,85 @@ describe("展示与新建", () => {
     });
     expect(dramaForNewAsset("image", { kind: "all" })).toEqual({ episodes: [] });
     expect(dramaForNewAsset("scene", { kind: "none" })).toBeNull();
+  });
+});
+
+describe("上传的资产", () => {
+  test("正在往节点里传文件：卡片状态是上传中，不算生成中", () => {
+    expect(
+      assetStatusOf({
+        kind: "image",
+        label: "x",
+        status: "running",
+        uploadProgress: 30,
+        uploaded: true,
+      } as CanvasNodeData),
+    ).toBe("uploading");
+    expect(
+      assetStatusOf({ kind: "character", label: "x", uploadProgress: 0 } as CanvasNodeData),
+    ).toBe("uploading");
+  });
+
+  test("上传的场景 / 道具不进批量生成，也不能勾选重新生成", () => {
+    const items = toAssetItems([
+      node("up", {
+        drama: { type: "scene", episodes: [] },
+        uploaded: true,
+        src: "https://cdn/a.png",
+        status: "done",
+      }),
+      node("gen", {
+        drama: { type: "scene", episodes: [] },
+        src: "https://cdn/b.png",
+        status: "done",
+      }),
+      node("upFailed", { drama: { type: "scene", episodes: [] }, uploaded: true, status: "error" }),
+    ]);
+    expect(generatable(items, "scene").map((item) => item.id)).toEqual(["gen"]);
+    expect(pendingGenerate(items, "scene")).toEqual([]);
+  });
+});
+
+describe("assetUploaded：用户自己给的素材", () => {
+  const out = (id: string, taskId?: string) => ({
+    id,
+    src: `https://cdn/${id}.png`,
+    mediaType: "image" as const,
+    assetId: id,
+    createdAt: 1,
+    ...(taskId ? { taskId } : {}),
+  });
+
+  test("上传的媒体节点算", () => {
+    expect(assetUploaded({ kind: "image", label: "x", uploaded: true } as CanvasNodeData)).toBe(
+      true,
+    );
+  });
+
+  test("角色卡当前主图是上传 / 素材库来的（没有生成任务）算，生成的不算", () => {
+    const character = (activeOutputId: string) =>
+      ({
+        kind: "character",
+        label: "x",
+        outputs: [out("gen", "t1"), out("up")],
+        activeOutputId,
+        src: "https://cdn/x.png",
+      }) as CanvasNodeData;
+    expect(assetUploaded(character("up"))).toBe(true);
+    expect(assetUploaded(character("gen"))).toBe(false);
+    expect(assetUploaded({ kind: "character", label: "x" } as CanvasNodeData)).toBe(false);
+  });
+
+  test("上传形象的角色卡不进批量生成", () => {
+    const items = toAssetItems([
+      node("up", {
+        kind: "character",
+        drama: { type: "character", episodes: [] },
+        outputs: [out("a1")],
+        activeOutputId: "a1",
+        src: "https://cdn/a1.png",
+      }),
+    ]);
+    expect(generatable(items, "character")).toEqual([]);
   });
 });

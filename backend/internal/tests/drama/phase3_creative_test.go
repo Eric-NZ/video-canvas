@@ -59,3 +59,16 @@ func TestPlanDraftOutputIsText(t *testing.T) {
 		t.Fatalf("空分集目录应判无效，got %v", err)
 	}
 }
+
+func TestDraftOutputDropsThinkBlock(t *testing.T) {
+	got, err := drama.DecodeOutput("plan", []byte("<think>先排一下集数</think>\n\n第一集：标题，梗概。"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "第一集：标题，梗概。" {
+		t.Fatalf("创作稿应去掉思考块，got %#v", got)
+	}
+	if _, err := drama.DecodeOutput("plan", []byte("<think>只想不写</think>")); !errors.Is(err, drama.ErrOutputInvalid) {
+		t.Fatalf("只有思考块的创作稿应判无效，got %v", err)
+	}
+}
