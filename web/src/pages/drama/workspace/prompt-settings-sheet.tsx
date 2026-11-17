@@ -9,6 +9,7 @@ import {
   usePromptLibrary,
   type PromptLibrary,
 } from "@/components/drama/prompts/use-prompt-library";
+import { DialogSession } from "@/components/dialog-session";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PROMPT_STEPS, sameChoice } from "@/utils/drama/prompts";
@@ -137,7 +138,9 @@ export function PromptSettingsSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="bg-chrome ring-chrome-border gap-2 backdrop-blur-xl backdrop-saturate-150 data-[side=right]:sm:max-w-md">
-        {open && <PromptSettingsContent onClose={() => onOpenChange(false)} />}
+        <DialogSession open={open}>
+          <PromptSettingsContent onClose={() => onOpenChange(false)} />
+        </DialogSession>
       </SheetContent>
     </Sheet>
   );

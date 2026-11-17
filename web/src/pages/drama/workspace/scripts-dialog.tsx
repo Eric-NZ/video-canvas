@@ -3,6 +3,7 @@ import { Link2Off, Loader2 } from "lucide-react";
 
 import { submitJob } from "@/api/drama";
 import { dramaErrorMessage } from "@/api/drama/errors";
+import { DialogSession } from "@/components/dialog-session";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -211,7 +212,9 @@ export function ScriptsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {open && <ScriptsBody initial={initial} onClose={() => onOpenChange(false)} />}
+        <DialogSession open={open}>
+          <ScriptsBody initial={initial} onClose={() => onOpenChange(false)} />
+        </DialogSession>
       </DialogContent>
     </Dialog>
   );

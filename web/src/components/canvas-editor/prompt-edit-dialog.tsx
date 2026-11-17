@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { DialogSession } from "@/components/dialog-session";
 import {
   Dialog,
   DialogContent,
@@ -33,25 +34,29 @@ export function PromptEditDialog({
   const open = usePromptEditor((state) => state.nodeId === id);
   return (
     <Dialog open={open} onOpenChange={(next) => !next && usePromptEditor.getState().close()}>
-      {open && (
-        <DialogContent
-          // 弹框渲染在节点组件里，React 事件会沿组件树冒泡到节点和画布：
-          // 拦下单击（免得在列表后面把节点选中，Delete 误删）和双击（免得被当成双击空白画布）
-          onClick={(event) => event.stopPropagation()}
-          onDoubleClick={(event) => event.stopPropagation()}
-          className="w-auto gap-2 p-2 pt-4 sm:max-w-none"
-        >
+      <DialogContent
+        // 弹框渲染在节点组件里，React 事件会沿组件树冒泡到节点和画布：
+        // 拦下单击（免得在列表后面把节点选中，Delete 误删）和双击（免得被当成双击空白画布）
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="w-auto gap-2 p-2 pt-4 sm:max-w-none"
+      >
+        <DialogSession open={open}>
           <DialogHeader className="flex-row items-center gap-2 pr-10 pl-4">
             <DialogTitle className="min-w-0 flex-1 truncate">{title}</DialogTitle>
             <DialogDescription className="sr-only">编辑提示词、模型和参数后生成</DialogDescription>
             {actions}
           </DialogHeader>
-          {/* 窄屏收窄到不超出屏幕 */}
-          {children(Math.min(PANEL_WIDTH, window.innerWidth - 48))}
-        </DialogContent>
-      )}
+          <PanelSlot>{children}</PanelSlot>
+        </DialogSession>
+      </DialogContent>
     </Dialog>
   );
+}
+
+/** 弹框里的生成面板：组件形式，弹框真打开（挂载）了才去量宽度、建面板；窄屏收窄到不超出屏幕 */
+function PanelSlot({ children }: { children: (width: number) => ReactNode }) {
+  return children(Math.min(PANEL_WIDTH, window.innerWidth - 48));
 }
 
 /** 弹框里的面板不再需要浮层自己的底、描边和阴影 */
