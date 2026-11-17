@@ -104,8 +104,10 @@ function FillActions({
   onPickLibrary?: () => void;
 }) {
   return (
-    <div className="absolute inset-x-2.5 bottom-2.5 z-20 translate-y-1.5 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/card:translate-y-0 group-hover/card:opacity-100 focus-within:translate-y-0 focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
-      <div className="bg-chrome ring-chrome-border flex items-center gap-0.5 rounded-full p-1 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150">
+    <div className="absolute inset-x-2.5 bottom-2.5 z-20">
+      {/* 淡入淡出加在带模糊的这一层上：祖先半透明会让 backdrop-blur 失效，淡出一开始模糊就突然没了，看着像卡顿。
+          退出 150ms，约为进入 200ms 的 70% */}
+      <div className="bg-chrome ring-chrome-border flex translate-y-1.5 items-center gap-0.5 rounded-full p-1 opacity-0 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150 transition-[opacity,translate] duration-150 ease-out will-change-[opacity,translate] group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:duration-200 focus-within:translate-y-0 focus-within:opacity-100 focus-within:duration-200 motion-reduce:transition-none [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
         <button type="button" className={SEGMENT_CLASS} onClick={onUpload}>
           <Upload />
           上传
