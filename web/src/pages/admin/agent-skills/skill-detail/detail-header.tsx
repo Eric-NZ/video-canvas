@@ -1,9 +1,10 @@
-import { ArrowLeft, Check, Download, Ellipsis, Lightbulb, Pencil, Trash2, X } from "lucide-react";
+import { Check, Download, Ellipsis, Lightbulb, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { renameSkill } from "@/api/admin/agent-skill";
 import type { SkillItem } from "@/api/admin/agent-skill/type.d";
 import { CopyButton } from "@/components/admin-ui/copy-button";
+import { DialogDescription, DialogTitle } from "@/components/admin-ui/dialog";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,7 +48,9 @@ function TitleField({
   if (!editing) {
     return (
       <span className="flex min-w-0 items-center gap-1.5">
-        <h1 className="truncate text-xl font-semibold tracking-tight">{item.title}</h1>
+        <DialogTitle className="truncate text-xl font-semibold tracking-tight">
+          {item.title}
+        </DialogTitle>
         {!item.readonly && (
           <Button
             variant="ghost"
@@ -102,23 +105,20 @@ function TitleField({
 }
 
 /**
- * 详情页页头：返回、图标、显示名（可改）、技能名（与显示名不同才显示，可复制）、“在用 N 处”、更多操作菜单。
+ * 详情弹窗的页头：图标、显示名（可改，也是弹窗标题）、技能名（与显示名不同才显示，可复制）、“在用 N 处”、更多操作菜单。
  * 内置技能没有菜单（不能下载、不能删除）。
  * @param item 技能
- * @param onBack 回到列表
  * @param onRenamed 显示名改好后
  * @param onDownload 下载生效版本
  * @param onDelete 删除技能
  */
 export function DetailHeader({
   item,
-  onBack,
   onRenamed,
   onDownload,
   onDelete,
 }: {
   item: SkillItem;
-  onBack: () => void;
   onRenamed: (item: SkillItem) => void;
   onDownload: () => void;
   onDelete: () => void;
@@ -126,10 +126,6 @@ export function DetailHeader({
   const used = scopeTags(item).length;
   return (
     <div data-slot="skill-detail-header" className="grid gap-3">
-      <Button variant="ghost" size="sm" className="w-fit" onClick={onBack}>
-        <ArrowLeft />
-        技能
-      </Button>
       <div className="flex items-center gap-3">
         <span className="bg-chrome ring-chrome-border text-muted-foreground grid size-11 shrink-0 place-items-center rounded-2xl ring-1">
           <Lightbulb className="size-5" />
@@ -140,10 +136,10 @@ export function DetailHeader({
             {item.readonly && <Tag>内置</Tag>}
           </span>
           {item.title !== item.name && (
-            <span className="text-muted-foreground flex min-w-0 items-center gap-1 font-mono text-xs">
+            <DialogDescription className="flex min-w-0 items-center gap-1 font-mono text-xs">
               <span className="truncate">{item.name}</span>
               <CopyButton text={item.name} iconOnly label="复制技能名" />
-            </span>
+            </DialogDescription>
           )}
         </div>
         <Tag tone={used > 0 ? "success" : "neutral"} className="shrink-0 tabular-nums">

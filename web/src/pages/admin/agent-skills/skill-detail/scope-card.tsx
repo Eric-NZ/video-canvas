@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 
 import type { SkillItem } from "@/api/admin/agent-skill/type.d";
-import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Switch } from "@/components/ui/switch";
@@ -32,7 +31,11 @@ export function ScopeCard({
   onToggle: (scope: SkillScopeKey, next: boolean) => void;
 }) {
   return (
-    <section data-slot="scope-card" aria-label="用在哪里" className={cn(GLASS_PANEL, "pb-2")}>
+    <section
+      data-slot="scope-card"
+      aria-label="用在哪里"
+      className="ring-chrome-border rounded-2xl pb-2 ring-1"
+    >
       <h2 className="px-4 pt-4 text-sm font-semibold">用在哪里</h2>
       {SKILL_SCOPES.map((scope, index) => {
         const on = scopeOn(item, scope.key);
