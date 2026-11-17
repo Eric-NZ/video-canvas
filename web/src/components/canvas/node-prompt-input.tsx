@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle } from "lucide-react";
 
+import { ModelLogo } from "@/components/model-logo";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -207,6 +208,14 @@ function PromptFooter({
             className={cn(PANEL_CHIP_CLASS, modelInvalid && "text-destructive")}
             aria-label="选择模型"
           >
+            {/* 当前模型的品牌 logo；模型有问题（警示色）时不放，免得看着像正常可用 */}
+            {model && !modelInvalid && (
+              <ModelLogo
+                vendor={model.vendor}
+                name={model.label}
+                className="size-4 rounded-[5px]"
+              />
+            )}
             <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
             <ChevronDown className="opacity-50" />
           </DropdownMenuTrigger>

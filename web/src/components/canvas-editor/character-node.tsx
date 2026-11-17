@@ -36,7 +36,11 @@ import { lowestUnit } from "@/utils/pricing/quote";
 
 import { CharacterDetailDialog } from "./character-detail-dialog";
 import { useRegisterNodeActions } from "./node-actions";
-import { PROMPT_DIALOG_PANEL_CLASS, PromptEditDialog } from "./prompt-edit-dialog";
+import {
+  PROMPT_DIALOG_ACTION_CLASS,
+  PROMPT_DIALOG_PANEL_CLASS,
+  PromptEditDialog,
+} from "./prompt-edit-dialog";
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
@@ -125,17 +129,16 @@ export function CharacterCanvasNode({
           id={id}
           title={data.label}
           actions={
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
+              className={PROMPT_DIALOG_ACTION_CLASS}
               onClick={() => {
                 usePromptEditor.getState().close();
                 useCharacterDetail.getState().open(id);
               }}
             >
-              <AudioLines />
               角色详情与音色
-            </Button>
+            </button>
           }
         >
           {(width) => (
