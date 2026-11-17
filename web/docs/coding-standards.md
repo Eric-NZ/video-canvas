@@ -64,7 +64,8 @@
 浮层、工具条、标签组、筛选 / 下拉按钮组等浮在内容上的控件，统一用画布工具条那套半透明外观，不用 `bg-card` / `bg-muted` 加 `border` 的实心卡片。
 
 - 优先直接用 `src/components/canvas/chrome/chrome.tsx` 的 `ChromePill`、`ChromeSeparator`、`ChromeButton`、`ChromeSegment`，不要自己再拼一套。
-- 需要自己写时，底用 `bg-chrome ring-1 ring-chrome-border shadow-lg backdrop-blur-xl backdrop-saturate-150`；胶囊用 `rounded-full`，面板用 `rounded-3xl`。
+- 需要自己写时，底用 `bg-chrome ring-1 ring-chrome-border shadow-lg backdrop-blur-xl backdrop-saturate-150`；胶囊用 `rounded-full`，面板（弹窗、浮窗、托盘）用 `rounded-2xl [corner-shape:squircle]`。
+- 圆角参考苹果：半径偏小，加 `[corner-shape:squircle]` 用连续曲率（不支持的浏览器自动退回普通圆角）。面板里再套的块按「同心」取圆角：内圆角 = 外圆角 − 内边距（16px 的托盘里离边 8px 的块用 `rounded-lg`）；按钮照旧用胶囊 `rounded-full`。
 - 选中态用 `bg-chrome-hover ring-1 ring-chrome-border rounded-full`（同 `ChromeSegment` 的滑块），悬停用 `hover:bg-chrome-hover`。
 - 面板里的输入框用 `bg-chrome-hover border-chrome-border rounded-full`，不用默认的实心输入框。
 - 间距宽松，不要挤：列表行高不低于 40px，面板四周留白不低于 16px。

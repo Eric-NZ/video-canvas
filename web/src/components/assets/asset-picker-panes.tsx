@@ -21,7 +21,7 @@ import { FolderCard } from "./folder-card";
 import { UploadCard } from "./upload-card";
 
 /** 弹框里空状态的占位：高度比资产页矮，免得撑出滚动 */
-const EMPTY_CLASS = "min-h-56 flex-1";
+const EMPTY_CLASS = "min-h-56 flex-1 text-center";
 
 /** 弹框内容区的加载态：居中转圈，不用骨架屏 */
 function PaneLoading() {
