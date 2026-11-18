@@ -79,7 +79,8 @@ func (c *Client) CreateAsset(ctx context.Context, t provider.FilingTarget, image
 	return id, nil
 }
 
-// GetAsset 查询素材的审核状态，返回 provider.FilingAsset*（Active → active，Failed → failed，其余按审核中）。
+// GetAsset 查询素材的审核状态，返回 provider.FilingAsset*：Active → active；Failed / Error / Canceled / Expired → failed
+// （与 PR #80 实测时认的失败状态一致，免得出了结果还一直轮询）；其余按审核中。
 func (c *Client) GetAsset(ctx context.Context, t provider.FilingTarget, assetID string) (string, error) {
 	resp, err := c.call(ctx, t, "GetAsset", map[string]any{"Id": assetID, "ProjectName": projectName(t)})
 	if err != nil {
@@ -88,7 +89,7 @@ func (c *Client) GetAsset(ctx context.Context, t provider.FilingTarget, assetID 
 	switch strings.ToLower(stringField(resp, "Status")) {
 	case "active":
 		return provider.FilingAssetActive, nil
-	case "failed":
+	case "failed", "error", "canceled", "cancelled", "expired":
 		return provider.FilingAssetFailed, nil
 	default:
 		return provider.FilingAssetProcessing, nil

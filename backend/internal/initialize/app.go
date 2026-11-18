@@ -157,13 +157,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	virtualHumanRepo := repository.NewVirtualHumanRepository(db)
+	filedAssets := service.NewFiledAssetResolver(virtualHumanRepo)
 	executor := plugin.New(plugin.Options{
 		Runner:      runnerClient,
 		Codes:       pluginCodeStore{repo: aiPluginRepo},
 		Secrets:     aiCfgSvc,
 		Assets:      assetSvc,
 		Saver:       assetSvc,
-		FiledAssets: service.NewFiledAssetResolver(virtualHumanRepo), // 真人库里备案可用的图片换成 asset://
+		FiledAssets: filedAssets, // 真人库里备案可用的图片换成 asset://
 		IPAllowed:   outboundIPPolicy(cfg),
 	})
 
@@ -260,6 +261,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 插件与渠道管理同助手共用服务；审批写入复用原有预检、校验与版本分配。
 	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiCfgSvc, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
 	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
+	// 方舟虚拟人像库：真人库和生成时的审核状态查询共用一个客户端；解析器比渠道服务先建，这里补上备案目标
+	arkAssets := arkasset.New(arkasset.Options{})
+	filedAssets.UseFiling(aiChannelSvc, arkAssets)
 	adminAuditRepo := repository.NewAdminAssistantRepository(db)
 	adminUsers := service.NewAdminUserService(userRepo, auditRepo, settingsSvc, service.WithAdminControls(service.AdminControls{
 		Credits: taskRepo, // 积分调整与任务冻结 / 结算共用 LockCredit 行锁
@@ -392,7 +396,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		})),
 		VirtualHuman: handler.NewVirtualHumanHandler(service.NewVirtualHumanService(service.VirtualHumanDeps{
 			Repo: virtualHumanRepo, Canvases: canvasProjectRepo, Assets: assetSvc, AssetRows: assetRepo, Views: assetSvc,
-			Filing: aiChannelSvc, Client: arkasset.New(arkasset.Options{}),
+			Filing: aiChannelSvc, Client: arkAssets,
 		})),
 		Files:        handler.NewFilesHandler(assetSvc),
 		AIModel:      handler.NewAIModelHandler(aiCfgSvc),

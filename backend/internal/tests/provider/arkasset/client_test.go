@@ -110,6 +110,9 @@ func TestGetAsset_NormalizesStatus(t *testing.T) {
 	cases := map[string]string{
 		"Active":     provider.FilingAssetActive,
 		"Failed":     provider.FilingAssetFailed,
+		"ERROR":      provider.FilingAssetFailed,
+		"Canceled":   provider.FilingAssetFailed,
+		"Expired":    provider.FilingAssetFailed,
 		"Processing": provider.FilingAssetProcessing,
 		"":           provider.FilingAssetProcessing,
 	}

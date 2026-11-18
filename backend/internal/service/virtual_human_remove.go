@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -191,12 +192,20 @@ func inUseError(refs []model.VirtualHumanRefView) error {
 type FiledAssetImages interface {
 	// GetImageByAsset 按 user_id + asset_id 查询真人图片，不在真人库里返回 repository.ErrNotFound。
 	GetImageByAsset(ctx context.Context, userID, assetID uint64) (*model.VirtualHumanImage, error)
+	// UpdateImageFiling 写回图片的备案结果，不存在返回 repository.ErrNotFound。
+	UpdateImageFiling(ctx context.Context, img *model.VirtualHumanImage) error
 }
 
+// pendingCheckTimeout 是生成时同步查一次审核状态的超时：挂在提交生成的关键路径上，不能把用户卡住。
+const pendingCheckTimeout = 5 * time.Second
+
 // FiledAssetResolver 实现 provider.FiledAssetResolver：生成时把真人库里备案可用的图片换成 asset://<方舟素材 ID>。
-// 单独成一个类型，是因为插件执行器比渠道服务先组装，不能依赖完整的 VirtualHumanService。
+// 单独成一个类型，是因为插件执行器比渠道服务先组装，不能依赖完整的 VirtualHumanService；
+// 查审核状态要用的备案目标和方舟客户端在渠道服务建好后由 UseFiling 接上。
 type FiledAssetResolver struct {
 	images FiledAssetImages
+	filing FilingTargetSource
+	client FilingClient
 }
 
 // NewFiledAssetResolver 创建解析器。
@@ -204,8 +213,18 @@ func NewFiledAssetResolver(images FiledAssetImages) *FiledAssetResolver {
 	return &FiledAssetResolver{images: images}
 }
 
-// FiledAssetURI 返回素材的方舟引用。只有图片在该用户的真人库里、审核可用、且备案渠道就是任务所走的渠道时才返回 ok=true：
-// 方舟素材只在备案的那个账号下有效，别的渠道拿到也用不了。查询出错按未备案处理（照常传图片地址），只记日志。
+// UseFiling 接上备案目标和方舟客户端，只在 initialize 组装时调用一次（之后不再改，不存在并发写）。
+// 没接上时审核中的图片一律按普通图片传。
+func (r *FiledAssetResolver) UseFiling(filing FilingTargetSource, client FilingClient) {
+	r.filing, r.client = filing, client
+}
+
+// FiledAssetURI 返回素材的方舟引用。只有图片在该用户的真人库里、备案渠道就是任务所走的渠道时才考虑：
+// 方舟素材只在备案的那个账号下有效，别的渠道拿到也用不了。
+//   - 已可用：直接返回 asset://；
+//   - 审核中：同步查一次方舟（5 秒超时）。用户刚提交备案就去生成时方舟往往已经通过，不能因为本地还没刷新
+//     就退回普通地址去撞风控；查到通过或失败都写回，免得下次再查；
+//   - 其余情况、以及任何查询出错，按未备案处理（照常传图片地址），只记日志。
 func (r *FiledAssetResolver) FiledAssetURI(ctx context.Context, userID, assetID uint64, channelKey string) (string, bool) {
 	img, err := r.images.GetImageByAsset(ctx, userID, assetID)
 	if err != nil {
@@ -214,8 +233,47 @@ func (r *FiledAssetResolver) FiledAssetURI(ctx context.Context, userID, assetID 
 		}
 		return "", false
 	}
-	if img.Status != model.FilingActive || img.ArkAssetID == "" || img.ChannelKey != channelKey {
+	if img.ArkAssetID == "" || img.ChannelKey != channelKey {
 		return "", false
 	}
-	return provider.FilingAssetURIPrefix + img.ArkAssetID, true
+	switch img.Status {
+	case model.FilingActive:
+		return provider.FilingAssetURIPrefix + img.ArkAssetID, true
+	case model.FilingPending:
+		if r.checkPending(ctx, img) {
+			return provider.FilingAssetURIPrefix + img.ArkAssetID, true
+		}
+	}
+	return "", false
+}
+
+// checkPending 给一张审核中的图片同步查一次方舟状态，通过返回 true；出了结果（通过或失败）就写回。
+// 当前启用的渠道不是图片的备案渠道时拿不到凭证，不查。
+func (r *FiledAssetResolver) checkPending(ctx context.Context, img *model.VirtualHumanImage) bool {
+	if r.filing == nil || r.client == nil {
+		return false
+	}
+	target, err := r.filing.FilingTarget(ctx)
+	if err != nil || target == nil || target.ChannelKey != img.ChannelKey {
+		return false
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, pendingCheckTimeout)
+	defer cancel()
+	status, err := r.client.GetAsset(checkCtx, *target, img.ArkAssetID)
+	if err != nil {
+		logger.Warn("生成前查询方舟素材状态失败，按普通图片传", zap.Uint64("image_id", img.ID), zap.Error(err))
+		return false
+	}
+	switch status {
+	case provider.FilingAssetActive:
+		img.Status, img.Error = model.FilingActive, ""
+	case provider.FilingAssetFailed:
+		img.Status, img.Error = model.FilingFailed, filingRejectedMsg
+	default:
+		return false
+	}
+	if err := r.images.UpdateImageFiling(ctx, img); err != nil && !errors.Is(err, repository.ErrNotFound) {
+		logger.Warn("写回真人图片备案状态失败", zap.Uint64("image_id", img.ID), zap.Error(err))
+	}
+	return img.Status == model.FilingActive
 }

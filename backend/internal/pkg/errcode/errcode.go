@@ -323,7 +323,7 @@ var (
 	ErrFilingNotConfigured        = New(69007, "管理员尚未配置虚拟人像库，暂时不能加入真人库", http.StatusConflict)
 	ErrFilingUpstream             = New(69008, "方舟接口调用失败，请稍后重试", http.StatusBadGateway)
 	ErrVirtualHumanLastImage      = New(69009, "这是唯一的图片，请改用移除真人", http.StatusConflict)
-	ErrVirtualHumanImageNotPublic = New(69010, "素材存在本地磁盘，方舟拉取不到，请联系管理员配置对象存储", http.StatusConflict)
+	ErrVirtualHumanImageNotPublic = New(69010, "素材地址不是公网地址，方舟拉取不到，请联系管理员配置对象存储或本地存储的公网地址", http.StatusConflict)
 	ErrVirtualHumanRetryInvalid   = New(69011, "只有备案失败的图片可以重新提交", http.StatusConflict)
 	ErrVirtualHumanLimit          = New(69012, "真人数量已达上限", http.StatusConflict)
 )

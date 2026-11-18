@@ -220,6 +220,7 @@ func (c *vhCanvases) CanvasesUsingAssets(_ context.Context, _ uint64, ids []stri
 type vhAssets struct {
 	rows   map[uint64]*model.Asset
 	remote bool
+	base   string // 非空时替换地址前缀，模拟本地存储（相对路径或配了公网 base_url）
 }
 
 func (a *vhAssets) Get(_ context.Context, userID, id uint64) (*model.Asset, error) {
@@ -235,7 +236,11 @@ func (a *vhAssets) Open(ctx context.Context, userID, id uint64) (*provider.Asset
 	if err != nil {
 		return nil, err
 	}
-	return &provider.AssetFile{Asset: row, Body: io.NopCloser(strings.NewReader("")), URL: "https://cdn/" + strconv.FormatUint(id, 10), Remote: a.remote}, nil
+	base := "https://cdn/"
+	if a.base != "" {
+		base = a.base
+	}
+	return &provider.AssetFile{Asset: row, Body: io.NopCloser(strings.NewReader("")), URL: base + strconv.FormatUint(id, 10), Remote: a.remote}, nil
 }
 
 func (a *vhAssets) ListByIDs(_ context.Context, ids []uint64) ([]model.Asset, error) {
@@ -401,7 +406,7 @@ func TestVirtualHuman_CreateErrors(t *testing.T) {
 		{"素材不存在", nil, "a", 404, errcode.ErrVirtualHumanInvalid},
 		{"别人的素材", nil, "a", 30, errcode.ErrVirtualHumanInvalid},
 		{"不是图片", nil, "a", 20, errcode.ErrVirtualHumanInvalid},
-		{"本地存储", func(env *vhEnv) { env.assets.remote = false }, "a", 11, errcode.ErrVirtualHumanImageNotPublic},
+		{"本地存储且地址是相对路径", func(env *vhEnv) { env.assets.remote, env.assets.base = false, "/files/" }, "a", 11, errcode.ErrVirtualHumanImageNotPublic},
 		{"已在真人库", func(env *vhEnv) {
 			_, _ = env.svc.Create(context.Background(), vhUser, "先来的", 11)
 		}, "a", 11, errcode.ErrVirtualHumanImageDup},
@@ -415,6 +420,18 @@ func TestVirtualHuman_CreateErrors(t *testing.T) {
 			_, err := env.svc.Create(context.Background(), vhUser, c.input, c.asset)
 			wantCode(t, err, c.want)
 		})
+	}
+}
+
+// 本地存储配了公网 base_url 时地址是绝对地址，方舟拉得到，照常提交（与 PR #80 实测过的部署方式一致）
+func TestVirtualHuman_CreateWithPublicLocalStorage(t *testing.T) {
+	env := newVHEnv(t)
+	env.assets.remote, env.assets.base = false, "https://canvas.example.com/files/"
+	if _, err := env.svc.Create(context.Background(), vhUser, "a", 11); err != nil {
+		t.Fatalf("公网绝对地址应能提交：%v", err)
+	}
+	if len(env.client.created) != 1 || env.client.created[0] != "https://canvas.example.com/files/11" {
+		t.Fatalf("提交地址 = %v", env.client.created)
 	}
 }
 
@@ -713,4 +730,60 @@ func TestFiledAssetResolver(t *testing.T) {
 	if _, ok := r.FiledAssetURI(ctx, vhUser, 12, "ark"); ok {
 		t.Fatal("不在真人库里的素材不能换")
 	}
+}
+
+// 生成时遇到审核中的图片，同步查一次方舟：用户刚提交备案就去生成时，方舟往往已经通过，
+// 不能因为本地还没刷新就退回普通地址去撞风控（与 PR #80 一致）。
+func TestFiledAssetResolver_ChecksPendingOnce(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("方舟已通过：换成 asset:// 并写回可用", func(t *testing.T) {
+		env := newVHEnv(t)
+		v, _ := env.svc.Create(ctx, vhUser, "a", 11) // asset-1，审核中
+		r := NewFiledAssetResolver(env.repo)
+		r.UseFiling(env.filing, env.client)
+		env.client.status["asset-1"] = provider.FilingAssetActive
+		uri, ok := r.FiledAssetURI(ctx, vhUser, 11, "ark")
+		if !ok || uri != "asset://asset-1" {
+			t.Fatalf("FiledAssetURI = %q, %v", uri, ok)
+		}
+		if env.repo.images[decodeID(t, v.Images[0].ID)].Status != model.FilingActive {
+			t.Fatal("查到通过后要写回可用，下次不用再查")
+		}
+	})
+
+	t.Run("方舟判定失败：按普通图片传，并写回失败原因", func(t *testing.T) {
+		env := newVHEnv(t)
+		v, _ := env.svc.Create(ctx, vhUser, "a", 11)
+		r := NewFiledAssetResolver(env.repo)
+		r.UseFiling(env.filing, env.client)
+		env.client.status["asset-1"] = provider.FilingAssetFailed
+		if _, ok := r.FiledAssetURI(ctx, vhUser, 11, "ark"); ok {
+			t.Fatal("审核失败不能换成 asset://")
+		}
+		img := env.repo.images[decodeID(t, v.Images[0].ID)]
+		if img.Status != model.FilingFailed || img.Error == "" {
+			t.Fatalf("应写回失败：%+v", img)
+		}
+	})
+
+	t.Run("还在审核 / 没配置虚拟人像库 / 渠道不同：按普通图片传", func(t *testing.T) {
+		env := newVHEnv(t)
+		_, _ = env.svc.Create(ctx, vhUser, "a", 11)
+		r := NewFiledAssetResolver(env.repo)
+		if _, ok := r.FiledAssetURI(ctx, vhUser, 11, "ark"); ok || len(env.client.queried) != 0 {
+			t.Fatalf("没接备案配置时不查方舟：查了 %v", env.client.queried)
+		}
+		r.UseFiling(env.filing, env.client)
+		if _, ok := r.FiledAssetURI(ctx, vhUser, 11, "ark"); ok || len(env.client.queried) != 1 {
+			t.Fatalf("还在审核应按普通图片传，且只查一次：查了 %v", env.client.queried)
+		}
+		if _, ok := r.FiledAssetURI(ctx, vhUser, 11, "other"); ok || len(env.client.queried) != 1 {
+			t.Fatalf("别的渠道不查：查了 %v", env.client.queried)
+		}
+		env.filing.target = nil
+		if _, ok := r.FiledAssetURI(ctx, vhUser, 11, "ark"); ok || len(env.client.queried) != 1 {
+			t.Fatalf("虚拟人像库没配置时不查：查了 %v", env.client.queried)
+		}
+	})
 }

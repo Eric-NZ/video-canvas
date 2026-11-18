@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -345,7 +346,7 @@ func (s *VirtualHumanService) SetCover(ctx context.Context, userID, humanID, ima
 	return s.humanView(ctx, userID, humanID)
 }
 
-// prepareFiling 校验能否提交备案：虚拟人像库已配置，素材是当前用户的图片且在对象存储里（方舟要从公网拉取）。
+// prepareFiling 校验能否提交备案：虚拟人像库已配置，素材是当前用户的图片且地址方舟能从公网拉到。
 // 返回备案目标和打开的素材（只用它的地址，内容已关闭）。
 func (s *VirtualHumanService) prepareFiling(ctx context.Context, userID, assetID uint64) (*provider.FilingTarget, *provider.AssetFile, error) {
 	target, err := s.filing.FilingTarget(ctx)
@@ -365,17 +366,24 @@ func (s *VirtualHumanService) prepareFiling(ctx context.Context, userID, assetID
 	if file.Asset.Kind != "image" {
 		return nil, nil, errcode.ErrVirtualHumanInvalid.WithMsg("只能把图片加入真人库")
 	}
-	// 本地磁盘的地址指向本服务自己，方舟拉不到；提前拦下，免得提交后才失败
-	if !file.Remote {
+	// 方舟要从公网拉图：对象存储的地址可以；本地存储配了公网 base_url 时也是绝对地址，同样可以。
+	// 相对地址（base_url 没配）指向本服务自己，方舟拉不到，提前拦下，免得提交后才失败
+	if !file.Remote && !isAbsoluteHTTPURL(file.URL) {
 		return nil, nil, errcode.ErrVirtualHumanImageNotPublic
 	}
 	return target, file, nil
 }
 
+// isAbsoluteHTTPURL 判断地址是不是带主机名的 http(s) 绝对地址。
+func isAbsoluteHTTPURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
 // submit 把图片提交到方舟并写回结果：成功记下方舟素材 ID、进入审核中；失败标记失败并写用户看得懂的原因，
 // 上游原文只进日志。只有写库失败才返回错误。
-func (s *VirtualHumanService) submit(ctx context.Context, img *model.VirtualHumanImage, target *provider.FilingTarget, url, name string) error {
-	arkID, err := s.client.CreateAsset(ctx, *target, url, name)
+func (s *VirtualHumanService) submit(ctx context.Context, img *model.VirtualHumanImage, target *provider.FilingTarget, imageURL, name string) error {
+	arkID, err := s.client.CreateAsset(ctx, *target, imageURL, name)
 	if err != nil {
 		logger.Warn("提交方舟虚拟人像库失败", zap.Uint64("image_id", img.ID), zap.Error(err))
 		img.ArkAssetID, img.Status, img.Error = "", model.FilingFailed, filingSubmitFailedMsg
