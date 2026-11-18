@@ -277,7 +277,7 @@ func (s *DramaService) commitDrama(ctx context.Context, run *dramaRun, result *d
 		if e != nil {
 			return e
 		}
-		resolved, e := s.resolvePlanningModel(ctx, p.TextModel)
+		resolved, e := s.resolveModel(ctx, p.TextModel)
 		if e == nil {
 			nextSnap = resolved
 		} else {

@@ -3,14 +3,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { SourcePreflight } from "@/api/drama/type";
 import { SOURCE_MAX_CHARS, checkSourceText } from "@/utils/drama/options";
 import {
-  MIN_MODEL_CONTEXT,
   START_RATIOS,
   buildCreateInput,
   closestRatio,
   durationLabel,
   episodesLabel,
   loadStartPrefs,
-  modelDisabledReason,
   normalizeRangeEnd,
   promptsToChoices,
   reconcilePrompts,
@@ -121,16 +119,6 @@ describe("开拍设置：剧本型输入的规则", () => {
     );
   });
 
-  test("上下文低于 128k 的模型禁用并写原因；未知上下文不拦", () => {
-    expect(MIN_MODEL_CONTEXT).toBe(128_000);
-    expect(modelDisabledReason(64_000)).toBe("上下文低于 128k，装不下一批完整原文");
-    expect(modelDisabledReason(127_999)).not.toBeNull();
-    expect(modelDisabledReason(128_000)).toBeNull();
-    expect(modelDisabledReason(1_000_000)).toBeNull();
-    expect(modelDisabledReason(undefined)).toBeNull();
-    expect(modelDisabledReason(0)).toBeNull();
-  });
-
   test("识别不出且没选类型时开始禁用；选了就放行", () => {
     expect(startBlockReason({ kind: null, styleKey: "x", modelBlocked: false })).toBe(
       "先确认是剧本还是小说",
@@ -140,7 +128,7 @@ describe("开拍设置：剧本型输入的规则", () => {
       "先选一个画风",
     );
     expect(startBlockReason({ kind: "novel", styleKey: "x", modelBlocked: true })).toBe(
-      "所选模型上下文低于 128k，请换一个",
+      "所选模型装不下原文，请换一个",
     );
   });
 });

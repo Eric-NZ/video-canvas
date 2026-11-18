@@ -29,11 +29,7 @@ import {
 import { useRemoteModels } from "@/hooks/use-models";
 import { useModelSwitchStore } from "@/store/drama-model-switch";
 import { PROMPT_STEPS, sameChoice } from "@/utils/drama/prompts";
-import {
-  modelDisabledReason,
-  promptsToChoices,
-  type StartPrompts,
-} from "@/utils/drama/start-settings";
+import { promptsToChoices, type StartPrompts } from "@/utils/drama/start-settings";
 
 import { useWorkspace } from "./context";
 
@@ -163,12 +159,8 @@ export function ProjectSettingsBody({
         </div>
         <Section label="Agent 模型">
           <div className="grid px-3">
-            <AgentModelPicker
-              variant="field"
-              value={textModel}
-              onChange={setTextModel}
-              disabledReason={(model) => modelDisabledReason(model.capabilities.context?.window)}
-            />
+            {/* 装不装得下由后端按这部剧最长一章判断，装不下时保存报 67022 并点名那一章 */}
+            <AgentModelPicker variant="field" value={textModel} onChange={setTextModel} />
           </div>
         </Section>
         <Section label="资产图片">

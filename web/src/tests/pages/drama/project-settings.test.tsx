@@ -285,12 +285,12 @@ describe("项目设置：Agent 模型", () => {
     await m.unmount();
   });
 
-  test("上下文不足 128k 的模型不能选；选回第一个等于跟随默认（空串）", async () => {
+  test("不按固定上下文门槛禁用（装不装得下由后端按原文判断）；选回第一个等于跟随默认（空串）", async () => {
     const patches: Omit<UpdateDramaInput, "revision">[] = [];
     const m = await mountBody(dramaOf({ textModel: "agent-b" }), patches);
     await dom.click(byText(m.container, "agent-b"));
     await dom.flush();
-    expect(agentRow("agent-s")?.disabled).toBe(true);
+    expect(agentRow("agent-s")?.disabled).toBe(false);
     await dom.click(agentRow("agent-a"));
     await dom.flush();
     await dom.click(byText(m.container, "完成"));

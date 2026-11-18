@@ -2,7 +2,9 @@ package service_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -146,5 +148,37 @@ func TestDramaPromptsSplitTruncatedGroup(t *testing.T) {
 		if !c.hasPrompt(id) {
 			t.Fatalf("缺少 %s 的提示词：%v", id, c.prompts)
 		}
+	}
+}
+
+// 资产拆解每批的剧本字数跟着模型窗口走：20k 窗口一批只放得下约 3800 字，三集各 2500 字就各成一批。
+func TestDramaBreakdownBatchesFollowContextWindow(t *testing.T) {
+	r := newDramaMemory()
+	r.project.Ratio = "9:16"
+	for no := 1; no <= 3; no++ {
+		dramaAddEpisode(r, no, fmt.Sprintf("第%d集正文", no)+strings.Repeat("戏", 2500))
+	}
+	m := &dramaFakeModel{}
+	e := &dramaTextStreamer{}
+	var mu sync.Mutex
+	most := 0
+	e.respond = func(ctx context.Context, prompt string) (*llmgateway.Result, error) {
+		mu.Lock()
+		most = max(most, len(dramaEpisodeRe.FindAllString(prompt, -1)))
+		mu.Unlock()
+		return m.respond(ctx, prompt)
+	}
+	c := &dramaPipelineCanvas{mem: r}
+	s, reg := dramaTestService(r, e, c)
+	reg.snap.Model.Capabilities.Context.Window = 20000
+	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1, 2, 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.jobs[0]; got.Status != "succeeded" || c.applied != 3 || most != 1 {
+		t.Fatalf("应每集一批：status=%s applied=%d 单次最多 %d 集 err=%q", got.Status, c.applied, most, got.ErrorMessage)
 	}
 }

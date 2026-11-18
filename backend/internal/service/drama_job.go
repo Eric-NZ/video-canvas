@@ -467,7 +467,7 @@ func dramaQuote(p *model.DramaProject, step string, eps []model.DramaEpisode, sn
 			units = append(units, drama.Unit{Chars: utf8.RuneCountInString(ep.ScriptMD)})
 		}
 		total := 0
-		for _, batch := range drama.ScriptBatches(units) {
+		for _, batch := range drama.ScriptBatches(units, dramaBatchBudget(snap)) {
 			size := chars
 			for _, u := range batch {
 				size += u.Chars

@@ -118,7 +118,7 @@ func (s *DramaService) Planning(ctx context.Context, userID, id uint64, action s
 	}
 	var snap *provider.Snapshot
 	if action != "pause" {
-		snap, err = s.resolvePlanningModel(ctx, p.TextModel)
+		snap, err = s.resolveModel(ctx, p.TextModel)
 		if err != nil {
 			return nil, err
 		}
