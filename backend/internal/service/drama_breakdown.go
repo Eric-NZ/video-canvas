@@ -30,7 +30,7 @@ func (s *DramaService) breakdownBatches(ctx context.Context, run *dramaRun, vars
 		units = append(units, drama.Unit{No: ep.No, Text: ep.ScriptMD, Chars: utf8.RuneCountInString(ep.ScriptMD)})
 		byNo[ep.No] = ep
 	}
-	batches := drama.ScriptBatches(units)
+	batches := drama.ScriptBatches(units, dramaBatchBudget(&run.snapshot))
 	cp := readDramaCheckpoint(run.job.Output)
 	models := dramaImageModels(run.project).ByType()
 	params := dramaImageParams(run.project).ByType()

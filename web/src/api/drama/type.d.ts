@@ -406,6 +406,8 @@ export interface UpdateDramaInput {
   textModel?: string;
   outlineMd?: string;
   charactersMd?: string;
+  /** 人物 / 场景 / 物品资产的图片模型；空串 = 跟随默认 */
+  imageModels?: DramaImageModels;
   /** 重新选择各环节的提示词：保存时重新快照正文，只影响之后提交的任务 */
   prompts?: PromptChoices;
 }

@@ -19,7 +19,7 @@ import { DramaWorkspaceContext } from "./context";
 import { EpisodeRail } from "./episode-rail";
 import { FinalArea } from "./final-area";
 import { OverviewArea } from "./overview-area";
-import { PromptSettingsSheet } from "./prompt-settings-sheet";
+import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { ScriptArea } from "./script-area";
 import { StudioArea } from "./studio-area";
 import { Topbar } from "./topbar";
@@ -47,7 +47,7 @@ function Workspace({ id }: { id: string }) {
   const nav = useWorkspaceNav(drama);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [promptsOpen, setPromptsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /** 进场加载层已收起；和进画布同一套（FocusLoader），数据到了且 Logo 聚焦完才退场 */
   const [revealed, setRevealed] = useState(false);
   const onLoaderDone = useCallback(() => setRevealed(true), []);
@@ -130,7 +130,7 @@ function Workspace({ id }: { id: string }) {
               hints={hints}
               onStage={(next) => nav.go(next)}
               onPalette={() => setPaletteOpen(true)}
-              onPrompts={() => setPromptsOpen(true)}
+              onSettings={() => setSettingsOpen(true)}
               onGo={nav.go}
             />
             <div className="flex min-h-0 flex-1">
@@ -184,9 +184,9 @@ function Workspace({ id }: { id: string }) {
             onOpenChange={setPaletteOpen}
             onGo={nav.go}
             onBreakdownOpen={() => setBreakdownOpen(true)}
-            onPromptsOpen={() => setPromptsOpen(true)}
+            onSettingsOpen={() => setSettingsOpen(true)}
           />
-          <PromptSettingsSheet open={promptsOpen} onOpenChange={setPromptsOpen} />
+          <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         </TooltipProvider>
       </MotionConfig>
     </DramaWorkspaceContext.Provider>,

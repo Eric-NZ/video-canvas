@@ -88,6 +88,7 @@ export function CharacterCanvasNode({
   useRegisterNodeActions(id, {
     blockedReason: () => vm.blockedReason,
     submit: () => vm.submit(),
+    setModel: vm.applyModel,
     voice: {
       blockedReason: () => voiceBlocked,
       submitAfterImage: submitWithVoice,

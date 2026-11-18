@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
 
-import { dramaErrorMessage } from "@/api/drama/errors";
+import { DRAMA_ERR, dramaErrorMessage } from "@/api/drama/errors";
 import type {
   CreateDramaInput,
   MyPrompt,
@@ -10,7 +10,7 @@ import type {
   SourcePreflight,
   StartRatio,
 } from "@/api/drama/type";
-import { AgentModelPicker, useAgentModel } from "@/components/drama/agent-model-picker";
+import { AgentModelPicker } from "@/components/drama/agent-model-picker";
 import {
   ChipPopover,
   GenreList,
@@ -52,7 +52,6 @@ import {
   emptyImageParams,
   episodesLabel,
   loadStartPrefs,
-  modelDisabledReason,
   normalizeRangeEnd,
   reconcilePrompts,
   saveStartPrefs,
@@ -312,11 +311,6 @@ export function StartBody({
       : (styles.find((item) => item.key === styleKey)?.name ?? "画风");
   const genreName = genres.find((item) => item.key === form.genre)?.name ?? form.genre;
 
-  const agent = useAgentModel(form.textModel);
-  const modelBlocked =
-    modelDisabledReason(agent.model?.capabilities.context?.window) !== null && !!agent.model;
-  const block = startBlockReason({ kind: form.kind, styleKey, modelBlocked });
-
   const videoRemote = useRemoteModels("video");
   const imageRemote = useRemoteModels("image");
   const videoModel = liveModelKey(form.videoModel, videoRemote);
@@ -360,6 +354,9 @@ export function StartBody({
     },
   );
   const est = estimate.estimate ?? pre.estimate;
+  /** 所选模型装不下原文里最长的一章：后端估价按实际原文判断（67022），原因写在模型下面 */
+  const modelBlocked = estimate.status === "error" && estimate.code === DRAMA_ERR.contextTooSmall;
+  const block = startBlockReason({ kind: form.kind, styleKey, modelBlocked });
 
   const submit = async () => {
     if (block || submitting) return;
@@ -383,14 +380,18 @@ export function StartBody({
 
   return (
     <div className="overflow-hidden rounded-[inherit]">
+      {/* 两页并排侧滑；顶端对齐，且编辑器打开时收起开拍设置那页，弹窗高度跟着当前页走，不被长的那页撑高 */}
       <div
-        className="flex w-[200%] transition-transform duration-300 ease-out motion-reduce:transition-none"
+        className="flex w-[200%] items-start transition-transform duration-300 ease-out motion-reduce:transition-none"
         style={{ transform: `translateX(${editor ? "-50%" : "0"})` }}
       >
         <div
           aria-hidden={editor ? true : undefined}
           inert={editor ? true : undefined}
-          className="grid max-h-[86vh] w-1/2 shrink-0 content-start gap-4 overflow-y-auto p-5"
+          className={cn(
+            "grid w-1/2 shrink-0 content-start gap-4 overflow-y-auto px-5",
+            editor ? "max-h-0 py-0" : "max-h-[86vh] py-5",
+          )}
         >
           <h2 className="px-3 text-base font-semibold">开拍设置</h2>
 
@@ -565,14 +566,11 @@ export function StartBody({
                   variant="field"
                   value={form.textModel}
                   onChange={(textModel) => patch({ textModel })}
-                  disabledReason={(model) =>
-                    modelDisabledReason(model.capabilities.context?.window)
-                  }
                 />
               </div>
               {modelBlocked && (
                 <p role="alert" className="text-destructive text-[13px]">
-                  {modelDisabledReason(agent.model?.capabilities.context?.window)}
+                  {estimate.message}
                 </p>
               )}
             </div>
@@ -694,6 +692,8 @@ export function StartBody({
 /** 预估一行：预计约 900–1,400 集 · 研读与规划约 3,200 积分 · 约 40 分钟 */
 function EstimateLine({ state }: { state: ReturnType<typeof useSourceEstimate> }) {
   const est = state.estimate;
+  /** 模型装不下原文的原因已写在文本模型下面，这里不重复 */
+  if (state.status === "error" && state.code === DRAMA_ERR.contextTooSmall) return null;
   if (state.status === "error") {
     return (
       <span role="alert" className="text-destructive text-[12.5px]">

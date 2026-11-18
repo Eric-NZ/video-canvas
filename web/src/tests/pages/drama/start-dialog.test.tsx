@@ -17,7 +17,7 @@ import type { StartBody as StartBodyType } from "@/pages/drama/start-dialog";
 import type { useModelsStore as useModelsStoreType } from "@/store/models";
 
 /**
- * 开拍设置弹窗主体：用 jsdom 挂载真实组件，检查来源行、规则（剧本置灰 / 时长锁定 / 上下文 < 128k 禁用 /
+ * 开拍设置弹窗主体：用 jsdom 挂载真实组件，检查来源行、规则（剧本置灰 / 时长锁定 / 模型装不下原文时禁用 /
  * 识别不出禁用开始）以及点「开始」时提交的建剧请求体。接口用 mock。
  */
 
@@ -187,28 +187,58 @@ describe("开拍设置：来源与基本规则", () => {
 });
 
 describe("开拍设置：文本模型", () => {
-  test("记住的模型上下文低于 128k：写出原因，开始禁用", async () => {
-    dom.win.localStorage.setItem("drama-start-prefs", JSON.stringify({ textModel: "small" }));
-    const m = await mountBody(pre());
-    expect(m.container.textContent).toContain("上下文低于 128k，装不下一批完整原文");
-    expect(startButton(m.container).disabled).toBe(true);
-    await m.unmount();
-  });
-
-  test("模型下拉里 < 128k 的项禁用并带原因，≥ 128k 的可选", async () => {
+  test("不按固定上下文门槛禁用：小窗口模型也能选，开始可点", async () => {
     const m = await mountBody(pre());
     await dom.click(byText(m.container, "big"));
     await dom.flush();
-    const items = [...dom.win.document.body.querySelectorAll("button")].filter((b) =>
-      ["big", "small"].some(
-        (name) => (b.textContent ?? "").startsWith(name) && b.className.includes("min-h-8"),
+    const small = [...dom.win.document.body.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").startsWith("small") && b.className.includes("min-h-8"),
+    ) as HTMLButtonElement;
+    expect(small.disabled).toBe(false);
+    expect(m.container.textContent).not.toContain("128k");
+    expect(startButton(m.container).disabled).toBe(false);
+    await m.unmount();
+  });
+
+  test("估价说这个模型装不下原文（67022）：写出后端点名的那一章，开始禁用", async () => {
+    const { ApiError } = await import("@/utils/requests/request");
+    const reason = "「第2章 大战」约 5012 字，超过这个模型一次能读的 3808 字，请换上下文更大的模型";
+    const post = spyOn(service, "post").mockRejectedValue(new ApiError(reason, 67022, 400));
+    dom.win.localStorage.setItem("drama-start-prefs", JSON.stringify({ textModel: "small" }));
+    const m = await mountBody(pre());
+    await dom.flush(400);
+    expect(m.container.textContent).toContain(reason);
+    expect(startButton(m.container).disabled).toBe(true);
+    post.mockRestore();
+    await m.unmount();
+  });
+});
+
+describe("开拍设置：侧滑到提示词编辑器", () => {
+  test("编辑器打开时开拍设置那页收起，弹窗高度跟着编辑器走；返回后恢复", async () => {
+    const m = await mountBody(pre());
+    const settingsPane = () =>
+      [...m.container.querySelectorAll("h2")].find((h) => h.textContent === "开拍设置")!
+        .parentElement as HTMLElement;
+    expect(settingsPane().className).not.toContain("max-h-0");
+    const chip = [...m.container.querySelectorAll("span")]
+      .find((el) => el.textContent === "视频提示词")
+      ?.parentElement?.querySelector("button") as HTMLButtonElement;
+    await dom.click(chip);
+    await dom.flush();
+    await dom.click(
+      [...dom.win.document.body.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "新建",
       ),
     );
-    const small = items.find((b) => (b.textContent ?? "").startsWith("small")) as HTMLButtonElement;
-    const big = items.find((b) => (b.textContent ?? "").startsWith("big")) as HTMLButtonElement;
-    expect(small.disabled).toBe(true);
-    expect(small.title).toBe("上下文低于 128k，装不下一批完整原文");
-    expect(big.disabled).toBe(false);
+    await dom.flush();
+    const editor = m.container.querySelector('[data-slot="prompt-editor"]') as HTMLElement;
+    expect(editor).toBeTruthy();
+    expect(settingsPane().className).toContain("max-h-0");
+    expect(editor.parentElement?.className).not.toContain("max-h-0");
+    await dom.click(m.container.querySelector('[data-slot="prompt-editor"] button'));
+    await dom.flush();
+    expect(settingsPane().className).not.toContain("max-h-0");
     await m.unmount();
   });
 });
@@ -261,7 +291,7 @@ describe("开拍设置：点「开始」建剧", () => {
     });
     await dom.click(startButton(m.container));
     await dom.flush();
-    expect(m.container.querySelector('[role="alert"]')?.textContent).toContain("128k");
+    expect(m.container.querySelector('[role="alert"]')?.textContent).toContain("模型上下文不足");
     expect(startButton(m.container).disabled).toBe(false);
     await m.unmount();
   });

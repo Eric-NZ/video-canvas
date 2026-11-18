@@ -147,8 +147,11 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if err := checkDramaStyle(req.StyleKey, req.StyleCustom); err != nil {
 		return nil, err
 	}
-	snap, err := s.resolvePlanningModel(ctx, req.TextModel)
+	snap, err := s.resolveModel(ctx, req.TextModel)
 	if err != nil {
+		return nil, err
+	}
+	if err = checkUnitsFit(snap, parsed.Units[:end]); err != nil {
 		return nil, err
 	}
 	if err = s.checkDramaModels(ctx, &req.VideoModel, &req.ImageModels); err != nil {
@@ -310,11 +313,28 @@ func (s *DramaService) fillCovers(ctx context.Context, userID uint64, rows []mod
 	return nil
 }
 
+// checkModelFitsDrama 换模型前确认新模型装得下这部剧规划范围内的每个单元，只读字数不读正文。
+func (s *DramaService) checkModelFitsDrama(ctx context.Context, userID, id uint64, key string) error {
+	snap, err := s.resolveModel(ctx, key)
+	if err != nil {
+		return err
+	}
+	p, err := s.repo.Project(ctx, userID, id, false)
+	if err != nil {
+		return dramaError(err)
+	}
+	rows, err := s.settings.UnitSizes(ctx, userID, id, 1, p.RangeEnd)
+	if err != nil {
+		return err
+	}
+	return checkUnitsFit(snap, sourceUnits(rows))
+}
+
 // Update 带版本更新项目，不改变已锁定集正文。
 func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model.UpdateDramaReq) (*model.DramaView, error) {
 	// 1. 模型及来源解析放事务外，入队任务已有正文快照不受影响。
 	if req.TextModel != nil {
-		if _, err := s.resolvePlanningModel(ctx, *req.TextModel); err != nil {
+		if err := s.checkModelFitsDrama(ctx, userID, id, *req.TextModel); err != nil {
 			return nil, err
 		}
 	}

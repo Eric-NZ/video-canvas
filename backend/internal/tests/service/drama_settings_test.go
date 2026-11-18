@@ -3,12 +3,14 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -242,18 +244,75 @@ func TestDramaPromptSnapshotAndCustomFailure(t *testing.T) {
 	}
 }
 
-func TestDramaContextGate(t *testing.T) {
-	r := newDramaMemory()
-	seedDramaDraft(r, "原文")
-	s, reg := dramaTestService(r, &dramaTextStreamer{}, nil)
-	reg.snap.Model.Capabilities.Context.Window = 127999
-	_, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: "draft", SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实"})
+// 不再有固定的上下文门槛：每批原文按窗口的 60% 扣掉提示词预留来切，只要最长一章能整章放进一批就能用；
+// 放不下时建剧、估价、换模型都报 67022 并点名那一章。
+func TestDramaContextFitsLongestUnit(t *testing.T) {
+	short := "第1章 开始\n" + strings.Repeat("短", 2000) + "\n第2章 结尾\n" + strings.Repeat("尾", 2000)
+	// 预检会把超过九千字的章切段，这里用五千字的整章：20k 窗口一批只能放约 3800 字
+	long := "第1章 开始\n" + strings.Repeat("短", 2000) + "\n第2章 大战\n" + strings.Repeat("长", 5000)
+
+	t.Run("小窗口模型章节都放得下就能建剧、估价、换模型", func(t *testing.T) {
+		r := newDramaMemory()
+		seedDramaDraft(r, short)
+		s, reg := dramaTestService(r, &dramaTextStreamer{}, nil)
+		reg.snap.Model.Capabilities.Context.Window = 32000
+		if _, err := s.EstimateSource(context.Background(), 7, "draft", &model.DramaSourceEstimateReq{SourceKind: "novel"}); err != nil {
+			t.Fatal(err)
+		}
+		v, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: "draft", SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := "text"
+		if _, err = s.Update(context.Background(), 7, uint64(v.ID), &model.UpdateDramaReq{Revision: r.project.Revision, TextModel: &key}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("后台没填上下文窗口按兜底额度分批", func(t *testing.T) {
+		r := newDramaMemory()
+		seedDramaDraft(r, "第1章 开始\n短短一段\n第2章 结尾\n也很短")
+		s, reg := dramaTestService(r, &dramaTextStreamer{}, nil)
+		reg.snap.Model.Capabilities.Context = nil
+		if _, err := s.EstimateSource(context.Background(), 7, "draft", &model.DramaSourceEstimateReq{SourceKind: "novel"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("最长一章放不下时报 67022 并点名那一章", func(t *testing.T) {
+		r := newDramaMemory()
+		seedDramaDraft(r, long)
+		s, reg := dramaTestService(r, &dramaTextStreamer{}, nil)
+		reg.snap.Model.Capabilities.Context.Window = 20000
+		_, err := s.EstimateSource(context.Background(), 7, "draft", &model.DramaSourceEstimateReq{SourceKind: "novel"})
+		dramaCheckContextMsg(t, err, "第2章 大战")
+		_, err = s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: "draft", SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实"})
+		dramaCheckContextMsg(t, err, "第2章 大战")
+	})
+
+	t.Run("换成放不下最长一章的模型被拒，大窗口不受影响", func(t *testing.T) {
+		r := newDramaMemory()
+		seedDramaDraft(r, long)
+		s, reg := dramaTestService(r, &dramaTextStreamer{}, nil)
+		v, err := s.Create(context.Background(), 7, &model.CreateDramaReq{SourceToken: "draft", SourceKind: "novel", StyleKey: "custom", StyleCustom: "写实"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reg.snap.Model.Capabilities.Context.Window = 20000
+		key := "text"
+		_, err = s.Update(context.Background(), 7, uint64(v.ID), &model.UpdateDramaReq{Revision: r.project.Revision, TextModel: &key})
+		dramaCheckContextMsg(t, err, "第2章 大战")
+	})
+}
+
+func dramaCheckContextMsg(t *testing.T, err error, unit string) {
+	t.Helper()
 	dramaCheckCode(t, err, 67022)
-	key := "text"
-	_, err = s.Update(context.Background(), 7, 1, &model.UpdateDramaReq{Revision: 1, TextModel: &key})
-	dramaCheckCode(t, err, 67022)
-	_, err = s.EstimateSource(context.Background(), 7, "draft", &model.DramaSourceEstimateReq{SourceKind: "novel"})
-	dramaCheckCode(t, err, 67022)
+	var business *errcode.Error
+	errors.As(err, &business)
+	if !strings.Contains(business.Msg, unit) || strings.Contains(business.Msg, "128k") {
+		t.Fatalf("提示应点名「%s」且不再提 128k: %s", unit, business.Msg)
+	}
 }
 
 func TestDramaPlanningPauseRangeAndCredits(t *testing.T) {

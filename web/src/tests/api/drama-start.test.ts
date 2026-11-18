@@ -516,9 +516,14 @@ describe("api/drama 开拍设置：错误码 67014–67022", () => {
     expect(dramaErrorMessage(err(DRAMA_ERR.promptInvalid))).toBeTruthy();
     expect(dramaErrorMessage(err(DRAMA_ERR.skillUnavailable))).toContain("技能");
     expect(dramaErrorMessage(err(DRAMA_ERR.phaseNotAllowed))).toBeTruthy();
-    expect(dramaErrorMessage(err(DRAMA_ERR.contextTooSmall))).toContain("128k");
+    expect(dramaErrorMessage(err(DRAMA_ERR.contextTooSmall))).toContain("模型上下文不足");
     expect(DRAMA_ERR.sourceExpired).toBe(67014);
     expect(DRAMA_ERR.contextTooSmall).toBe(67022);
+  });
+
+  test("67022 后端 Msg 优先（点名装不下的那一章）", () => {
+    const msg = "「第2章」约 5012 字，超过这个模型一次能读的 3808 字，请换上下文更大的模型";
+    expect(dramaErrorMessage(new ApiError(msg, DRAMA_ERR.contextTooSmall, 400))).toBe(msg);
   });
 
   test("67017 后端 Msg 优先（写了具体哪里不对）", () => {

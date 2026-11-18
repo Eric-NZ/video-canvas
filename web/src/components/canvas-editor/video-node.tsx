@@ -329,6 +329,7 @@ function MediaTaskNode({
   useRegisterNodeActions(id, {
     blockedReason: () => vm.blockedReason,
     submit: () => vm.submit(),
+    setModel: vm.applyModel,
   });
 
   // 输入口随所选模型的 schema 增减；xyflow 只在节点挂载时量一次连接点，

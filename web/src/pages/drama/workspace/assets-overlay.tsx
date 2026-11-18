@@ -6,7 +6,11 @@ import { toast } from "sonner";
 
 import { ChromePill, ChromeZone } from "@/components/canvas/chrome/chrome";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
-import { submitNodeById, submitWithVoiceById } from "@/components/canvas-editor/node-actions";
+import {
+  setModelById,
+  submitNodeById,
+  submitWithVoiceById,
+} from "@/components/canvas-editor/node-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRemoteModels } from "@/hooks/use-models";
@@ -16,6 +20,7 @@ import { openShortcuts } from "@/pages/canvas/shortcuts-state";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useCharacterDetail } from "@/store/character-detail";
+import { useModelSwitchStore } from "@/store/drama-model-switch";
 import { usePromptEditor } from "@/store/prompt-editor";
 import {
   ASSET_TYPES,
@@ -25,6 +30,7 @@ import {
   newNodeKindOf,
   dramaForNewAsset,
   pendingGenerate,
+  modelSwitchTargets,
   toAssetItems,
   type AssetItem,
 } from "@/utils/drama/assets";
@@ -466,6 +472,26 @@ function AssetList({ items }: { items: AssetItem[] }) {
   );
 }
 
+/**
+ * 项目设置换了图片模型：把这几类里还没生成的卡换过去（和在节点上换一样迁移参数）。
+ * 节点要挂载后才登记动作，没换成的留着，节点数据变了（挂载、出图……）再试，全换好才清掉请求。
+ */
+function useApplyModelSwitch(dramaId: string, items: AssetItem[]) {
+  const pending = useModelSwitchStore((state) => state.byDrama[dramaId]);
+  const imageModels = useRemoteModels("image");
+  useEffect(() => {
+    if (!pending || imageModels.status !== "ready") return;
+    const fallback = imageModels.models[0]?.key;
+    for (const [slot, picked] of Object.entries(pending) as [keyof typeof pending, string][]) {
+      const key = picked || fallback;
+      const left = key
+        ? modelSwitchTargets(items, slot, key, fallback).filter((id) => !setModelById(id, key))
+        : [];
+      if (left.length === 0) useModelSwitchStore.getState().done(dramaId, slot);
+    }
+  }, [dramaId, imageModels.models, imageModels.status, items, pending]);
+}
+
 /** 画布视图下的外壳：左上资产库浮窗、底部居中横排工具条、视图控件、操作提示 */
 function CanvasChrome({ items }: { items: AssetItem[] }) {
   const editor = useCanvasEditor();
@@ -510,9 +536,10 @@ function CanvasChrome({ items }: { items: AssetItem[] }) {
 export const AssetsOverlay = memo(function AssetsOverlay() {
   const ui = useAssetsUi();
   const editor = useCanvasEditor();
-  const { jobs } = useWorkspace();
+  const { drama, jobs } = useWorkspace();
   const analyzing = writingAssetPrompts(jobs);
   const items = useMemo(() => toAssetItems(editor.nodes, { analyzing }), [analyzing, editor.nodes]);
+  useApplyModelSwitch(drama.id, items);
 
   const { clearSelection } = editor;
   const { setNewDrama } = ui;

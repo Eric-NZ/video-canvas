@@ -250,6 +250,7 @@ export const toUpdateDramaBody = (input: UpdateDramaInput) =>
     text_model: input.textModel,
     outline_md: input.outlineMd,
     characters_md: input.charactersMd,
+    image_models: input.imageModels,
     prompts: input.prompts,
   });
 

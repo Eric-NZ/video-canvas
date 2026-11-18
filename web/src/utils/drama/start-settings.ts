@@ -25,9 +25,6 @@ export const START_RATIOS: { key: StartRatio; w: number; h: number }[] = [
 /** 默认画幅：竖屏短剧常用 */
 export const DEFAULT_START_RATIO: StartRatio = "9:16";
 
-/** 文本模型上下文下限（Token）：低于它装不下一批完整原文 */
-export const MIN_MODEL_CONTEXT = 128_000;
-
 /** 三类资产各自的图片模型 */
 export interface StartImageModels {
   character: string;
@@ -232,17 +229,8 @@ export function secondsLock(
 }
 
 /**
- * 文本模型为什么不能选：上下文已知且低于 128k 才禁用；没有配置上下文的不拦（交给后端 67022 兜底）
- * @param window 模型上下文窗口（Token），未知为 undefined 或 0
- */
-export function modelDisabledReason(window: number | undefined): string | null {
-  if (!window || window >= MIN_MODEL_CONTEXT) return null;
-  return "上下文低于 128k，装不下一批完整原文";
-}
-
-/**
  * 「开始」为什么不能点；可以点返回 null
- * @param state 类型是否已确认、画风是否已有、所选模型是否被禁用
+ * @param state 类型是否已确认、画风是否已有、估价是否说所选模型装不下原文（67022）
  */
 export function startBlockReason(state: {
   kind: StartKind | null;
@@ -251,7 +239,7 @@ export function startBlockReason(state: {
 }): string | null {
   if (!state.kind) return "先确认是剧本还是小说";
   if (!state.styleKey) return "先选一个画风";
-  if (state.modelBlocked) return "所选模型上下文低于 128k，请换一个";
+  if (state.modelBlocked) return "所选模型装不下原文，请换一个";
   return null;
 }
 
