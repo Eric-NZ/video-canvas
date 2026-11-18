@@ -29,6 +29,7 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider/arkasset"
 	"video-canvas/internal/provider/fx"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
@@ -155,13 +156,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 		closeDB(db)
 		return nil, err
 	}
+	virtualHumanRepo := repository.NewVirtualHumanRepository(db)
 	executor := plugin.New(plugin.Options{
-		Runner:    runnerClient,
-		Codes:     pluginCodeStore{repo: aiPluginRepo},
-		Secrets:   aiCfgSvc,
-		Assets:    assetSvc,
-		Saver:     assetSvc,
-		IPAllowed: outboundIPPolicy(cfg),
+		Runner:      runnerClient,
+		Codes:       pluginCodeStore{repo: aiPluginRepo},
+		Secrets:     aiCfgSvc,
+		Assets:      assetSvc,
+		Saver:       assetSvc,
+		FiledAssets: service.NewFiledAssetResolver(virtualHumanRepo), // 真人库里备案可用的图片换成 asset://
+		IPAllowed:   outboundIPPolicy(cfg),
 	})
 
 	// 生成任务：提交 / 对账 / 取消 / 积分事务
@@ -386,6 +389,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AssetLibrary: handler.NewAssetLibraryHandler(service.NewAssetLibraryService(service.AssetLibraryDeps{
 			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
+		})),
+		VirtualHuman: handler.NewVirtualHumanHandler(service.NewVirtualHumanService(service.VirtualHumanDeps{
+			Repo: virtualHumanRepo, Canvases: canvasProjectRepo, Assets: assetSvc, AssetRows: assetRepo, Views: assetSvc,
+			Filing: aiChannelSvc, Client: arkasset.New(arkasset.Options{}),
 		})),
 		Files:        handler.NewFilesHandler(assetSvc),
 		AIModel:      handler.NewAIModelHandler(aiCfgSvc),
