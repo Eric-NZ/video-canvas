@@ -12,7 +12,12 @@ import type { Capabilities } from "@/api/model/type";
 import { parseAspect } from "@/utils/canvas/node-frame";
 import { matchOption, openParams, type ParamEntry } from "@/utils/tasks/capabilities";
 
-import { CUSTOM_STYLE_KEY, DEFAULT_EPISODE_SECONDS, EPISODE_SECOND_OPTIONS } from "./options";
+import {
+  CUSTOM_STYLE_KEY,
+  DEFAULT_EPISODE_SECONDS,
+  MAX_EPISODE_SECONDS,
+  MIN_EPISODE_SECONDS,
+} from "./options";
 import { PROMPT_STEPS } from "./prompts";
 
 /** 开拍设置可选的画幅（宽、高用来画比例示意框） */
@@ -334,9 +339,13 @@ export function loadStartPrefs(): StartPrefs | null {
       genre: typeof data.genre === "string" ? data.genre : "",
       styleKey: typeof data.styleKey === "string" ? data.styleKey : "",
       styleCustom: typeof data.styleCustom === "string" ? data.styleCustom : "",
-      seconds: (EPISODE_SECOND_OPTIONS as readonly number[]).includes(data.seconds ?? 0)
-        ? (data.seconds as number)
-        : DEFAULT_EPISODE_SECONDS,
+      seconds:
+        typeof data.seconds === "number" &&
+        Number.isInteger(data.seconds) &&
+        data.seconds >= MIN_EPISODE_SECONDS &&
+        data.seconds <= MAX_EPISODE_SECONDS
+          ? data.seconds
+          : DEFAULT_EPISODE_SECONDS,
       textModel: typeof data.textModel === "string" ? data.textModel : "",
       videoModel: typeof data.videoModel === "string" ? data.videoModel : "",
       imageModels: {
