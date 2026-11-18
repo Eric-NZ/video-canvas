@@ -40,7 +40,7 @@ func (s *DramaService) callDrama(ctx context.Context, j *model.DramaJob, snap *p
 		}
 		invalid = bad
 	}
-	if cfg := jobConfig(j); cfg.Prompt.Source != "" && cfg.Prompt.Source != "builtin" {
+	if setting := jobConfig(j).promptFor(j.Step, step); setting.Source != "" && setting.Source != "builtin" {
 		return nil, 0, errcode.ErrDramaCustomPrompt.WithMsg("自定义提示词或技能导致输出不合格（" + dramaStepGroup(step) + "）")
 	}
 	return nil, 0, errcode.ErrDramaOutputInvalid
@@ -56,7 +56,7 @@ func (s *DramaService) dramaAttempt(ctx context.Context, j *model.DramaJob, snap
 	} else {
 		vars["known_cast"] = cfg.KnownCast
 	}
-	template, body := dramaTemplate(step, cfg.Prompt)
+	template, body := dramaTemplate(step, cfg.promptFor(j.Step, step))
 	prompt, err := drama.PromptWithBody(template, vars, body)
 	if err != nil {
 		return nil, 0, nil, err

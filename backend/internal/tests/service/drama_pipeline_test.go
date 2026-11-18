@@ -869,6 +869,40 @@ func TestDramaBreakdownRunsBatchesInParallelAndPromptsEachBatch(t *testing.T) {
 	}
 }
 
+// 拆解任务顺带写资产图提示词时，要用项目「资产图提示词」环节的设置，不能沿用「资产拆解」环节的内置正文。
+func TestDramaBreakdownUsesAssetPromptsSetting(t *testing.T) {
+	m := &dramaFakeModel{}
+	e := &dramaTextStreamer{respond: m.respond}
+	r := newDramaMemory()
+	r.project.Ratio = "9:16"
+	r.project.PromptSettings = []byte(`{"asset_prompts":{"source":"mine","id":3,"label":"我的 · 构图","bodies":{"asset_prompts":"自写构图：四画面不对称分栏"}}}`)
+	dramaAddEpisode(r, 1, "第1集正文")
+	c := &dramaPipelineCanvas{mem: r}
+	s, _ := dramaTestService(r, e, c)
+	j, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.HandleDrama(context.Background(), 7, 1, uint64(j.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.jobs[0]; got.Status != "succeeded" || len(c.prompts) != 1 {
+		t.Fatalf("拆解应成功并写好提示词：status=%s prompts=%v", got.Status, c.prompts)
+	}
+	var creative string
+	for _, p := range e.prompts {
+		if strings.Contains(p, "# 资产图提示词创作") || strings.Contains(p, "自写构图") {
+			creative = p
+		}
+		if strings.Contains(p, "# 资产拆解") && strings.Contains(p, "自写构图") {
+			t.Fatal("资产图提示词的自定义正文不应混进拆解调用")
+		}
+	}
+	if !strings.Contains(creative, "自写构图：四画面不对称分栏") || strings.Contains(creative, "三视图设定图") {
+		t.Fatalf("资产图提示词应使用项目里的自定义正文:\n%s", creative)
+	}
+}
+
 // 拆解中途被打断（如后端重启）后重跑：已写入画布的批次跳过，只调用剩下的批次，资产不丢也不重复。
 func TestDramaBreakdownResumesFromCommittedBatches(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
