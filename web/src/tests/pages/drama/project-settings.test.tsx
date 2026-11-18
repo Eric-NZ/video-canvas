@@ -4,37 +4,62 @@ import type { Drama, PromptSettings, UpdateDramaInput } from "@/api/drama/type";
 import type { PromptLibrary } from "@/components/drama/prompts/use-prompt-library";
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import type {
-  PromptSettingsBody as PromptSettingsBodyType,
+  ProjectSettingsBody as ProjectSettingsBodyType,
+  changedImageModels as changedImageModelsType,
   changedSteps as changedStepsType,
   settingsToPrompts as settingsToPromptsType,
-} from "@/pages/drama/workspace/prompt-settings-sheet";
+} from "@/pages/drama/workspace/project-settings-dialog";
 import type { CommandPalette as CommandPaletteType } from "@/pages/drama/workspace/command-palette";
 import type { DramaWorkspaceContext as DramaWorkspaceContextType } from "@/pages/drama/workspace/context";
-import type { Sheet as SheetType } from "@/components/ui/sheet";
+import type { Dialog as DialogType } from "@/components/ui/dialog";
+import type { useModelsStore as useModelsStoreType } from "@/store/models";
+import type { useModelSwitchStore as useModelSwitchStoreType } from "@/store/drama-model-switch";
 
 /**
- * 工作台「提示词设置」：四行（同开拍设置）、提示「修改只影响之后发起的任务」、
- * 点完成保存（PATCH prompts）；入口在 ⌘K 命令面板。
+ * 工作台「项目设置」：资产图片模型三行 + 提示词四行（同开拍设置）、提示「修改只影响之后发起的任务」、
+ * 点完成保存（PATCH image_models / prompts）；入口在顶栏胶囊和 ⌘K 命令面板。
  */
 
 let dom: DomEnv;
-let PromptSettingsBody: typeof PromptSettingsBodyType;
+let ProjectSettingsBody: typeof ProjectSettingsBodyType;
 let changedSteps: typeof changedStepsType;
+let changedImageModels: typeof changedImageModelsType;
+let useModelsStore: typeof useModelsStoreType;
+let useModelSwitchStore: typeof useModelSwitchStoreType;
 let settingsToPrompts: typeof settingsToPromptsType;
 let CommandPalette: typeof CommandPaletteType;
 let DramaWorkspaceContext: typeof DramaWorkspaceContextType;
-let Sheet: typeof SheetType;
+let Dialog: typeof DialogType;
 beforeAll(async () => {
   dom = await installDom();
-  const sheet = await import("@/pages/drama/workspace/prompt-settings-sheet");
-  PromptSettingsBody = sheet.PromptSettingsBody;
+  const sheet = await import("@/pages/drama/workspace/project-settings-dialog");
+  ProjectSettingsBody = sheet.ProjectSettingsBody;
   changedSteps = sheet.changedSteps;
+  changedImageModels = sheet.changedImageModels;
+  useModelsStore = (await import("@/store/models")).useModelsStore;
+  useModelSwitchStore = (await import("@/store/drama-model-switch")).useModelSwitchStore;
+  useModelsStore.setState({
+    byKind: {
+      image: {
+        status: "ready",
+        loadedAt: Date.now(),
+        models: [
+          { key: "img-a", label: "img-a", capabilities: {} },
+          { key: "img-b", label: "img-b", capabilities: {} },
+        ],
+      },
+    } as never,
+  });
   settingsToPrompts = sheet.settingsToPrompts;
   CommandPalette = (await import("@/pages/drama/workspace/command-palette")).CommandPalette;
   DramaWorkspaceContext = (await import("@/pages/drama/workspace/context")).DramaWorkspaceContext;
-  Sheet = (await import("@/components/ui/sheet")).Sheet;
+  Dialog = (await import("@/components/ui/dialog")).Dialog;
 });
-afterAll(() => dom.restore());
+afterAll(() => {
+  // models store 是全局单例：清掉本文件灌进去的模型，免得影响后面的测试
+  useModelsStore.setState({ byKind: {} });
+  dom.restore();
+});
 
 const settings = (patch: Partial<PromptSettings> = {}): PromptSettings => ({
   plan: { source: "builtin", label: "内置" },
@@ -78,7 +103,14 @@ const library: PromptLibrary = {
 };
 
 const dramaOf = (patch: Partial<Drama> = {}) =>
-  ({ id: "d1", sourceKind: "novel", promptSettings: settings(), episodes: [], ...patch }) as never;
+  ({
+    id: "d1",
+    sourceKind: "novel",
+    promptSettings: settings(),
+    imageModels: { character: "", scene: "", prop: "" },
+    episodes: [],
+    ...patch,
+  }) as never;
 
 const mountBody = (
   drama: Drama,
@@ -98,9 +130,9 @@ const mountBody = (
         } as never
       }
     >
-      <Sheet open>
-        <PromptSettingsBody library={library} onClose={onClose} />
-      </Sheet>
+      <Dialog open>
+        <ProjectSettingsBody library={library} onClose={onClose} />
+      </Dialog>
     </DramaWorkspaceContext.Provider>,
   );
 const chip = (c: HTMLElement, name: string) =>
@@ -110,7 +142,16 @@ const chip = (c: HTMLElement, name: string) =>
 const byText = (c: HTMLElement, text: string) =>
   [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === text);
 
-describe("提示词设置：纯逻辑", () => {
+describe("项目设置：纯逻辑", () => {
+  test("比较出改了哪几类资产的图片模型", () => {
+    const saved = { character: "", scene: "img-a", prop: "" };
+    expect(changedImageModels(saved, saved)).toEqual([]);
+    expect(changedImageModels(saved, { character: "img-b", scene: "", prop: "" })).toEqual([
+      "character",
+      "scene",
+    ]);
+  });
+
   test("把已建剧的设置转成可编辑的选择；比较出改了哪些环节", () => {
     const prompts = settingsToPrompts(settings());
     expect(prompts).toEqual({
@@ -127,11 +168,11 @@ describe("提示词设置：纯逻辑", () => {
   });
 });
 
-describe("提示词设置：Sheet 内容", () => {
+describe("项目设置：弹窗内容", () => {
   test("提示「修改只影响之后发起的任务」，四行显示已建剧时的设置，来源丢失的行标红提示", async () => {
     const m = await mountBody(dramaOf(), []);
     const text = m.container.textContent ?? "";
-    expect(text).toContain("提示词设置");
+    expect(text).toContain("项目设置");
     expect(text).toContain("修改只影响之后发起的任务");
     expect(chip(m.container, "资产拆解").textContent).toBe("技能 · 跨集连续性");
     expect(chip(m.container, "资产拆解").title).toContain("已被删除或停用");
@@ -188,8 +229,34 @@ describe("提示词设置：Sheet 内容", () => {
   });
 });
 
-describe("提示词设置：命令面板入口", () => {
-  test("⌘K 里有「提示词设置」，选中后打开", async () => {
+describe("项目设置：资产图片模型", () => {
+  const menuRow = (name: string) =>
+    [...dom.win.document.body.querySelectorAll("button")].find(
+      (b) => b.className.includes("min-h-10") && (b.textContent ?? "").startsWith(name),
+    );
+
+  test("三类都跟随默认时胶囊显示默认模型；换了人物的模型，完成时保存并让还没生成的人物卡跟着换", async () => {
+    const patches: Omit<UpdateDramaInput, "revision">[] = [];
+    const m = await mountBody(dramaOf(), patches);
+    for (const prefix of ["人物", "场景", "物品"]) {
+      expect(byText(m.container, `${prefix} · img-a`)).toBeTruthy();
+    }
+    await dom.click(byText(m.container, "人物 · img-a"));
+    await dom.flush();
+    await dom.click(menuRow("img-b"));
+    await dom.flush();
+    expect(byText(m.container, "人物 · img-b")).toBeTruthy();
+    await dom.click(byText(m.container, "完成"));
+    await dom.flush();
+    expect(patches).toEqual([{ imageModels: { character: "img-b", scene: "", prop: "" } }]);
+    expect(useModelSwitchStore.getState().byDrama.d1).toEqual({ character: "img-b" });
+    useModelSwitchStore.setState({ byDrama: {} });
+    await m.unmount();
+  });
+});
+
+describe("项目设置：命令面板入口", () => {
+  test("⌘K 里有「项目设置」，选中后打开", async () => {
     const calls: string[] = [];
     const m = await dom.mount(
       <DramaWorkspaceContext.Provider
@@ -200,17 +267,17 @@ describe("提示词设置：命令面板入口", () => {
           onOpenChange={() => calls.push("close")}
           onGo={() => {}}
           onBreakdownOpen={() => calls.push("breakdown")}
-          onPromptsOpen={() => calls.push("prompts")}
+          onSettingsOpen={() => calls.push("settings")}
         />
       </DramaWorkspaceContext.Provider>,
     );
     await dom.flush(50);
     const item = [...dom.win.document.body.querySelectorAll('[cmdk-item], [role="option"]')].find(
-      (el) => (el.textContent ?? "").includes("提示词设置"),
+      (el) => (el.textContent ?? "").includes("项目设置"),
     );
     expect(item).toBeTruthy();
     await dom.click(item);
-    expect(calls).toContain("prompts");
+    expect(calls).toContain("settings");
     await m.unmount();
   });
 });

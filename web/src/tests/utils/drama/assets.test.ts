@@ -13,11 +13,13 @@ import {
   filterAssets,
   generatable,
   matchesFilter,
+  modelSwitchTargets,
   newNodeKindOf,
   pendingGenerate,
   setEpisodes,
   toAssetItems,
   toggleEpisode,
+  ungenerated,
   type AssetItem,
 } from "@/utils/drama/assets";
 
@@ -381,5 +383,58 @@ describe("assetUploaded：用户自己给的素材", () => {
       }),
     ]);
     expect(generatable(items, "character")).toEqual([]);
+  });
+});
+
+describe("ungenerated：项目设置换图片模型时跟着换的「还没生成」的卡", () => {
+  test("待生成、失败和还在分析设定的都算；生成中、已生成、上传的和未分类的不算", () => {
+    const items = [
+      item("idle", "character", [1], "idle"),
+      item("error", "character", [1], "error"),
+      item("analyzing", "character", [1], "analyzing"),
+      item("running", "character", [1], "running"),
+      item("done", "character", [1], "done"),
+      item("none", "character", null, "idle"),
+      item("scene", "scene", [1], "idle"),
+      {
+        ...item("uploaded", "character", [1], "idle"),
+        data: { kind: "image", label: "u", uploaded: true },
+      } as AssetItem,
+    ];
+    expect(ungenerated(items, "character").map((i) => i.id)).toEqual([
+      "idle",
+      "error",
+      "analyzing",
+    ]);
+  });
+
+  test("文本等不批量生成的类型：没有", () => {
+    expect(ungenerated([item("t", "text", [1])], "text")).toEqual([]);
+  });
+});
+
+describe("modelSwitchTargets：项目设置换了图片模型后要跟着换的卡", () => {
+  const card = (id: string, status: AssetItem["status"], model?: string): AssetItem => ({
+    ...item(id, "character", [1], status),
+    data: { kind: "character", label: id, model },
+  });
+
+  test("只换还没生成、且模型不是新模型的卡；没设模型的按默认模型比较", () => {
+    const items = [
+      card("old", "idle", "m1"),
+      card("same", "idle", "m2"),
+      card("unset", "error"),
+      card("done", "done", "m1"),
+      card("analyzing", "analyzing", "m1"),
+    ];
+    expect(modelSwitchTargets(items, "character", "m2", "m0")).toEqual([
+      "old",
+      "unset",
+      "analyzing",
+    ]);
+  });
+
+  test("新模型就是默认模型时，没设模型的卡不用动", () => {
+    expect(modelSwitchTargets([card("unset", "idle")], "character", "m0", "m0")).toEqual([]);
   });
 });

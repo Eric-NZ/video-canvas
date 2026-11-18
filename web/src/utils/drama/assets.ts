@@ -165,6 +165,35 @@ export function pendingGenerate(items: readonly AssetItem[], type: AssetType): A
   );
 }
 
+/** 还没生成的：角色 / 场景 / 道具里已分类、待生成、失败或还在分析设定的；项目设置换图片模型时跟着换的就是这些，上传的不算 */
+export function ungenerated(items: readonly AssetItem[], type: AssetType): AssetItem[] {
+  if (!GENERATED_TYPES.includes(type)) return [];
+  return items.filter(
+    (item) =>
+      item.type === type &&
+      !isUploadedAsset(item) &&
+      item.episodes !== null &&
+      (item.status === "idle" || item.status === "error" || item.status === "analyzing"),
+  );
+}
+
+/**
+ * 项目设置换了某类资产的图片模型后，要跟着换的卡：还没生成、且现在用的不是新模型。
+ * @param key 新模型
+ * @param fallback 节点没设模型时实际用的模型（清单里第一个）
+ * @returns 节点 ID
+ */
+export function modelSwitchTargets(
+  items: readonly AssetItem[],
+  type: AssetType,
+  key: string,
+  fallback?: string,
+): string[] {
+  return ungenerated(items, type)
+    .filter((item) => (item.data.model ?? fallback) !== key)
+    .map((item) => item.id);
+}
+
 /** 可框选生成的：角色 / 场景 / 道具里已分类、不在生成或分析中的；已生成的再生成一次就是重新生成；上传的不算 */
 export function generatable(items: readonly AssetItem[], type: AssetType): AssetItem[] {
   if (!GENERATED_TYPES.includes(type)) return [];
