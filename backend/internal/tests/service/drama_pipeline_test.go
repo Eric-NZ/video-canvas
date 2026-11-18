@@ -898,7 +898,7 @@ func TestDramaBreakdownUsesAssetPromptsSetting(t *testing.T) {
 			t.Fatal("资产图提示词的自定义正文不应混进拆解调用")
 		}
 	}
-	if !strings.Contains(creative, "自写构图：四画面不对称分栏") || strings.Contains(creative, "三视图设定图") {
+	if !strings.Contains(creative, "自写构图：四画面不对称分栏") || strings.Contains(creative, "四视图设定图") {
 		t.Fatalf("资产图提示词应使用项目里的自定义正文:\n%s", creative)
 	}
 }
