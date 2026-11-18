@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import type { VirtualHumanDto } from "@/api/virtual-human/type";
+import type { CanvasNodeData } from "@/types/canvas";
+import type { AssetItem } from "@/utils/drama/assets";
 import {
+  enrollTarget,
   filterHumans,
   humanCounts,
   humanOfAsset,
@@ -103,5 +106,40 @@ describe("humanPickGroups：资产库弹框的真人库来源", () => {
     expect(humanPickGroups(named, "  lu ").map((g) => g.human.id)).toEqual(["a"]);
     const gone = [{ ...list[1]!, images: [{ ...list[1]!.images[0]!, asset: null }] }];
     expect(humanPickGroups(gone, "")).toEqual([]);
+  });
+});
+
+describe("enrollTarget：短剧资产卡能不能加入真人库", () => {
+  const item = (overrides: Partial<AssetItem> = {}): AssetItem => ({
+    id: "n1",
+    type: "character",
+    name: "迅哥儿",
+    look: "少年",
+    label: "迅哥儿",
+    episodes: [1],
+    status: "done",
+    data: { kind: "character", assetId: "11", src: "/files/a.png" } as CanvasNodeData,
+    ...overrides,
+  });
+
+  test("已生成形象的角色卡：交出形象图，名称默认取角色名", () => {
+    expect(enrollTarget(item())).toMatchObject({
+      id: "11",
+      url: "/files/a.png",
+      kind: "image",
+      fileName: "迅哥儿",
+    });
+  });
+
+  test("没生成形象、生成中、失败、不是角色的都不行", () => {
+    expect(
+      enrollTarget(item({ status: "idle", data: { kind: "character" } as CanvasNodeData })),
+    ).toBeNull();
+    expect(enrollTarget(item({ status: "running" }))).toBeNull();
+    expect(enrollTarget(item({ status: "error" }))).toBeNull();
+    expect(enrollTarget(item({ type: "scene" }))).toBeNull();
+    expect(
+      enrollTarget(item({ data: { kind: "character", src: "/files/a.png" } as CanvasNodeData })),
+    ).toBeNull();
   });
 });

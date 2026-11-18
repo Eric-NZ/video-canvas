@@ -1,5 +1,6 @@
 import { VIRTUAL_HUMAN_NAME_MAX } from "@/api/virtual-human";
 import type { AssetDto } from "@/api/asset/type";
+import type { AssetItem } from "@/utils/drama/assets";
 import type { FilingStatus, VirtualHumanDto, VirtualHumanImageDto } from "@/api/virtual-human/type";
 
 /** 名称校验结果：通过时带去掉首尾空白后的名称，不通过时带可直接展示的原因 */
@@ -131,4 +132,27 @@ export function humanPickGroups(humans: VirtualHumanDto[], q: string): HumanPick
     if (items.length > 0) groups.push({ human, items });
   }
   return groups;
+}
+
+/**
+ * 短剧资产卡能加入真人库的形象图：只有已生成（或已放进）形象图的角色卡才有；
+ * 还没生成形象、上传中、生成中、失败的卡，以及不是角色的资产都没有。
+ * @param item 短剧资产
+ * @returns 形象图素材（只有 id / url / 文件名有意义，文件名取角色名，作为入库时的默认名称）；没有返回 null
+ */
+export function enrollTarget(item: AssetItem): AssetDto | null {
+  const { data } = item;
+  if (item.type !== "character" || item.status !== "done") return null;
+  if (!data.assetId || !data.src || data.mediaType === "video") return null;
+  return {
+    id: data.assetId,
+    url: data.src,
+    kind: "image",
+    mimeType: "",
+    byteSize: 0,
+    width: null,
+    height: null,
+    durationMs: null,
+    fileName: item.name,
+  };
 }
