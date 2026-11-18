@@ -15,6 +15,7 @@ import {
   usePromptLibrary,
   type PromptLibrary,
 } from "@/components/drama/prompts/use-prompt-library";
+import { AgentModelPicker } from "@/components/drama/agent-model-picker";
 import { ModelMenu } from "@/components/drama/video-model-menu";
 import { DialogSession } from "@/components/dialog-session";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,11 @@ import {
 import { useRemoteModels } from "@/hooks/use-models";
 import { useModelSwitchStore } from "@/store/drama-model-switch";
 import { PROMPT_STEPS, sameChoice } from "@/utils/drama/prompts";
-import { promptsToChoices, type StartPrompts } from "@/utils/drama/start-settings";
+import {
+  modelDisabledReason,
+  promptsToChoices,
+  type StartPrompts,
+} from "@/utils/drama/start-settings";
 
 import { useWorkspace } from "./context";
 
@@ -75,9 +80,9 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 /**
- * 项目设置的内容（弹窗正文，每次打开重新挂载）：资产图片模型三行 + 提示词四行，同开拍设置；
+ * 项目设置的内容（弹窗正文，每次打开重新挂载）：Agent 模型 + 资产图片模型三行 + 提示词四行，同开拍设置；
  * 新建 / 编辑「我的提示词」时整块换成编辑器。
- * 点「完成」才保存（PATCH image_models / prompts），只影响之后发起的任务；
+ * 点「完成」才保存（PATCH text_model / image_models / prompts），只影响之后发起的任务；
  * 换了图片模型的类型，资产区里还没生成的卡跟着换成新模型。
  */
 export function ProjectSettingsBody({
@@ -93,13 +98,15 @@ export function ProjectSettingsBody({
   const imageRemote = useRemoteModels("image");
   const [value, setValue] = useState<StartPrompts>(() => settingsToPrompts(drama.promptSettings));
   const [imageModels, setImageModels] = useState<DramaImageModels>(() => drama.imageModels);
+  const [textModel, setTextModel] = useState(drama.textModel);
   const [editor, setEditor] = useState<{ step: PromptStep; item: MyPrompt | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const changed = changedSteps(drama.promptSettings, value);
   const changedModels = changedImageModels(drama.imageModels, imageModels);
+  const textChanged = textModel !== drama.textModel;
 
   const done = async () => {
-    if (changed.length === 0 && changedModels.length === 0) {
+    if (changed.length === 0 && changedModels.length === 0 && !textChanged) {
       onClose();
       return;
     }
@@ -108,6 +115,7 @@ export function ProjectSettingsBody({
       await patch({
         ...(changed.length > 0 ? { prompts: promptsToChoices(value) } : {}),
         ...(changedModels.length > 0 ? { imageModels } : {}),
+        ...(textChanged ? { textModel } : {}),
       });
       if (changedModels.length > 0) {
         useModelSwitchStore
@@ -153,6 +161,16 @@ export function ProjectSettingsBody({
         <div className="bg-chrome-hover/60 mx-3 rounded-xl px-3 py-2 text-[13px]">
           修改只影响之后发起的任务，还没生成的资产会换成新的图片模型
         </div>
+        <Section label="Agent 模型">
+          <div className="grid px-3">
+            <AgentModelPicker
+              variant="field"
+              value={textModel}
+              onChange={setTextModel}
+              disabledReason={(model) => modelDisabledReason(model.capabilities.context?.window)}
+            />
+          </div>
+        </Section>
         <Section label="资产图片">
           <div className="grid gap-2 px-3">
             {IMAGE_MODEL_SLOTS.map(({ key, prefix }) => (
@@ -205,7 +223,7 @@ function ProjectSettingsContent({ onClose }: { onClose: () => void }) {
 
 /**
  * 工作台「项目设置」：顶栏画风 / 比例 / 模型胶囊和 ⌘K 命令面板都能打开。
- * 改资产图片模型和各环节提示词；保存后只影响之后发起的任务（已在跑的和已有的结果不变）。
+ * 改 Agent 模型、资产图片模型和各环节提示词；保存后只影响之后发起的任务（已在跑的和已有的结果不变）。
  */
 export function ProjectSettingsDialog({
   open,

@@ -89,8 +89,8 @@ function TitleInput() {
 }
 
 /**
- * 这部短剧的画风 / 比例 / Agent 模型：在首页新建时选定，进了工作台只显示、不能改
- * （改画风、比例会让前后生成的资产不一致）；整个胶囊点开「项目设置」（资产图片模型、提示词）。
+ * 这部短剧的画风 / 比例 / Agent 模型：画风、比例在首页新建时选定，进了工作台只显示、不能改
+ * （改了会让前后生成的资产不一致）；整个胶囊点开「项目设置」（Agent 模型、资产图片模型、提示词）。
  */
 function ProjectSettings({ onSettings }: { onSettings: () => void }) {
   const { drama } = useWorkspace();
@@ -136,7 +136,7 @@ function ProjectSettings({ onSettings }: { onSettings: () => void }) {
 
 /**
  * 工作台顶栏：左边返回列表 + 项目名（可改）+ 保存状态，中间是工序标签，
- * 右边是画风 / 比例 / Agent 模型（只读）、明暗、积分。
+ * 右边是画风 / 比例 / Agent 模型（点开项目设置）、明暗、积分。
  * 三列：右列至少是自己的内容宽度（minmax(max-content,1fr)），宽屏时和左列等宽、标签居中；
  * 窗口变窄时由左列（项目名）让位。左右强制等宽的话，右列装不下就会向左溢出、压在标签上。
  */
@@ -185,7 +185,7 @@ export function Topbar({
       </div>
       <StageTabs stage={stage} hints={hints} onChange={onStage} />
       <div className="flex items-center justify-end gap-0.5">
-        {/* 画风 / 比例 / 模型：首页新建时选定，这里只显示；点开进项目设置 */}
+        {/* 画风 / 比例 / 模型：这里只显示；点开进项目设置，模型在那里改 */}
         <ProjectSettings onSettings={onSettings} />
         <Button
           variant="ghost"

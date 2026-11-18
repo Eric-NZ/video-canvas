@@ -48,6 +48,15 @@ beforeAll(async () => {
           { key: "img-b", label: "img-b", capabilities: {} },
         ],
       },
+      agent: {
+        status: "ready",
+        loadedAt: Date.now(),
+        models: [
+          { key: "agent-a", label: "agent-a", capabilities: { context: { window: 200000 } } },
+          { key: "agent-b", label: "agent-b", capabilities: { context: { window: 1000000 } } },
+          { key: "agent-s", label: "agent-s", capabilities: { context: { window: 32000 } } },
+        ],
+      },
     } as never,
   });
   settingsToPrompts = sheet.settingsToPrompts;
@@ -108,6 +117,7 @@ const dramaOf = (patch: Partial<Drama> = {}) =>
     sourceKind: "novel",
     promptSettings: settings(),
     imageModels: { character: "", scene: "", prop: "" },
+    textModel: "",
     episodes: [],
     ...patch,
   }) as never;
@@ -251,6 +261,41 @@ describe("项目设置：资产图片模型", () => {
     expect(patches).toEqual([{ imageModels: { character: "img-b", scene: "", prop: "" } }]);
     expect(useModelSwitchStore.getState().byDrama.d1).toEqual({ character: "img-b" });
     useModelSwitchStore.setState({ byDrama: {} });
+    await m.unmount();
+  });
+});
+
+describe("项目设置：Agent 模型", () => {
+  const agentRow = (name: string) =>
+    [...dom.win.document.body.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").startsWith(name),
+    ) as HTMLButtonElement | undefined;
+
+  test("跟随默认时显示第一个 Agent 模型；换成别的，完成时保存 textModel", async () => {
+    const patches: Omit<UpdateDramaInput, "revision">[] = [];
+    const m = await mountBody(dramaOf(), patches);
+    await dom.click(byText(m.container, "agent-a"));
+    await dom.flush();
+    await dom.click(agentRow("agent-b"));
+    await dom.flush();
+    expect(byText(m.container, "agent-b")).toBeTruthy();
+    await dom.click(byText(m.container, "完成"));
+    await dom.flush();
+    expect(patches).toEqual([{ textModel: "agent-b" }]);
+    await m.unmount();
+  });
+
+  test("上下文不足 128k 的模型不能选；选回第一个等于跟随默认（空串）", async () => {
+    const patches: Omit<UpdateDramaInput, "revision">[] = [];
+    const m = await mountBody(dramaOf({ textModel: "agent-b" }), patches);
+    await dom.click(byText(m.container, "agent-b"));
+    await dom.flush();
+    expect(agentRow("agent-s")?.disabled).toBe(true);
+    await dom.click(agentRow("agent-a"));
+    await dom.flush();
+    await dom.click(byText(m.container, "完成"));
+    await dom.flush();
+    expect(patches).toEqual([{ textModel: "" }]);
     await m.unmount();
   });
 });
