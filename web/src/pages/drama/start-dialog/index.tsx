@@ -380,14 +380,18 @@ export function StartBody({
 
   return (
     <div className="overflow-hidden rounded-[inherit]">
+      {/* 两页并排侧滑；顶端对齐，且编辑器打开时收起开拍设置那页，弹窗高度跟着当前页走，不被长的那页撑高 */}
       <div
-        className="flex w-[200%] transition-transform duration-300 ease-out motion-reduce:transition-none"
+        className="flex w-[200%] items-start transition-transform duration-300 ease-out motion-reduce:transition-none"
         style={{ transform: `translateX(${editor ? "-50%" : "0"})` }}
       >
         <div
           aria-hidden={editor ? true : undefined}
           inert={editor ? true : undefined}
-          className="grid max-h-[86vh] w-1/2 shrink-0 content-start gap-4 overflow-y-auto p-5"
+          className={cn(
+            "grid w-1/2 shrink-0 content-start gap-4 overflow-y-auto px-5",
+            editor ? "max-h-0 py-0" : "max-h-[86vh] py-5",
+          )}
         >
           <h2 className="px-3 text-base font-semibold">开拍设置</h2>
 

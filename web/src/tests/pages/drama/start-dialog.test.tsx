@@ -214,6 +214,35 @@ describe("开拍设置：文本模型", () => {
   });
 });
 
+describe("开拍设置：侧滑到提示词编辑器", () => {
+  test("编辑器打开时开拍设置那页收起，弹窗高度跟着编辑器走；返回后恢复", async () => {
+    const m = await mountBody(pre());
+    const settingsPane = () =>
+      [...m.container.querySelectorAll("h2")].find((h) => h.textContent === "开拍设置")!
+        .parentElement as HTMLElement;
+    expect(settingsPane().className).not.toContain("max-h-0");
+    const chip = [...m.container.querySelectorAll("span")]
+      .find((el) => el.textContent === "视频提示词")
+      ?.parentElement?.querySelector("button") as HTMLButtonElement;
+    await dom.click(chip);
+    await dom.flush();
+    await dom.click(
+      [...dom.win.document.body.querySelectorAll("button")].find(
+        (b) => (b.textContent ?? "").trim() === "新建",
+      ),
+    );
+    await dom.flush();
+    const editor = m.container.querySelector('[data-slot="prompt-editor"]') as HTMLElement;
+    expect(editor).toBeTruthy();
+    expect(settingsPane().className).toContain("max-h-0");
+    expect(editor.parentElement?.className).not.toContain("max-h-0");
+    await dom.click(m.container.querySelector('[data-slot="prompt-editor"] button'));
+    await dom.flush();
+    expect(settingsPane().className).not.toContain("max-h-0");
+    await m.unmount();
+  });
+});
+
 describe("开拍设置：点「开始」建剧", () => {
   test("小说：请求体带 token、类型、范围（全部 = 0）、画幅、画风、时长、四环节提示词", async () => {
     const calls: CreateDramaInput[] = [];
