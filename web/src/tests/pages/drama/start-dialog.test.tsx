@@ -209,10 +209,12 @@ describe("开拍设置：来源与基本规则", () => {
     await dom.click(byText(m.container, "60s/集") as HTMLButtonElement);
     await dom.flush(400);
     expect(m.container.textContent).toContain("75s/集");
-    expect(estimate).toHaveBeenCalledWith(
-      "/drama-sources/tok/estimate",
-      expect.objectContaining({ episode_seconds: 75 }),
+    const estimateCall = estimate.mock.calls.find(
+      ([path]) => path === "/drama-sources/tok/estimate",
     );
+    expect(estimateCall).toBeTruthy();
+    expect(estimateCall?.[1]).toMatchObject({ episode_seconds: 75 });
+    expect(estimateCall?.[2]).toMatchObject({ silent: true });
     expect(m.container.textContent).toContain("预计约 12–18 集");
     await dom.click(startButton(m.container));
     await dom.flush();
