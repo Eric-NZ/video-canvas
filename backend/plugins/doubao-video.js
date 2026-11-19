@@ -37,7 +37,7 @@ module.exports = {
     apiVersion: 1,
     key: "doubao-video",
     name: "豆包（火山方舟） · 视频",
-    version: "1.1.0",
+    version: "1.2.0",
     vendor: "volcengine",
     description: "火山引擎豆包 Seedance 视频生成（异步）",
     auth: { type: "bearer" },
@@ -143,7 +143,8 @@ function buildVideoRequest(ctx) {
   return { method: "POST", path: TASKS_PATH, json: body, timeout: 60 };
 }
 
-// content 数组：文本在前，随后是图片 / 视频 / 音频参考。素材都用签名 URL 交给方舟拉取。
+// content 数组：文本在前，随后是图片 / 视频 / 音频参考。素材都用签名 URL 交给方舟拉取；
+// 图片标了 filed：用户真人库里在本渠道备案可用的图片由宿主换成 asset://<素材 ID>，方舟对真人人脸只认已备案素材。
 function videoContent(input) {
   var content = [];
   if (input.prompt !== undefined && String(input.prompt) !== "") {
@@ -151,7 +152,7 @@ function videoContent(input) {
   }
   var images = isArray(input.images) ? input.images : [];
   for (var i = 0; i < images.length; i++) {
-    var item = { type: "image_url", image_url: { url: { __fileRef: images[i], as: "url" } } };
+    var item = { type: "image_url", image_url: { url: { __fileRef: images[i], as: "url", filed: true } } };
     var role = imageRole(input.op, images.length, i);
     if (role) {
       item.role = role;

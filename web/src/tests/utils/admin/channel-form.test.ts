@@ -7,6 +7,7 @@ import {
   checkBaseUrl,
   checkHeaders,
   emptyChannelForm,
+  filingSiteOf,
   formatLoad,
   formatRateLimit,
   MAX_CHANNEL_HEADERS,
@@ -46,6 +47,9 @@ describe("emptyChannelForm", () => {
       rps: "",
       maxConcurrency: "",
       maxRunning: "",
+      filingEnabled: false,
+      filingGroupId: "",
+      filingProjectName: "",
     });
   });
 });
@@ -60,6 +64,9 @@ describe("channelFormFromView", () => {
       rps: "5",
       maxConcurrency: "",
       maxRunning: "",
+      filingEnabled: false,
+      filingGroupId: "",
+      filingProjectName: "",
     });
   });
 
@@ -270,5 +277,67 @@ describe("formatLoad", () => {
     expect(formatLoad(undefined, 4)).toBe("生成中 0/4 · 排队 0");
     expect(formatLoad({ channel: "a", running: 1, waiting: 0 }, 0)).toBe("生成中 1/不限 · 排队 0");
     expect(formatLoad(undefined, undefined)).toBe("生成中 0/不限 · 排队 0");
+  });
+});
+
+describe("虚拟人像库配置", () => {
+  const filing = {
+    enabled: true,
+    group_id: "group-1",
+    project_name: "",
+    site: "cn-beijing",
+    access_key_set: true,
+    secret_key_set: true,
+  };
+
+  test("视图 → 表单：带上虚拟人像库；旧后端没有 filing 时按未启用", () => {
+    const form = channelFormFromView(view({ filing }));
+    expect(form.filingEnabled).toBe(true);
+    expect(form.filingGroupId).toBe("group-1");
+    expect(form.filingProjectName).toBe("");
+    expect(channelFormFromView(view()).filingEnabled).toBe(false);
+  });
+
+  test("没改虚拟人像库时不带 filing；改了就整体带上（去首尾空白）", () => {
+    const original = view({ filing });
+    expect(buildChannelRequest(channelFormFromView(original), original)).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+    const result = buildChannelRequest(
+      { ...channelFormFromView(original), filingGroupId: " group-2 ", filingProjectName: " p " },
+      original,
+    );
+    expect(result.ok && result.update.filing).toEqual({
+      enabled: true,
+      group_id: "group-2",
+      project_name: "p",
+    });
+  });
+
+  test("启用时素材组 ID 必填；关闭时不校验", () => {
+    const original = view({ filing: { ...filing, enabled: false, group_id: "" } });
+    const on = buildChannelRequest(
+      { ...channelFormFromView(original), filingEnabled: true },
+      original,
+    );
+    expect(on.ok).toBe(false);
+    expect(!on.ok && on.errors.filingGroupId).toBe("启用虚拟人像库时必须填写素材组 ID");
+    const off = buildChannelRequest(channelFormFromView(original), original);
+    expect(off.ok).toBe(true);
+  });
+
+  test("新建渠道不带 filing（虚拟人像库在编辑时配置）", () => {
+    const result = buildChannelRequest(newForm({ filingEnabled: true, filingGroupId: "g" }));
+    expect(result.ok && "filing" in result.create).toBe(false);
+  });
+});
+
+describe("filingSiteOf：备案站点", () => {
+  test("域名带 byteplus 是国际站，其余按国内站", () => {
+    expect(filingSiteOf("https://ark.cn-beijing.volces.com/api/v3")).toBe("cn-beijing");
+    expect(filingSiteOf("https://ark.ap-southeast.bytepluses.com/api/v3")).toBe("ap-southeast-1");
+    expect(filingSiteOf("ark.byteplus")).toBe("ap-southeast-1");
+    expect(filingSiteOf("")).toBe("cn-beijing");
   });
 });
