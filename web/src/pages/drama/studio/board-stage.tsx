@@ -211,11 +211,12 @@ export function BoardStage() {
           if (Math.abs(dx) >= DRAG_THRESHOLD) step(dx < 0 ? 1 : -1);
         }}
         className={cn(
-          "relative grid max-h-full w-full max-w-[860px] place-items-center overflow-hidden rounded-2xl [corner-shape:squircle]",
+          // 所有状态都带同样粗的边框（有图时是透明的），框的内外尺寸才不随状态变
+          "relative grid max-h-full w-full max-w-[860px] place-items-center overflow-hidden rounded-2xl border-[1.5px] [corner-shape:squircle]",
           hasImage || status === "running"
-            ? "bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10"
+            ? "border-transparent bg-black shadow-[0_40px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10"
             : cn(
-                "border-[1.5px] border-dashed",
+                "border-dashed",
                 status === "failed" ? "border-destructive/50" : "border-white/15",
               ),
         )}
@@ -268,24 +269,18 @@ export function BoardStage() {
             {status === "failed" && node?.error && (
               <p className="text-muted-foreground -mt-1.5 text-[13px]">{node.error}</p>
             )}
-            <div className={PILL}>
-              <button
-                type="button"
-                className={PILL_BUTTON}
-                disabled={!!blocked}
-                title={blocked ?? undefined}
-                onClick={generate}
-              >
-                {generateLabel(status === "failed" ? "重新生成" : "生成")}
-              </button>
-            </div>
           </div>
         )}
       </div>
 
-      {hasImage && versions.length > 1 && (
-        <div className="flex max-w-full items-center justify-center gap-1.5 overflow-x-auto px-1 py-1">
-          {versions.map((item) => (
+      {/* 版本条和按钮行的位置始终占着（没有时是空的），不然它们有没有会把上面的大图框顶高 / 压矮 */}
+      <div
+        data-slot="board-strip"
+        className="flex h-[52px] max-w-full shrink-0 items-center justify-center gap-1.5 overflow-x-auto px-1"
+      >
+        {hasImage &&
+          versions.length > 1 &&
+          versions.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -306,43 +301,44 @@ export function BoardStage() {
               <img src={thumbOf(item.src)} alt="" className="size-full object-cover" />
             </button>
           ))}
-        </div>
-      )}
+      </div>
 
-      {(hasImage || node) && (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {hasImage && node && node.shotCount > 0 && (
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {node.shotCount} 镜 · {node.layout.replace("x", "×")} · {BOARD_RATIO}
-            </span>
-          )}
-          {hasImage && (
-            <div className={PILL}>
-              <button
-                type="button"
-                className={PILL_BUTTON}
-                disabled={!!blocked}
-                title={blocked ?? undefined}
-                onClick={generate}
-              >
-                <RotateCw />
-                {generateLabel("重新生成")}
-              </button>
-            </div>
-          )}
-          {node && (
-            <div className={PILL}>
-              <button
-                type="button"
-                className={PILL_BUTTON}
-                onClick={() => openBoardInCanvas(node.nodeId)}
-              >
-                进入画布查看
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <div
+        data-slot="board-actions"
+        className="flex h-10 shrink-0 flex-wrap items-center justify-center gap-2"
+      >
+        {hasImage && node && node.shotCount > 0 && (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {node.shotCount} 镜 · {node.layout.replace("x", "×")} · {BOARD_RATIO}
+          </span>
+        )}
+        {/* 生成中框里已经有进度，不再放生成按钮；其余状态都是这一个按钮：没有图写「生成」，有过图或失败写「重新生成」 */}
+        {status !== "running" && (
+          <div className={PILL}>
+            <button
+              type="button"
+              className={PILL_BUTTON}
+              disabled={!!blocked}
+              title={blocked ?? undefined}
+              onClick={generate}
+            >
+              {hasImage && <RotateCw />}
+              {generateLabel(hasImage || status === "failed" ? "重新生成" : "生成故事板")}
+            </button>
+          </div>
+        )}
+        {node && (
+          <div className={PILL}>
+            <button
+              type="button"
+              className={PILL_BUTTON}
+              onClick={() => openBoardInCanvas(node.nodeId)}
+            >
+              进入画布查看
+            </button>
+          </div>
+        )}
+      </div>
     </BoardSwipe>
   );
 }

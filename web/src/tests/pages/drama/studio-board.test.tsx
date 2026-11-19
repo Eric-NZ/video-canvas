@@ -140,12 +140,19 @@ describe("片场故事板：预览的「故事板 | 视频」切换", () => {
 });
 
 describe("片场故事板：故事板这一面", () => {
-  test("还没有：虚线框 + 「生成 · 积分」，点了只生成这一段", async () => {
+  test("还没有：虚线框里只有图标和标题，「生成 · 积分」按钮在框下面的按钮行里，点了只生成这一段", async () => {
     const { value, calls } = studio({});
     const m = await mount(value, <BoardStage />);
-    expect(m.container.textContent).toContain("还没有故事板");
+    const frame = m.container.querySelector('[data-slot="board-frame"]') as HTMLElement;
+    const actions = m.container.querySelector('[data-slot="board-actions"]') as HTMLElement;
+    expect(frame.textContent).toContain("还没有故事板");
     expect(m.container.querySelector("img")).toBeNull();
-    await dom.click(button(m.container, "生成"));
+    // 按钮不在框里，在下面的按钮行里
+    expect(frame.querySelector("button")).toBeNull();
+    const go = button(actions, "生成故事板") as HTMLButtonElement;
+    expect(go).toBeDefined();
+    expect(go.textContent).toContain("· 4");
+    await dom.click(go);
     expect(calls.generate).toEqual([["s0"]]);
     await m.unmount();
   });
@@ -194,6 +201,87 @@ describe("片场故事板：故事板这一面", () => {
     await dom.flush();
     expect(m2.container.textContent).toContain("正在同步任务状态");
     await m2.unmount();
+  });
+
+  test("框的大小不随状态变：有图、还没有、失败、生成中，大图框、版本条、按钮行都是同一套尺寸规则（占位始终在）", async () => {
+    const layoutOf = async (over: Parameters<typeof studio>[0]) => {
+      const { value } = studio(over);
+      const m = await mount(value, <BoardStage />);
+      const sizing = (slot: string) => {
+        const el = m.container.querySelector(`[data-slot="${slot}"]`) as HTMLElement | null;
+        if (!el) return null;
+        return {
+          aspect: el.style.aspectRatio,
+          classes: el.className
+            .split(/\s+/)
+            .filter((c) => /^(max-|w-|h-|min-|shrink|flex-1)/.test(c))
+            .sort()
+            .join(" "),
+        };
+      };
+      const out = {
+        frame: sizing("board-frame"),
+        strip: sizing("board-strip"),
+        actions: sizing("board-actions"),
+      };
+      await m.unmount();
+      return out;
+    };
+    const withImage = await layoutOf({ statuses: { s0: "ready" }, nodes: { s0: node() } });
+    // 三块占位都存在
+    expect(withImage.frame).not.toBeNull();
+    expect(withImage.strip).not.toBeNull();
+    expect(withImage.actions).not.toBeNull();
+    // 没有图 / 失败 / 生成中 / 连节点都没有：三块的尺寸规则和有图时一模一样
+    const cases = {
+      empty: { statuses: { s0: "empty" } },
+      noNode: {},
+      failed: {
+        statuses: { s0: "failed" },
+        nodes: { s0: node({ src: null, status: "error", versions: [], activeId: null }) },
+      },
+      running: {
+        statuses: { s0: "running" },
+        nodes: { s0: node({ src: null, status: "running", versions: [], activeId: null }) },
+      },
+    } as const;
+    for (const over of Object.values(cases)) {
+      expect(await layoutOf(over as Parameters<typeof studio>[0])).toEqual(withImage);
+    }
+  });
+
+  test("按钮行里的生成按钮：没有图写「生成」，有图或失败写「重新生成」，生成中不放（框里已经有进度）", async () => {
+    const labelsOf = async (over: Parameters<typeof studio>[0]) => {
+      const { value } = studio(over);
+      const m = await mount(value, <BoardStage />);
+      const actions = m.container.querySelector('[data-slot="board-actions"]') as HTMLElement;
+      const labels = [...actions.querySelectorAll("button")].map((b) => b.textContent?.trim());
+      await m.unmount();
+      return labels;
+    };
+    expect(await labelsOf({ statuses: { s0: "empty" } })).toEqual(["生成故事板· 4"]);
+    expect(
+      await labelsOf({
+        statuses: { s0: "empty" },
+        nodes: { s0: node({ src: null, versions: [], activeId: null }) },
+      }),
+    ).toEqual(["生成故事板· 4", "进入画布查看"]);
+    expect(await labelsOf({ statuses: { s0: "ready" }, nodes: { s0: node() } })).toEqual([
+      "重新生成· 4",
+      "进入画布查看",
+    ]);
+    expect(
+      await labelsOf({
+        statuses: { s0: "failed" },
+        nodes: { s0: node({ src: null, status: "error", versions: [], activeId: null }) },
+      }),
+    ).toEqual(["重新生成· 4", "进入画布查看"]);
+    expect(
+      await labelsOf({
+        statuses: { s0: "running" },
+        nodes: { s0: node({ src: null, status: "running", versions: [], activeId: null }) },
+      }),
+    ).toEqual(["进入画布查看"]);
   });
 
   test("没有出图也能进画布：空节点（分镜时就建好了）、生成失败时都有「进入画布查看」", async () => {
@@ -341,13 +429,19 @@ describe("片场故事板：故事板这一面", () => {
       nodes: { s0: node({ src: null, status: "error", error: "生成超时，积分已退回" }) },
     });
     const m = await mount(failed.value, <BoardStage />);
-    expect(m.container.textContent).toContain("生成失败");
-    expect(m.container.textContent).toContain("生成超时，积分已退回");
+    const frame = m.container.querySelector('[data-slot="board-frame"]') as HTMLElement;
+    const actions = m.container.querySelector('[data-slot="board-actions"]') as HTMLElement;
+    expect(frame.textContent).toContain("生成失败");
+    expect(frame.textContent).toContain("生成超时，积分已退回");
+    // 「重新生成」在下面的按钮行里，不在框里
+    expect(frame.querySelector("button")).toBeNull();
+    await dom.click(button(actions, "重新生成"));
+    expect(failed.calls.generate).toEqual([["s0"]]);
     await m.unmount();
 
     const blocked = studio({ blocked: "没有可用的图片模型" });
     const m2 = await mount(blocked.value, <BoardStage />);
-    const go = button(m2.container, "生成") as HTMLButtonElement;
+    const go = button(m2.container, "生成故事板") as HTMLButtonElement;
     expect(go.disabled).toBe(true);
     expect(go.title).toBe("没有可用的图片模型");
     await m2.unmount();
