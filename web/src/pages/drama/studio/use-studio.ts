@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -41,6 +42,7 @@ import {
   type TargetFormat,
 } from "@/utils/drama/adaptation";
 import { boardRef, type BoardRef } from "@/utils/drama/board";
+import { canvasEntryReducer, type CanvasEntry } from "@/utils/drama/canvas-entry";
 import { reloadSegments } from "@/utils/drama/segment-events";
 import type { RefAsset } from "@/utils/drama/segment-assets";
 import { planSegmentInput, type SegmentPlan } from "@/utils/drama/segment-input";
@@ -96,14 +98,23 @@ export type Studio = {
   setBoardOff: (off: boolean) => void;
   /** 每个片段的故事板：状态、生成、补齐整集 */
   boards: StudioBoards;
-  /** 片场整体看哪一面：列表（资产库 / 预览 / 编辑 / 片段条）或画布（当前这张短剧画布）；切走再切回来时画布重新挂载 */
-  canvasView: "list" | "canvas";
-  setCanvasView: (view: "list" | "canvas") => void;
-  /** 进入画布查看某个故事板节点：切到画布视图并飞到它（看大图、切换历史版本）；就在片场里，不跳工序 */
+  /**
+   * 片场整体看哪一面：列表（资产库 / 预览 / 编辑 / 片段条）或画布（当前这张短剧画布）。
+   * 像资产管理那样两面都不卸载，切换只改看哪一面（交叉淡入）；画布在片场进入后的空闲时间后台挂好，点的时候已经在了。
+   */
+  canvasEntry: CanvasEntry;
+  /** 空闲时后台挂上画布（仍然看着列表） */
+  mountCanvas: () => void;
+  /** 切到画布面 */
+  showCanvas: () => void;
+  /** 切回列表面（画布仍然挂着） */
+  showList: () => void;
+  /** 画布里已经飞到目标节点（或放弃了） */
+  canvasFocused: () => void;
+  /** 画布没能加载出来：卸载画布、回列表 */
+  canvasFailed: () => void;
+  /** 进入画布查看某个故事板节点：切到画布面，画布里视口过渡着飞到它；就在片场里，不跳工序 */
   openBoardInCanvas: (nodeId: string) => void;
-  /** 画布视图挂好后要飞到的节点；飞过去（或放弃）后用 clearFocusNode 清掉 */
-  focusNode: string | null;
-  clearFocusNode: () => void;
   /** 中间预览看哪一面：故事板 / 视频；没手动切过时，选中片段有视频看视频，没有看故事板 */
   view: PreviewView;
   setView: (view: PreviewView) => void;
@@ -785,13 +796,20 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     };
   }, []);
 
-  const [canvasView, setCanvasView] = useState<"list" | "canvas">("list");
-  const [focusNode, setFocusNode] = useState<string | null>(null);
-  const openBoardInCanvas = useCallback((nodeId: string) => {
-    setFocusNode(nodeId);
-    setCanvasView("canvas");
-  }, []);
-  const clearFocusNode = useCallback(() => setFocusNode(null), []);
+  const [canvasEntry, dispatchEntry] = useReducer(canvasEntryReducer, {
+    view: "list",
+    mounted: false,
+    target: null,
+  } satisfies CanvasEntry);
+  const mountCanvas = useCallback(() => dispatchEntry({ type: "mount" }), []);
+  const showCanvas = useCallback(() => dispatchEntry({ type: "show", target: null }), []);
+  const showList = useCallback(() => dispatchEntry({ type: "show-list" }), []);
+  const canvasFocused = useCallback(() => dispatchEntry({ type: "focused" }), []);
+  const canvasFailed = useCallback(() => dispatchEntry({ type: "fail" }), []);
+  const openBoardInCanvas = useCallback(
+    (nodeId: string) => dispatchEntry({ type: "show", target: nodeId }),
+    [],
+  );
 
   const setBoardOff = useCallback(
     (off: boolean) => useStudioPrefsStore.getState().patch(dramaId, { boardOff: off }),
@@ -824,11 +842,13 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     boardOff: prefs.boardOff,
     setBoardOff,
     boards: studioBoards,
-    canvasView,
-    setCanvasView,
+    canvasEntry,
+    mountCanvas,
+    showCanvas,
+    showList,
+    canvasFocused,
+    canvasFailed,
     openBoardInCanvas,
-    focusNode,
-    clearFocusNode,
     view,
     setView,
     prompt,

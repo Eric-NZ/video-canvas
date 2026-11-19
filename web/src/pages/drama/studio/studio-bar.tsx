@@ -121,7 +121,7 @@ const NO_JOBS: never[] = [];
  * 合成整集挪到了「成片」页；这里只管把片段做出来。
  */
 export function StudioBar() {
-  const { drama, episode, no, save, video, canvasView } = useStudio();
+  const { drama, episode, no, save, video, canvasEntry } = useStudio();
   const jobs = useDramaJobsStore((state) => state.byDrama[drama.id]) ?? NO_JOBS;
   const starter = useStoryboardStart(video.maxSeconds);
   const status = SAVE_LABEL[save];
@@ -143,7 +143,7 @@ export function StudioBar() {
       )}
       <span className="flex-1" />
       {/* 画布视图里用不上这些按钮，藏起来免得误点；只留左边的切换 */}
-      {canvasView === "list" && (
+      {canvasEntry.view === "list" && (
         <>
           <BoardProgress />
           <StoryboardBatchButton current={no} maxSeconds={video.maxSeconds} />

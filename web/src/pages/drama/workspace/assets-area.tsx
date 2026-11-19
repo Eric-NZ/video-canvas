@@ -51,11 +51,14 @@ export function DramaCanvas({
   overlay,
   commandsRef,
   onNodeCreate,
+  onFail,
 }: {
   /** 编辑器 overlay 插槽的内容；要引用稳定（模块顶层常量），否则会牵动编辑器 */
   overlay: React.ReactNode;
   commandsRef: React.RefObject<CanvasEditorCommands | null>;
   onNodeCreate: (node: CanvasNode) => CanvasNode;
+  /** 画布没能加载出来（读取失败、被别的标签页占着编辑锁）：调用方据此放弃，别一直占着 */
+  onFail?: () => void;
 }) {
   const { drama } = useWorkspace();
   const canvasId = drama.canvasId;
@@ -111,6 +114,16 @@ export function DramaCanvas({
       active = false;
     };
   }, [canvasId, lock]);
+
+  // 没能加载出来就告诉调用方（片场据此卸载画布、回列表）
+  const failure = lock === "waiting" || error;
+  const onFailRef = useRef(onFail);
+  useEffect(() => {
+    onFailRef.current = onFail;
+  });
+  useEffect(() => {
+    if (failure) onFailRef.current?.();
+  }, [failure]);
 
   if (lock === "waiting") {
     return (

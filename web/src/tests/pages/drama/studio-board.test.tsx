@@ -80,14 +80,15 @@ function studio(over: {
   statuses?: Record<string, BoardStatus>;
   nodes?: Record<string, BoardNode>;
   view?: PreviewView;
-  canvasView?: "list" | "canvas";
+  canvasEntry?: { view: "list" | "canvas"; mounted: boolean; target: string | null };
   credits?: number;
   targets?: Segment[];
   blocked?: string | null;
 }) {
   const calls = {
     canvas: [] as string[],
-    canvasView: [] as string[],
+    showCanvas: 0,
+    showList: 0,
     select: [] as string[],
     generate: [] as string[][],
     fill: 0,
@@ -100,8 +101,9 @@ function studio(over: {
     segments,
     submitting: new Set<string>(),
     openBoardInCanvas: (nodeId: string) => void calls.canvas.push(nodeId),
-    canvasView: over.canvasView ?? "list",
-    setCanvasView: (v: "list" | "canvas") => void calls.canvasView.push(v),
+    canvasEntry: over.canvasEntry ?? { view: "list", mounted: true, target: null },
+    showCanvas: () => void (calls.showCanvas += 1),
+    showList: () => void (calls.showList += 1),
     view: over.view ?? "board",
     setView: (v: PreviewView) => calls.view.push(v),
     actions: { generate: async (s: Segment) => void calls.video.push(s.id) },
@@ -473,22 +475,37 @@ describe("片场故事板：顶部条「补齐故事板」", () => {
 });
 
 describe("片场：列表 | 画布 切换（和资产管理同款）", () => {
-  test("两个选项，当前视图高亮；点另一个就切过去", async () => {
+  test("两个选项，当前视图高亮；点「画布」切到画布面，点「列表」回列表面（都是直接切，不用等）", async () => {
     const { value, calls } = studio({});
     const m = await mount(value, <StudioViewToggle />);
-    const buttons = [...m.container.querySelectorAll("button")];
+    const buttons = [...m.container.querySelectorAll("button")] as HTMLButtonElement[];
     expect(buttons.map((b) => b.textContent)).toEqual(["列表", "画布"]);
     expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    // 不转圈、不禁用：画布早在后台挂好了
+    expect(buttons.every((b) => !b.disabled && !b.querySelector(".animate-spin"))).toBe(true);
     await dom.click(buttons[1]);
-    expect(calls.canvasView).toEqual(["canvas"]);
+    expect(calls.showCanvas).toBe(1);
     await m.unmount();
 
-    const inCanvas = studio({ canvasView: "canvas" });
+    const inCanvas = studio({ canvasEntry: { view: "canvas", mounted: true, target: null } });
     const m2 = await mount(inCanvas.value, <StudioViewToggle />);
-    const pressed = [...m2.container.querySelectorAll("button")].map((b) =>
-      b.getAttribute("aria-pressed"),
-    );
-    expect(pressed).toEqual(["false", "true"]);
+    const buttons2 = [...m2.container.querySelectorAll("button")];
+    expect(buttons2.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+    await dom.click(buttons2[0]);
+    expect(inCanvas.calls.showList).toBe(1);
     await m2.unmount();
+  });
+});
+
+describe("片场故事板：「进入画布查看」", () => {
+  test("点了直接切到画布并飞到这个节点，按钮不转圈、不禁用", async () => {
+    const { value, calls } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
+    const m = await mount(value, <BoardStage />);
+    const go = button(m.container, "进入画布查看") as HTMLButtonElement;
+    expect(go.disabled).toBe(false);
+    expect(go.querySelector(".animate-spin")).toBeNull();
+    await dom.click(go);
+    expect(calls.canvas).toEqual(["b1"]);
+    await m.unmount();
   });
 });
