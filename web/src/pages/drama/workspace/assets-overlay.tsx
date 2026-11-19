@@ -521,12 +521,11 @@ function useApplyModelSwitch(dramaId: string, items: AssetItem[]) {
   }, [dramaId, imageModels.models, imageModels.status, items, pending]);
 }
 
-/** 画布视图下的外壳：左上资产库浮窗、底部居中横排工具条、视图控件、操作提示 */
-function CanvasChrome({ items }: { items: AssetItem[] }) {
+/** 画布视图的底部工具：居中横排工具条、左下视图控件；资产管理和故事板共用 */
+export function CanvasTools() {
   const editor = useCanvasEditor();
   return (
     <>
-      <LibraryFloat items={items} />
       <ChromeZone position="bottom-center">
         <BottomToolbar
           orientation="horizontal"
@@ -548,6 +547,16 @@ function CanvasChrome({ items }: { items: AssetItem[] }) {
           onOpenShortcuts={openShortcuts}
         />
       </ChromeZone>
+    </>
+  );
+}
+
+/** 画布视图下的外壳：左上资产库浮窗、底部工具、操作提示 */
+function CanvasChrome({ items }: { items: AssetItem[] }) {
+  return (
+    <>
+      <LibraryFloat items={items} />
+      <CanvasTools />
       <ChromeZone position="bottom-right" className="max-md:hidden">
         <ChromePill className="text-muted-foreground gap-1.5 px-3 text-xs">
           <Hand className="size-3.5" />

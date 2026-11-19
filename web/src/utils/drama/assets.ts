@@ -1,6 +1,8 @@
 import type { CanvasNodeData, FlowNode, NodeDrama } from "@/types";
 import { characterImageUploaded } from "@/utils/characters/node-character";
 
+import { isBoardNode } from "./board";
+
 /** 资产区的类型 tab（角色 / 场景 / 道具来自拆解，其余是画布里随手建的素材） */
 export type AssetType = "character" | "scene" | "prop" | "text" | "image" | "video" | "audio";
 
@@ -40,9 +42,9 @@ export type AssetItem = {
   data: CanvasNodeData;
 };
 
-/** 节点属于哪个类型 tab；导演台不是资产，返回 null */
+/** 节点属于哪个类型 tab；导演台、故事板（在故事板页里管）不是资产，返回 null */
 export function assetTypeOf(data: CanvasNodeData): AssetType | null {
-  if (data.kind === "director") return null;
+  if (data.kind === "director" || isBoardNode(data)) return null;
   if (data.drama?.type) return data.drama.type;
   switch (data.kind) {
     case "character":
