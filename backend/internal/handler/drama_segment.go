@@ -153,6 +153,23 @@ func (h *DramaSegmentHandler) GenerateBoard(c *gin.Context) {
 	response.Accepted(c, gin.H{"task": task})
 }
 
+// SelectBoardOutput 切换片段故事板的当前版本（滑到哪版，生视频就带哪版），返回 204。
+func (h *DramaSegmentHandler) SelectBoardOutput(c *gin.Context) {
+	sid, ok := dramaSegmentPath(c)
+	if !ok {
+		return
+	}
+	var req model.SelectDramaBoardOutputReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.SelectBoardOutput(c.Request.Context(), currentUserID(c), sid, req.OutputID); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.NoContent(c)
+}
+
 // dramaSegmentPath 校验并解码片段路径ID，非法编码统一为参数错误。
 func dramaSegmentPath(c *gin.Context) (uint64, bool) {
 	sid, ok := idcodec.Decode(c.Param("sid"))

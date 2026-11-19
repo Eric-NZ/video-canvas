@@ -171,3 +171,112 @@ func TestBackfillBoard(t *testing.T) {
 		}
 	})
 }
+
+// segs 是同步用的片段：id、序号、原稿哈希。
+func segs(items ...canvasgraph.BoardSegment) []canvasgraph.BoardSegment { return items }
+
+func TestSyncBoardsCreatesEmptyNodesForSegments(t *testing.T) {
+	g := boardGraph(t, "")
+	res := canvasgraph.SyncBoards(g, 2, segs(
+		canvasgraph.BoardSegment{ID: "s1", Seq: 0, NewID: "b1", Label: "故事板 · 第 2 集 · 01", SourceHash: "h1", Layout: "2x2", ShotCount: 3},
+		canvasgraph.BoardSegment{ID: "s2", Seq: 1, NewID: "b2", Label: "故事板 · 第 2 集 · 02", SourceHash: "h2", Layout: "3x2", ShotCount: 5},
+	))
+	if res == nil {
+		t.Fatal("应建节点")
+	}
+	n1, n2 := res.Graph.Node("b1"), res.Graph.Node("b2")
+	if n1 == nil || n2 == nil {
+		t.Fatalf("两个片段各一个节点：%s", jsonOf(t, res.Graph.Nodes))
+	}
+	d := n1.Data()
+	// 空节点：图片类型、没有图和任务、带片段标记，用户可以直接在画布里上传或生成
+	if d["kind"] != "image" || d["label"] != "故事板 · 第 2 集 · 01" || d["src"] != nil || d["taskId"] != nil || d["status"] != nil {
+		t.Fatalf("应是空节点：%s", jsonOf(t, d))
+	}
+	if got := jsonOf(t, d["drama"]); got != `{"board":{"layout":"2x2","segmentId":"s1","shotCount":3,"sourceHash":"h1"},"episodes":[2]}` {
+		t.Fatalf("drama 标记不对：%s", got)
+	}
+	// 位置同点生成时建的节点：第 2 集往下一行，第 2 段往右一格
+	if p1, p2 := n1.Position(), n2.Position(); p1.X != 700+400 || p1.Y != 40+420 || p2.X != p1.X+624 || p2.Y != p1.Y {
+		t.Fatalf("位置不对：%+v %+v", p1, p2)
+	}
+}
+
+func TestSyncBoardsKeepsExistingAndRemovesOrphans(t *testing.T) {
+	extra := `{"id":"b_keep","type":"canvas","position":{"x":9,"y":9},"data":{"kind":"image","label":"旧标题","src":"https://cdn/1.png","assetId":"1","status":"done",
+		"drama":{"episodes":[2],"board":{"segmentId":"s1","sourceHash":"old","layout":"2x2","shotCount":2}}}},
+		{"id":"b_orphan","type":"canvas","position":{"x":9,"y":9},"data":{"kind":"image","src":"https://cdn/2.png","drama":{"episodes":[2],"board":{"segmentId":"gone","sourceHash":"x","layout":"2x2","shotCount":2}}}},
+		{"id":"b_other_ep","type":"canvas","position":{"x":9,"y":9},"data":{"kind":"image","drama":{"episodes":[3],"board":{"segmentId":"s9","sourceHash":"x","layout":"2x2","shotCount":2}}}}`
+	g := boardGraph(t, extra)
+	g.Edges = append(g.Edges, canvasgraph.Edge{"id": "e1", "source": "n_kitchen", "target": "b_orphan"})
+	res := canvasgraph.SyncBoards(g, 2, segs(
+		canvasgraph.BoardSegment{ID: "s1", Seq: 0, NewID: "unused", Label: "新标题", SourceHash: "new", Layout: "3x3", ShotCount: 7},
+	))
+	if res == nil {
+		t.Fatal("有孤立节点要清")
+	}
+	// 已有节点原样保留（图、历史、标题、drama 标记都不动：哈希是出图时的，不能被改成新原稿的）
+	keep := res.Graph.Node("b_keep")
+	if keep == nil || keep.Data()["src"] != "https://cdn/1.png" || keep.Data()["label"] != "旧标题" || res.Graph.Node("unused") != nil {
+		t.Fatalf("已有节点不该动：%s", jsonOf(t, res.Graph.Nodes))
+	}
+	if canvasgraph.FindBoard(res.Graph, "s1").ID() != "b_keep" {
+		t.Fatal("片段应沿用已有节点")
+	}
+	if got := jsonOf(t, keep.Data()["drama"]); got != `{"board":{"layout":"2x2","segmentId":"s1","shotCount":2,"sourceHash":"old"},"episodes":[2]}` {
+		t.Fatalf("drama 标记不该动：%s", got)
+	}
+	// 这一集里片段已经没了的节点连同连线清掉；别的集的不碰
+	if res.Graph.Node("b_orphan") != nil || len(res.Graph.Edges) != 0 {
+		t.Fatalf("孤立节点和它的连线应清掉：%s", jsonOf(t, res.Graph))
+	}
+	if res.Graph.Node("b_other_ep") == nil {
+		t.Fatal("别的集的故事板不碰")
+	}
+}
+
+func TestSyncBoardsNoChange(t *testing.T) {
+	g := boardGraph(t, "")
+	if canvasgraph.SyncBoards(g, 1, nil) != nil {
+		t.Fatal("没有片段也没有孤立节点：不改")
+	}
+	once := canvasgraph.SyncBoards(g, 1, segs(canvasgraph.BoardSegment{ID: "s1", NewID: "b1", Label: "x", SourceHash: "h", Layout: "2x2"}))
+	if canvasgraph.SyncBoards(once.Graph, 1, segs(canvasgraph.BoardSegment{ID: "s1", NewID: "b9", Label: "x", SourceHash: "h", Layout: "2x2"})) != nil {
+		t.Fatal("重复同步应幂等")
+	}
+}
+
+func TestUpsertBoardReusesEmptyNodeFromSync(t *testing.T) {
+	g := boardGraph(t, "")
+	synced := canvasgraph.SyncBoards(g, 2, segs(canvasgraph.BoardSegment{ID: "s1", Seq: 1, NewID: "b_sync", Label: "故事板 · 第 2 集 · 02", SourceHash: "h0", Layout: "2x2", ShotCount: 2}))
+	res, id := canvasgraph.UpsertBoard(synced.Graph, boardSpec(), "88")
+	if id != "b_sync" || len(res.Graph.Nodes) != 3 {
+		t.Fatalf("应沿用分镜时建好的空节点：id=%s nodes=%d", id, len(res.Graph.Nodes))
+	}
+	n := res.Graph.Node(id)
+	if p0, p1 := synced.Graph.Node(id).Position(), n.Position(); p0 != p1 {
+		t.Fatalf("位置不该变：%+v → %+v", p0, p1)
+	}
+	if d := n.Data(); d["taskId"] != "88" || d["status"] != "running" || d["label"] != "故事板 · 第 2 集 · 02" {
+		t.Fatalf("%s", jsonOf(t, d))
+	}
+}
+
+func TestSelectBoardOutput(t *testing.T) {
+	old := `{"id":"b1","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"image","label":"故事板","src":"https://cdn/2.png","assetId":"2","mediaType":"image","status":"done","activeOutputId":"2",
+		"outputs":[{"id":"1","src":"https://cdn/1.png","mediaType":"image","assetId":"1","createdAt":1},{"id":"2","src":"https://cdn/2.png","mediaType":"image","assetId":"2","createdAt":2}],
+		"drama":{"episodes":[1],"board":{"segmentId":"s1","sourceHash":"h","layout":"2x2","shotCount":2}}}}`
+	g := boardGraph(t, old)
+	res := canvasgraph.SelectBoardOutput(g, "s1", "1")
+	if res == nil {
+		t.Fatal("应切换")
+	}
+	d := res.Graph.Node("b1").Data()
+	if d["activeOutputId"] != "1" || d["src"] != "https://cdn/1.png" || d["assetId"] != "1" || d["status"] != "done" {
+		t.Fatalf("应切到第 1 版并刷新镜像字段：%s", jsonOf(t, d))
+	}
+	// 已经是当前版本、没有这一版、不是故事板：都不改
+	if canvasgraph.SelectBoardOutput(g, "s1", "2") != nil || canvasgraph.SelectBoardOutput(g, "s1", "9") != nil || canvasgraph.SelectBoardOutput(g, "nope", "1") != nil {
+		t.Fatal("不该改")
+	}
+}

@@ -571,6 +571,14 @@ export const generateBoard = (
     headers: { "Idempotency-Key": idempotencyKey },
   });
 
+/** 切换片段故事板的当前版本（204）：滑到哪版，生视频就带哪版 */
+export const selectBoardOutput = (sid: string, outputId: string): Promise<void> =>
+  service.put<void>(
+    `/drama-segments/${sid}/board/output`,
+    { output_id: outputId },
+    { silent: true },
+  );
+
 /** 后端的「我的提示词」项 */
 type BackendMyPrompt = Omit<MyPrompt, "updatedAt"> & { updated_at: string };
 

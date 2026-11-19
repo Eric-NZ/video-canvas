@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"video-canvas/internal/agent/canvasgraph"
@@ -216,5 +217,74 @@ func TestDramaBoardTaskBackfill(t *testing.T) {
 		if err := s.OnTaskChanged(ctx, tk); err != nil || c.writes != writes {
 			t.Fatalf("不该写：%+v err=%v", tk, err)
 		}
+	}
+}
+
+func TestDramaBoardSelectOutput(t *testing.T) {
+	ctx := context.Background()
+	s, r, c, segID := boardSetup(t)
+	sid, _ := idcodec.Decode(segID)
+	// 先出两版图：生成、成功回写，再生成、成功回写
+	canvas := uint64(9)
+	for i, asset := range []uint64{31, 32} {
+		if _, err := s.GenerateBoard(ctx, 1, sid, "", boardReq()); err != nil {
+			t.Fatal(err)
+		}
+		output, _ := json.Marshal([]model.TaskOutput{{AssetID: asset, URL: "https://cdn/" + strconv.FormatUint(asset, 10) + ".png", MediaType: "image"}})
+		task := &model.GenerationTask{ID: uint64(101 + i), UserID: 1, CanvasProjectID: &canvas, NodeID: r.Created.NodeID, Kind: model.KindImage, Status: model.TaskSucceeded, OutputJSON: output}
+		// fake 里任务 id 固定 101，节点上绑的就是 101：第二版用同一个 id 也能被认领
+		task.ID = 101
+		if err := s.OnTaskChanged(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := canvasgraph.FindBoard(c.graph(t), segID)
+	if n.Data()["activeOutputId"] != "32" {
+		t.Fatalf("最新一版应是当前版本：%v", n.Data())
+	}
+	patches := canvasPatches(r.Messages)
+
+	// 切回第一版
+	if err := s.SelectBoardOutput(ctx, 1, sid, "31"); err != nil {
+		t.Fatal(err)
+	}
+	d := canvasgraph.FindBoard(c.graph(t), segID).Data()
+	if d["activeOutputId"] != "31" || d["src"] != "https://cdn/31.png" || d["assetId"] != "31" {
+		t.Fatalf("应切到第 31 版：%v", d)
+	}
+	if canvasPatches(r.Messages) != patches+1 {
+		t.Fatal("切换后应推 canvas.patch")
+	}
+	// 已经是当前版本：不写
+	writes := c.writes
+	if err := s.SelectBoardOutput(ctx, 1, sid, "31"); err != nil || c.writes != writes {
+		t.Fatalf("已是当前版本不该写：%v", err)
+	}
+	// 没有这一版、别人的片段
+	segmentCode(t, s.SelectBoardOutput(ctx, 1, sid, "999"), 10001)
+	segmentCode(t, s.SelectBoardOutput(ctx, 2, sid, "31"), 67009)
+}
+
+// 分镜时已经建好空节点：点生成沿用它（位置、标题都不变），不再新建。
+func TestDramaBoardGenerateReusesSyncedNode(t *testing.T) {
+	ctx := context.Background()
+	s, r, c, segID := boardSetup(t)
+	sid, _ := idcodec.Decode(segID)
+	g := c.graph(t)
+	res := canvasgraph.SyncBoards(g, 1, []canvasgraph.BoardSegment{{ID: segID, Seq: 0, NewID: "b_sync", Label: "故事板 · 第 1 集 · 01", SourceHash: "h0", Layout: "2x2", ShotCount: 3}})
+	payload, _ := res.Graph.Marshal()
+	c.payload = payload
+	before := canvasgraph.FindBoard(c.graph(t), segID).Position()
+
+	if _, err := s.GenerateBoard(ctx, 1, sid, "", boardReq()); err != nil {
+		t.Fatal(err)
+	}
+	after := c.graph(t)
+	n := canvasgraph.FindBoard(after, segID)
+	if r.Created.NodeID != "b_sync" || n.ID() != "b_sync" || n.Position() != before || len(after.Nodes) != 2 {
+		t.Fatalf("应沿用空节点：task node=%s nodes=%d", r.Created.NodeID, len(after.Nodes))
+	}
+	if d := n.Data(); d["taskId"] != "101" || d["status"] != "running" {
+		t.Fatalf("%v", d)
 	}
 }

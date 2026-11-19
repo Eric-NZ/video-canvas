@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/drama"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
@@ -44,7 +45,12 @@ type DramaCanvasWriter interface {
 	ApplyPrompts(context.Context, uint64, uint64, uint64, string, []drama.AssetPrompt, []DramaCanvasAsset, int) error
 	// DeleteEpisode 删一集、后面的集补位，并改写资产画布上的出现集数（userID, dramaID, canvasID, no）。
 	DeleteEpisode(context.Context, uint64, uint64, uint64, int) error
+	// SyncBoards 让一集的故事板节点和片段对上：每个片段一个节点（没有就建空的），片段已经没了的节点清掉（userID, canvasID, no）。
+	SyncBoards(context.Context, uint64, uint64, int, []DramaBoardSegment) error
 }
+
+// DramaBoardSegment 是一个片段在画布上的故事板要用的信息（分镜成功后同步节点用）。
+type DramaBoardSegment = canvasgraph.BoardSegment
 
 // DramaCoverReader 读取短剧资产画布的封面素材：画布里第一张生成成功的图（canvas_projects.cover_asset_id）。
 type DramaCoverReader interface {

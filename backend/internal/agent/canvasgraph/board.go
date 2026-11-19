@@ -73,6 +73,84 @@ func FindBoard(g *Graph, segmentID string) Node {
 	return hit
 }
 
+// BoardSegment 是一个片段在画布上的故事板要用的信息：分镜出来时每个片段先建一个空节点。
+type BoardSegment struct {
+	ID         string // 片段 id（对外编码）
+	Seq        int    // 片段序号，从 0 起
+	NewID      string // 片段还没有节点时用的新节点 id
+	Label      string // 新节点的标题，如「故事板 · 第 3 集 · 01」
+	SourceHash string // 当前原稿的 SHA-256（空节点没出过图，记着它用来在画布里看是按哪版原稿建的）
+	Layout     string // 2x2 / 3x2 / 3x3
+	ShotCount  int    // 数出的镜头数
+}
+
+// SyncBoards 让一集的故事板节点和片段对上：每个片段有一个节点（没有就建一个空的：没有图、没有任务，
+// 用户可以在画布里上传或生成），这一集里片段已经不在了的节点连同连线清掉。
+// 已有的节点原样保留（图、历史、标题、drama.board 里出图时的原稿哈希都不动）；别的集的故事板不碰。
+// 没有要改的返回 nil；入参不变。
+func SyncBoards(g *Graph, episodeNo int, segments []BoardSegment) *Result {
+	work := g.Clone()
+	want := map[string]bool{}
+	for _, seg := range segments {
+		want[seg.ID] = true
+	}
+	// 1. 这一集里片段已经没了的故事板节点：清掉节点和它的连线
+	var gone map[string]bool
+	kept := work.Nodes[:0:0]
+	for _, n := range work.Nodes {
+		meta := boardMeta(n)
+		if n.IsGroup() || meta == nil || !boardInEpisode(n, episodeNo) || want[str(meta["segmentId"])] {
+			kept = append(kept, n)
+			continue
+		}
+		if gone == nil {
+			gone = map[string]bool{}
+		}
+		gone[n.ID()] = true
+	}
+	if gone != nil {
+		work.Nodes = kept
+		edges := work.Edges[:0:0]
+		for _, e := range work.Edges {
+			if !gone[e.Source()] && !gone[e.Target()] {
+				edges = append(edges, e)
+			}
+		}
+		work.Edges = edges
+	}
+	// 2. 没有节点的片段建一个空节点
+	for _, seg := range segments {
+		if FindBoard(work, seg.ID) != nil {
+			continue
+		}
+		n := Node{"id": seg.NewID, "type": "canvas", "data": map[string]any{
+			"kind": "image", "label": seg.Label,
+			"drama": map[string]any{"episodes": []any{float64(episodeNo)}, "board": map[string]any{
+				"segmentId": seg.ID, "sourceHash": seg.SourceHash, "layout": seg.Layout, "shotCount": float64(seg.ShotCount),
+			}},
+		}}
+		n.SetPosition(boardPosition(work, episodeNo, seg.Seq))
+		work.Nodes = append(work.Nodes, n)
+	}
+	changes := Diff(g, work)
+	if len(changes) == 0 {
+		return nil
+	}
+	return &Result{Graph: work, Changes: changes}
+}
+
+// boardInEpisode 故事板节点属于第几集（data.drama.episodes 里的集号）。
+func boardInEpisode(n Node, episodeNo int) bool {
+	d, _ := n.Data()["drama"].(map[string]any)
+	list, _ := d["episodes"].([]any)
+	for _, item := range list {
+		if int(num(item)) == episodeNo {
+			return true
+		}
+	}
+	return false
+}
+
 // UpsertBoard 建好或更新片段的故事板节点、连上资产，并把生成任务绑定上去（同前端提交后的 buildSubmittedPatch）：
 // 已有节点就用新的提示词、参数、模型和 drama.board 重写，旧结果落进历史版本；没有就在故事板区按集 / 段排开新建。
 // 返回新图（入参不变）和节点 id。
@@ -219,6 +297,44 @@ func backfillCanceled(d map[string]any) {
 	}
 	selectOutput(d, active)
 	d["status"] = "done"
+}
+
+// HasBoardOutput 故事板节点的历史版本里有没有 outputID 这一版。
+func HasBoardOutput(n Node, outputID string) bool {
+	for _, out := range readOutputs(n.Data()) {
+		if str(out["id"]) == outputID {
+			return true
+		}
+	}
+	return false
+}
+
+// SelectBoardOutput 把片段故事板的当前版本切到 outputID 这一版（刷新 src / mediaType / assetId 镜像，同前端切换历史版本）。
+// 没有这个故事板节点、没有这一版、或已经是当前版本时不改，返回 nil。
+func SelectBoardOutput(g *Graph, segmentID, outputID string) *Result {
+	before := FindBoard(g, segmentID)
+	if before == nil || outputID == "" {
+		return nil
+	}
+	var target map[string]any
+	for _, out := range readOutputs(before.Data()) {
+		if str(out["id"]) == outputID {
+			target = out
+		}
+	}
+	if target == nil || str(before.Data()["activeOutputId"]) == outputID && str(before.Data()["assetId"]) == str(target["assetId"]) {
+		return nil
+	}
+	work := g.Clone()
+	d := FindBoard(work, segmentID).Data()
+	selectOutput(d, target)
+	d["status"] = "done"
+	d["error"] = nil
+	changes := Diff(g, work)
+	if len(changes) == 0 {
+		return nil
+	}
+	return &Result{Graph: work, Changes: changes}
 }
 
 // failBoard 写失败态：保留 taskId 方便报障，清掉当前结果。

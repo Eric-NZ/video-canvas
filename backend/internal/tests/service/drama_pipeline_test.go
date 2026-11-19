@@ -415,6 +415,24 @@ type dramaPipelineCanvas struct {
 	filtered []service.DramaCanvasAsset
 	// deleted 记录删集调用：短剧 id、画布 id、集号
 	deleted [][3]uint64
+	// synced 记录故事板同步调用；syncErr 非空时同步返回它
+	synced  []boardSync
+	syncErr error
+}
+
+// boardSync 是一次故事板同步调用的参数。
+type boardSync struct {
+	canvasID  uint64
+	episodeNo int
+	segments  []service.DramaBoardSegment
+}
+
+func (c *dramaPipelineCanvas) SyncBoards(_ context.Context, _, canvasID uint64, episodeNo int, segments []service.DramaBoardSegment) error {
+	if c == nil { // 很多测试给服务传 nil 画布（装进接口后不是 nil 接口），不关心故事板
+		return nil
+	}
+	c.synced = append(c.synced, boardSync{canvasID: canvasID, episodeNo: episodeNo, segments: segments})
+	return c.syncErr
 }
 
 func (c *dramaPipelineCanvas) DeleteEpisode(_ context.Context, _, dramaID, canvasID uint64, no int) error {

@@ -1,9 +1,12 @@
+import { useRef, useState } from "react";
 import { CircleX, Film, Grid2x2, RotateCw } from "lucide-react";
 
+import { MediaLightbox } from "@/components/canvas/media-lightbox";
 import { TaskGenerationStatus } from "@/components/generation-status";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BOARD_RATIO } from "@/utils/drama/board";
+import { variantUrl } from "@/utils/canvas/media-lod";
+import { BOARD_RATIO, neighborVersion } from "@/utils/drama/board";
 import { playableTake } from "@/utils/drama/segments";
 
 import { useStudio, type PreviewView } from "./use-studio";
@@ -101,12 +104,67 @@ export function ViewSwitch() {
   );
 }
 
+/** 横向滚轮 / 触控板横滑累积多少像素换一版，换完冷却多久（毫秒），免得一滑就跳好几版（同视频的版本轮播） */
+const WHEEL_THRESHOLD = 60;
+const WHEEL_COOLDOWN = 260;
+/** 在大图上按住左右拖超过多少像素算「换版」，没超过算轻点（放大） */
+const DRAG_THRESHOLD = 40;
+
 /**
- * 预览的「故事板」一面：选中片段的 16:9 宫格图，按状态显示——已出图（过期时左上角提示重新生成）、生成中、失败、还没有；
- * 下面是镜头数 / 宫格、重新生成、进入画布查看（看大图、切换历史版本）。
+ * 故事板一面的外壳：横向滚轮 / 触控板横滑、← → 键换到相邻版本（同视频的版本轮播），累计够了才换、换完冷却一下。
+ * 换版只是回调 onStep(±1)，由调用方决定有没有相邻的版本。
+ */
+function BoardSwipe({
+  label,
+  onStep,
+  children,
+}: {
+  label: string;
+  onStep: (delta: 1 | -1) => void;
+  children: React.ReactNode;
+}) {
+  const wheel = useRef({ total: 0, lockedUntil: 0 });
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      tabIndex={0}
+      onWheel={(event) => {
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : 0;
+        if (!delta) return;
+        const now = performance.now();
+        if (now < wheel.current.lockedUntil) return;
+        wheel.current.total += delta;
+        if (Math.abs(wheel.current.total) < WHEEL_THRESHOLD) return;
+        onStep(wheel.current.total > 0 ? 1 : -1);
+        wheel.current = { total: 0, lockedUntil: now + WHEEL_COOLDOWN };
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") onStep(-1);
+        else if (event.key === "ArrowRight") onStep(1);
+        else return;
+        event.preventDefault();
+      }}
+      className="focus-visible:ring-ring/40 flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 outline-none focus-visible:ring-2"
+    >
+      {children}
+    </div>
+  );
+}
+
+/** 缩略图地址：/files/ 下的素材走 ?v=thumb 的小图，其他地址原样 */
+const thumbOf = (src: string) => variantUrl(src, "thumb").url;
+
+/**
+ * 预览的「故事板」一面：选中片段的 16:9 宫格图，按状态显示——已出图（过期时左上角提示重新生成）、生成中、失败、还没有。
+ * 大图和下方多版的小图都只加载缩略图，点大图放大看原图；多版时点哪版就把哪版设为当前版本（生视频带的就是它）。
+ * 下面是镜头数 / 宫格、重新生成、进入画布查看；分镜时节点就建好了，没出图（包括失败）也能进画布。
  */
 export function BoardStage() {
   const { selected, boards, openBoardInCanvas } = useStudio();
+  const [zoomed, setZoomed] = useState(false);
+  /** 在大图上按下的位置；抬起时位移够大就换版，并让随后的点击不再放大 */
+  const press = useRef<{ x: number; dragged: boolean } | null>(null);
   if (!selected) return null;
   const status = boards.statusOf(selected);
   const node = boards.nodeOf(selected);
@@ -120,9 +178,35 @@ export function BoardStage() {
     </>
   );
   const hasImage = (status === "ready" || status === "stale") && !!node?.src;
+  const versions = node?.versions ?? [];
+  const versionNo =
+    Math.max(
+      0,
+      versions.findIndex((item) => item.id === node?.activeId),
+    ) + 1;
+  /** 往前 / 往后换一版（滑到哪版采用哪版）；只有多版的出图才能换 */
+  const step = (delta: 1 | -1) => {
+    if (!hasImage || versions.length < 2) return;
+    const next = neighborVersion(versions, node?.activeId ?? null, delta);
+    if (next) void boards.selectVersion(selected, next);
+  };
+  const previewItems =
+    hasImage && node?.src
+      ? [
+          {
+            id: node.nodeId,
+            src: node.src,
+            mediaType: "image" as const,
+            label: `片段 ${selected.seq + 1} 的故事板`,
+          },
+        ]
+      : [];
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3">
+    <BoardSwipe
+      label={versions.length > 1 ? `故事板版本 ${versionNo} / ${versions.length}` : "故事板"}
+      onStep={step}
+    >
       <div
         data-slot="board-frame"
         style={{ aspectRatio: BOARD_RATIO.replace(":", "/") }}
@@ -140,11 +224,35 @@ export function BoardStage() {
           <TaskGenerationStatus className="size-full" />
         ) : hasImage ? (
           <>
-            <img
-              src={node.src ?? undefined}
-              alt={`片段 ${selected.seq + 1} 的故事板`}
-              className="size-full object-contain"
-            />
+            {/* 大图只加载缩略图，点一下放大才看原图 */}
+            <button
+              type="button"
+              aria-label="放大查看原图"
+              onPointerDown={(event) => {
+                press.current = { x: event.clientX, dragged: false };
+              }}
+              onPointerUp={(event) => {
+                const start = press.current;
+                if (!start) return;
+                const dx = event.clientX - start.x;
+                if (Math.abs(dx) < DRAG_THRESHOLD) return;
+                // 向左拖看更新的一版，向右拖回前一版
+                start.dragged = true;
+                step(dx < 0 ? 1 : -1);
+              }}
+              onClick={() => {
+                const dragged = press.current?.dragged;
+                press.current = null;
+                if (!dragged) setZoomed(true);
+              }}
+              className="size-full cursor-zoom-in touch-pan-y outline-none select-none"
+            >
+              <img
+                src={thumbOf(node.src ?? "")}
+                alt={`片段 ${selected.seq + 1} 的故事板`}
+                className="size-full object-contain"
+              />
+            </button>
             {status === "stale" && (
               <div className="text-primary absolute top-3 left-3 flex h-7 items-center gap-1.5 rounded-full bg-black/70 py-0 pr-1 pl-3 text-[12.5px] ring-1 ring-amber-400/35 backdrop-blur-md">
                 原稿已改
@@ -193,37 +301,75 @@ export function BoardStage() {
         )}
       </div>
 
-      {hasImage && (
+      {hasImage && versions.length > 1 && (
+        <div className="flex max-w-full items-center justify-center gap-1.5 overflow-x-auto px-1 py-1">
+          {versions.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-version={item.id}
+              aria-label={`故事板版本 ${item.id}`}
+              aria-current={item.id === node?.activeId ? "true" : undefined}
+              onClick={() => {
+                if (item.id !== node?.activeId) void boards.selectVersion(selected, item.id);
+              }}
+              className={cn(
+                "relative h-11 shrink-0 overflow-hidden rounded-lg ring-1 outline-none transition-[box-shadow,opacity]",
+                item.id === node?.activeId
+                  ? "ring-primary opacity-100 ring-2"
+                  : "ring-white/15 opacity-60 hover:opacity-100",
+              )}
+              style={{ aspectRatio: BOARD_RATIO.replace(":", "/") }}
+            >
+              <img src={thumbOf(item.src)} alt="" className="size-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(hasImage || node) && (
         <div className="flex flex-wrap items-center justify-center gap-2">
-          {node.shotCount > 0 && (
+          {hasImage && node && node.shotCount > 0 && (
             <span className="text-muted-foreground text-xs tabular-nums">
               {node.shotCount} 镜 · {node.layout.replace("x", "×")} · {BOARD_RATIO}
             </span>
           )}
-          <div className={PILL}>
-            <button
-              type="button"
-              className={PILL_BUTTON}
-              disabled={!!blocked}
-              title={blocked ?? undefined}
-              onClick={generate}
-            >
-              <RotateCw />
-              {generateLabel("重新生成")}
-            </button>
-          </div>
-          <div className={PILL}>
-            <button
-              type="button"
-              className={PILL_BUTTON}
-              onClick={() => openBoardInCanvas(node.nodeId)}
-            >
-              进入画布查看
-            </button>
-          </div>
+          {hasImage && (
+            <div className={PILL}>
+              <button
+                type="button"
+                className={PILL_BUTTON}
+                disabled={!!blocked}
+                title={blocked ?? undefined}
+                onClick={generate}
+              >
+                <RotateCw />
+                {generateLabel("重新生成")}
+              </button>
+            </div>
+          )}
+          {node && (
+            <div className={PILL}>
+              <button
+                type="button"
+                className={PILL_BUTTON}
+                onClick={() => openBoardInCanvas(node.nodeId)}
+              >
+                进入画布查看
+              </button>
+            </div>
+          )}
         </div>
       )}
-    </div>
+
+      <MediaLightbox
+        items={previewItems}
+        target={zoomed && previewItems[0] ? { id: previewItems[0].id, origin: null } : null}
+        onActiveChange={() => {}}
+        countLabel="故事板"
+        onClose={() => setZoomed(false)}
+      />
+    </BoardSwipe>
   );
 }
 

@@ -15,6 +15,17 @@ import type { useModelsStore as ModelsStoreType } from "@/store/models";
 
 const submitted: Array<{ sid: string; body: BoardGenerateBody }> = [];
 let submitError: Error | null = null;
+const selected: Array<[string, string]> = [];
+let selectError: Error | null = null;
+// 切换故事板版本走后端接口：换成可数的假实现
+const realDramaApi = { ...(await import("@/api/drama")) };
+mock.module("@/api/drama", () => ({
+  ...realDramaApi,
+  selectBoardOutput: async (sid: string, outputId: string) => {
+    if (selectError) throw selectError;
+    selected.push([sid, outputId]);
+  },
+}));
 // bun 的 mock.module 对整个测试进程生效：带上真模块的其他导出，只换提交故事板
 const realGateway = { ...(await import("@/utils/tasks/gateway")) };
 mock.module("@/utils/tasks/gateway", () => ({
@@ -176,6 +187,21 @@ describe("useStudioBoards", () => {
     await dom.flush();
     expect(api().statusOf(segments[0])).toBe("empty");
     submitError = null;
+    await m.unmount();
+  });
+
+  test("切换版本：交给后端改节点，再重读画布；失败不抛错", async () => {
+    selected.length = 0;
+    const { m, api, fresh } = await mountHook(new Map());
+    const before = fresh();
+    await dom.act(async () => api().selectVersion(segments[0], "32"));
+    expect(selected).toEqual([["s0", "32"]]);
+    expect(fresh()).toBe(before + 1);
+    selectError = new Error("没有这一版故事板");
+    await dom.act(async () => api().selectVersion(segments[0], "999"));
+    expect(selected).toHaveLength(1);
+    expect(fresh()).toBe(before + 1);
+    selectError = null;
     await m.unmount();
   });
 });

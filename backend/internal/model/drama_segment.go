@@ -111,6 +111,11 @@ type GenerateDramaBoardReq struct {
 	Refs       []string       `json:"refs" binding:"max=30,dive,max=128" label:"参考资产"`
 }
 
+// SelectDramaBoardOutputReq 切换故事板的当前版本：OutputID 是故事板节点历史里的某一版（素材 id）。
+type SelectDramaBoardOutputReq struct {
+	OutputID string `json:"output_id" binding:"required,max=64" label:"版本"`
+}
+
 // DramaSegmentStats 是某集片段的实时聚合。
 type DramaSegmentStats struct {
 	Count   int

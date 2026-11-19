@@ -272,6 +272,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		segments.DELETE("/:sid", h.DramaSegment.Delete)
 		segments.POST("/:sid/generate", h.DramaSegment.Generate)
 		segments.POST("/:sid/board", h.DramaSegment.GenerateBoard)
+		segments.PUT("/:sid/board/output", h.DramaSegment.SelectBoardOutput)
 		segments.POST("/:sid/adapt", h.DramaSegment.Adapt)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。

@@ -3,6 +3,8 @@ import { toast } from "sonner";
 
 import type { Drama, Segment } from "@/api/drama/type";
 import type { ModelInfo } from "@/api/model/type";
+import { selectBoardOutput } from "@/api/drama";
+import { dramaErrorMessage } from "@/api/drama/errors";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { useRemoteModels } from "@/hooks/use-models";
 import { sha256Hex } from "@/utils/drama/adaptation";
@@ -33,6 +35,8 @@ export type StudioBoards = {
   generate: (segments: Segment[]) => Promise<void>;
   /** 补齐本集：缺的、失败的、过期的，先确认再一起提交 */
   fill: () => Promise<void>;
+  /** 把片段故事板的当前版本切到某一版（滑到哪版，生视频就带哪版）；后端改节点后推 canvas.patch，读画布的 hook 据此刷新 */
+  selectVersion: (segment: Segment, outputId: string) => Promise<void>;
 };
 
 const seqLabel = (segment: Segment) => String(segment.seq + 1).padStart(2, "0");
@@ -155,7 +159,20 @@ export function useStudioBoards(args: {
     if (go) await generate(targets);
   }, [credits, generate, targets]);
 
+  const selectVersion = useCallback(
+    async (segment: Segment, outputId: string) => {
+      try {
+        await selectBoardOutput(segment.id, outputId);
+        await freshAssets();
+      } catch (e) {
+        toast.error(dramaErrorMessage(e, "切换失败，请稍后重试"));
+      }
+    },
+    [freshAssets],
+  );
+
   return {
+    selectVersion,
     statusOf,
     nodeOf,
     model,

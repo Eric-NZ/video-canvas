@@ -46,16 +46,27 @@ const segment = (seq: number, over: Partial<Segment> = {}): Segment =>
     ...over,
   }) as Segment;
 
+/** 一版出图：地址是 /files/ 下的，才有缩略图 */
+const version = (id: string) => ({
+  id,
+  src: `/files/assets/${id}.png`,
+  mediaType: "image" as const,
+  assetId: id,
+  createdAt: 1,
+});
+
 const node = (over: Partial<BoardNode> = {}): BoardNode => ({
   segmentId: "s0",
   sourceHash: "h",
   layout: "2x2",
   shotCount: 3,
   nodeId: "b1",
-  src: "https://cdn/31.png",
+  src: "/files/assets/31.png",
   assetId: "31",
   status: "done",
   error: "",
+  versions: [version("31")],
+  activeId: "31",
   ...over,
 });
 
@@ -71,6 +82,7 @@ function studio(over: {
 }) {
   const calls = {
     canvas: [] as string[],
+    select: [] as string[],
     generate: [] as string[][],
     fill: 0,
     video: [] as string[],
@@ -95,6 +107,7 @@ function studio(over: {
       blocked: over.blocked ?? null,
       generate: async (list: Segment[]) => void calls.generate.push(list.map((s) => s.id)),
       fill: async () => void (calls.fill += 1),
+      selectVersion: async (_s: Segment, id: string) => void calls.select.push(id),
     },
   } as unknown as Studio;
   return { value, calls };
@@ -129,15 +142,171 @@ describe("片场故事板：故事板这一面", () => {
     await m.unmount();
   });
 
-  test("出过图：显示宫格图和镜头 / 宫格；「进入画布查看」跳到画布并定位这个节点", async () => {
+  test("出过图：大图显示缩略图，不直接加载原图；镜头 / 宫格；「进入画布查看」跳到画布并定位", async () => {
     const { value, calls } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
     const m = await mount(value, <BoardStage />);
-    expect(m.container.querySelector("img")?.getAttribute("src")).toBe("https://cdn/31.png");
+    expect(m.container.querySelector("img")?.getAttribute("src")).toBe(
+      "/files/assets/31.png?v=thumb",
+    );
     expect(m.container.textContent).toContain("3 镜 · 2×2 · 16:9");
     expect(m.container.textContent).not.toContain("原稿已改");
-    expect(button(m.container, "用这张生成视频")).toBeUndefined();
     await dom.click(button(m.container, "进入画布查看"));
     expect(calls.canvas).toEqual(["b1"]);
+    await m.unmount();
+  });
+
+  test("没有出图也能进画布：空节点（分镜时就建好了）、生成失败时都有「进入画布查看」", async () => {
+    const empty = studio({
+      statuses: { s0: "empty" },
+      nodes: { s0: node({ src: null, assetId: undefined, versions: [], activeId: null }) },
+    });
+    const m = await mount(empty.value, <BoardStage />);
+    expect(m.container.textContent).toContain("还没有故事板");
+    await dom.click(button(m.container, "进入画布查看"));
+    expect(empty.calls.canvas).toEqual(["b1"]);
+    await m.unmount();
+
+    const failed = studio({
+      statuses: { s0: "failed" },
+      nodes: {
+        s0: node({ src: null, status: "error", error: "超时", versions: [], activeId: null }),
+      },
+    });
+    const m2 = await mount(failed.value, <BoardStage />);
+    await dom.click(button(m2.container, "进入画布查看"));
+    expect(failed.calls.canvas).toEqual(["b1"]);
+    await m2.unmount();
+
+    // 画布上还没有这个节点（老片段、同步没成功）：不显示这个按钮
+    const none = studio({ statuses: { s0: "empty" } });
+    const m3 = await mount(none.value, <BoardStage />);
+    expect(button(m3.container, "进入画布查看")).toBeUndefined();
+    await m3.unmount();
+  });
+
+  test("多版：下方一排缩略图，当前版本高亮；点另一版就把它设为当前版本（滑到哪版采用哪版）", async () => {
+    const versions = [version("30"), version("31"), version("32")];
+    const { value, calls } = studio({
+      statuses: { s0: "ready" },
+      nodes: { s0: node({ versions, activeId: "31", src: versions[1].src }) },
+    });
+    const m = await mount(value, <BoardStage />);
+    const thumbs = [...m.container.querySelectorAll("[data-version]")] as HTMLElement[];
+    expect(thumbs.map((el) => el.dataset.version)).toEqual(["30", "31", "32"]);
+    expect(thumbs.map((el) => el.getAttribute("aria-current"))).toEqual([null, "true", null]);
+    // 小图也只加载缩略图
+    expect(thumbs[0].querySelector("img")?.getAttribute("src")).toBe(
+      "/files/assets/30.png?v=thumb",
+    );
+    await dom.click(thumbs[2]);
+    expect(calls.select).toEqual(["32"]);
+    // 点当前版本不重复提交
+    await dom.click(thumbs[1]);
+    expect(calls.select).toEqual(["32"]);
+    await m.unmount();
+  });
+
+  test("左右滑动换版：横向滚轮、键盘 ← →、大图上左右拖动都能换到相邻版本（到头不动）", async () => {
+    const versions = [version("30"), version("31"), version("32")];
+    const { value, calls } = studio({
+      statuses: { s0: "ready" },
+      nodes: { s0: node({ versions, activeId: "31", src: versions[1].src }) },
+    });
+    const m = await mount(value, <BoardStage />);
+    const stage = m.container.querySelector('[role="group"]') as HTMLElement;
+    expect(stage.getAttribute("aria-label")).toBe("故事板版本 2 / 3");
+    // 键盘
+    await dom.act(async () => {
+      stage.dispatchEvent(
+        new dom.win.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+      );
+    });
+    await dom.act(async () => {
+      stage.dispatchEvent(
+        new dom.win.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
+      );
+    });
+    expect(calls.select).toEqual(["32", "30"]);
+    // 横向滚轮：累计够了才换，竖向滚动不算
+    calls.select.length = 0;
+    await dom.act(async () => {
+      stage.dispatchEvent(new dom.win.WheelEvent("wheel", { deltaY: 200, bubbles: true }));
+    });
+    expect(calls.select).toEqual([]);
+    await dom.act(async () => {
+      stage.dispatchEvent(new dom.win.WheelEvent("wheel", { deltaX: 90, bubbles: true }));
+    });
+    expect(calls.select).toEqual(["32"]);
+    await m.unmount();
+  });
+
+  test("在大图上向左拖过一段距离换到下一版，向右拖回上一版；轻点不算拖动（还是放大）", async () => {
+    const versions = [version("30"), version("31"), version("32")];
+    const { value, calls } = studio({
+      statuses: { s0: "ready" },
+      nodes: { s0: node({ versions, activeId: "31", src: versions[1].src }) },
+    });
+    const m = await mount(value, <BoardStage />);
+    const frame = m.container.querySelector('[data-slot="board-frame"] button') as HTMLElement;
+    const drag = async (from: number, to: number) => {
+      await dom.act(async () => {
+        frame.dispatchEvent(
+          new dom.win.MouseEvent("pointerdown", { clientX: from, bubbles: true }),
+        );
+        frame.dispatchEvent(new dom.win.MouseEvent("pointerup", { clientX: to, bubbles: true }));
+      });
+    };
+    await drag(400, 300);
+    await drag(300, 420);
+    expect(calls.select).toEqual(["32", "30"]);
+    // 只挪了几个像素：不换版
+    calls.select.length = 0;
+    await drag(300, 296);
+    expect(calls.select).toEqual([]);
+    await m.unmount();
+  });
+
+  test("拖动换版后随之而来的点击不放大；纯点击才放大", async () => {
+    const versions = [version("30"), version("31")];
+    const { value } = studio({
+      statuses: { s0: "ready" },
+      nodes: { s0: node({ versions, activeId: "30", src: versions[0].src }) },
+    });
+    const m = await mount(value, <BoardStage />);
+    const frame = m.container.querySelector('[data-slot="board-frame"] button') as HTMLElement;
+    const origins = () =>
+      [...dom.win.document.body.querySelectorAll("img")]
+        .map((img) => img.getAttribute("src"))
+        .filter((src) => src === "/files/assets/30.png");
+    await dom.act(async () => {
+      frame.dispatchEvent(new dom.win.MouseEvent("pointerdown", { clientX: 400, bubbles: true }));
+      frame.dispatchEvent(new dom.win.MouseEvent("pointerup", { clientX: 300, bubbles: true }));
+      frame.dispatchEvent(new dom.win.MouseEvent("click", { clientX: 300, bubbles: true }));
+    });
+    await dom.flush();
+    expect(origins()).toHaveLength(0);
+    await dom.click(frame);
+    await dom.flush();
+    expect(origins().length).toBeGreaterThan(0);
+    await m.unmount();
+  });
+
+  test("只有一版：不显示版本条", async () => {
+    const { value } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
+    const m = await mount(value, <BoardStage />);
+    expect(m.container.querySelector("[data-version]")).toBeNull();
+    await m.unmount();
+  });
+
+  test("点大图放大看原图：灯箱里是原图地址，不是缩略图", async () => {
+    const { value } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
+    const m = await mount(value, <BoardStage />);
+    await dom.click(m.container.querySelector('[data-slot="board-frame"] button'));
+    await dom.flush();
+    const originals = [...dom.win.document.body.querySelectorAll("img")].map((img) =>
+      img.getAttribute("src"),
+    );
+    expect(originals).toContain("/files/assets/31.png");
     await m.unmount();
   });
 

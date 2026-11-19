@@ -10,6 +10,7 @@ import {
   boardsFromGraph,
   boardStatus,
   isBoardNode,
+  neighborVersion,
   shotLines,
 } from "@/utils/drama/board";
 
@@ -171,6 +172,52 @@ describe("utils/drama/board：画布上的故事板节点", () => {
     expect(boardStatus(of({}), "h1")).toBe("ready");
     // 原稿哈希还没算出来：先按就绪
     expect(boardStatus(of({}), undefined)).toBe("ready");
+  });
+
+  test("历史版本和当前版本：读节点的 outputs / activeOutputId；旧节点只有一张图时当唯一一版；空节点没有版本", () => {
+    const of = (data: Partial<CanvasNodeData>) => boardsFromGraph([boardNode(data)]).get("s1");
+    const v = (id: string) => ({
+      id,
+      src: `https://cdn/${id}.png`,
+      mediaType: "image" as const,
+      assetId: id,
+      createdAt: 1,
+    });
+    const multi = of({ outputs: [v("30"), v("31"), v("32")], activeOutputId: "31" });
+    expect(multi?.versions.map((item) => item.id)).toEqual(["30", "31", "32"]);
+    expect(multi?.activeId).toBe("31");
+    // activeOutputId 没写或已不在历史里：取最后一版
+    expect(of({ outputs: [v("30"), v("31")] })?.activeId).toBe("31");
+    expect(of({ outputs: [v("30")], activeOutputId: "gone" })?.activeId).toBe("30");
+    // 旧节点没有 outputs，只有 src + assetId：当唯一一版
+    expect(of({})?.versions).toEqual([
+      {
+        id: "31",
+        src: "https://cdn/31.png",
+        mediaType: "image",
+        assetId: "31",
+        taskId: undefined,
+        model: undefined,
+        createdAt: 0,
+      },
+    ]);
+    // 分镜时建好的空节点：没有图也没有版本
+    const empty = of({ src: null, assetId: undefined });
+    expect(empty?.versions).toEqual([]);
+    expect(empty?.activeId).toBeNull();
+    expect(boardStatus(empty, "h1")).toBe("empty");
+  });
+
+  test("相邻版本：往后 / 往前一版，到头不动，当前版本不在历史里时当最后一版", () => {
+    const v = (id: string) => ({ id }) as never;
+    const list = [v("30"), v("31"), v("32")];
+    expect(neighborVersion(list, "31", 1)).toBe("32");
+    expect(neighborVersion(list, "31", -1)).toBe("30");
+    expect(neighborVersion(list, "32", 1)).toBeNull();
+    expect(neighborVersion(list, "30", -1)).toBeNull();
+    expect(neighborVersion(list, null, -1)).toBe("31");
+    expect(neighborVersion([v("30")], "30", 1)).toBeNull();
+    expect(neighborVersion([], null, 1)).toBeNull();
   });
 
   test("生视频时的引用：有图就带（生成中沿用上一版），带上是否过期", () => {

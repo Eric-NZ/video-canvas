@@ -93,6 +93,50 @@ func (s *DramaSegmentService) GenerateBoard(ctx context.Context, userID, sid uin
 	return task, nil
 }
 
+// SelectBoardOutput 把片段故事板的当前版本切到 outputID 这一版（生视频时带的就是它）。
+// 片场没有挂画布编辑器，所以由后端写节点：校验片段归属，一次 CAS 改节点的当前版本，推 canvas.patch。
+// 没有这个版本返回参数错误；已经是当前版本时什么都不改。
+func (s *DramaSegmentService) SelectBoardOutput(ctx context.Context, userID, sid uint64, outputID string) error {
+	if s.canvas == nil {
+		return errors.New("故事板未配置画布仓储")
+	}
+	var canvasID uint64
+	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+		p, _, _, err := lockSegment(ctx, tx, userID, sid)
+		if err != nil {
+			return err
+		}
+		canvasID = p.CanvasID
+		return nil
+	})
+	if err != nil {
+		return segmentError(err)
+	}
+	segmentID := idcodec.Encode(sid)
+	exists := false
+	out, err := s.writeBoardCanvas(ctx, userID, canvasID, func(g *canvasgraph.Graph) *canvasgraph.Result {
+		exists = hasBoardOutput(g, segmentID, outputID)
+		return canvasgraph.SelectBoardOutput(g, segmentID, outputID)
+	})
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errcode.ErrInvalidParams.WithMsg("没有这一版故事板")
+	}
+	s.publishBoardPatch(ctx, userID, canvasID, out)
+	return nil
+}
+
+// hasBoardOutput 片段的故事板节点历史里有没有这一版。
+func hasBoardOutput(g *canvasgraph.Graph, segmentID, outputID string) bool {
+	n := canvasgraph.FindBoard(g, segmentID)
+	if n == nil {
+		return false
+	}
+	return canvasgraph.HasBoardOutput(n, outputID)
+}
+
 // boardNodeID 片段已有故事板节点时返回它的 id，没有返回新生成的 id。
 func (s *DramaSegmentService) boardNodeID(ctx context.Context, userID, canvasID uint64, segmentID string) (string, error) {
 	cv, err := s.canvas.GetCanvas(ctx, userID, canvasID)

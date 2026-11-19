@@ -30,6 +30,7 @@ func segmentHTTP() (*gin.Engine, *dramasegmentfake.Repo) {
 	r.POST("/drama-segments/:sid/generate", h.Generate)
 	r.POST("/drama-segments/:sid/adapt", h.Adapt)
 	r.POST("/drama-segments/:sid/board", h.GenerateBoard)
+	r.PUT("/drama-segments/:sid/board/output", h.SelectBoardOutput)
 	return r, repo
 }
 
@@ -58,6 +59,8 @@ func TestDramaSegmentHandler_Contracts(t *testing.T) {
 		{"POST", base + "/board", `{"model_id":"img","input":{},"prompt":"p","source_hash":"h","layout":"4x4"}`, 400, 10001},
 		{"POST", base + "/board", `{"model_id":"img","input":{},"prompt":"p","layout":"2x2"}`, 400, 10001},
 		{"POST", "/drama-segments/invalid/board", `{}`, 400, 10001},
+		{"PUT", base + "/board/output", `{}`, 400, 10001},
+		{"PUT", "/drama-segments/invalid/board/output", `{"output_id":"1"}`, 400, 10001},
 		{"POST", projectSegments, `{"seconds":0}`, 400, 10001},
 		{"POST", "/dramas/" + idcodec.Encode(7) + "/episodes/0/segments", `{}`, 400, 10001},
 		{"PATCH", "/drama-segments/invalid", `{"revision":1}`, 400, 10001},

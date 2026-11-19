@@ -1,5 +1,6 @@
 import type { BoardLayout } from "@/api/drama/type";
-import type { CanvasNodeData } from "@/types";
+import type { CanvasNodeData, NodeOutput } from "@/types";
+import { activeOutputIdOf, readOutputs } from "@/utils/canvas/outputs";
 
 import { BOARD_SHOTS_PLACEHOLDER } from "./placeholders";
 
@@ -156,6 +157,10 @@ export type BoardNode = NodeBoardMeta & {
   status: "idle" | "running" | "error" | "done";
   /** 失败原因 */
   error: string;
+  /** 历次出图（旧的在前）；旧节点只有一张图时当唯一一版，空节点为空数组 */
+  versions: NodeOutput[];
+  /** 当前版本的 id（版本里选中的那一版）；没有版本为 null */
+  activeId: string | null;
 };
 
 /** 读故事板只用到的节点字段：编辑器里的节点和接口读到的画布节点都满足 */
@@ -166,6 +171,11 @@ type BoardNodeData = {
   status?: string | null;
   uploadProgress?: number | null;
   error?: string | null;
+  outputs?: NodeOutput[] | null;
+  activeOutputId?: string | null;
+  mediaType?: CanvasNodeData["mediaType"];
+  taskId?: string | null;
+  model?: string | null;
 };
 
 /** 节点数据里的 drama.board；不是故事板节点为 null */
@@ -203,8 +213,12 @@ export function boardsFromGraph(
           : src
             ? "done"
             : "idle";
+    const nodeData = data as CanvasNodeData;
+    const versions = readOutputs(nodeData);
     out.set(meta.segmentId, {
       ...meta,
+      versions,
+      activeId: activeOutputIdOf(nodeData) ?? null,
       nodeId: node.id,
       src,
       assetId: src ? (data.assetId ?? undefined) : undefined,
@@ -213,6 +227,23 @@ export function boardsFromGraph(
     });
   }
   return out;
+}
+
+/**
+ * 当前版本往前 / 往后一版的 id（左右滑动换版用）；到头或只有一版返回 null。
+ * 当前版本不在历史里（节点数据异常）按最后一版算。
+ * @param versions 历次出图，旧的在前
+ * @param activeId 当前版本的 id
+ * @param delta 1 往后（更新的一版），-1 往前
+ */
+export function neighborVersion(
+  versions: readonly { id: string }[],
+  activeId: string | null,
+  delta: 1 | -1,
+): string | null {
+  const at = versions.findIndex((item) => item.id === activeId);
+  const next = (at < 0 ? versions.length - 1 : at) + delta;
+  return versions[next]?.id ?? null;
 }
 
 /** 一个片段的故事板状态：empty 没有 / running 在出图 / failed 失败 / stale 原稿改过 / ready 可用 */
