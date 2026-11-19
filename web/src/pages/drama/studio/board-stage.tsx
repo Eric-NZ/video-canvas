@@ -343,15 +343,15 @@ export function BoardStage() {
   );
 }
 
-/** 片场顶部条的「补齐故事板 · n」（样式同「批量生成脚本」）：一次补完缺的、失败的和过期的，n 是还要补的张数 */
-export function BoardProgress() {
+/** 片段条右上角的「批量生成故事板 · n」（样式同旁边的「批量生成分镜视频」）：一次补完缺的、失败的和过期的，n 是还要补的张数 */
+export function BoardFillButton() {
   const { segments, boards } = useStudio();
   if (segments.length === 0) return null;
   const todo = boards.targets.length;
   const blocked = boards.blocked ?? (todo === 0 ? "每个片段都有可用的故事板" : null);
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
       data-slot="board-fill"
       disabled={!!blocked}
@@ -360,7 +360,7 @@ export function BoardProgress() {
       }
       onClick={() => void boards.fill()}
     >
-      补齐故事板
+      批量生成故事板
       {todo > 0 && <span className="tabular-nums opacity-60">· {todo}</span>}
     </Button>
   );

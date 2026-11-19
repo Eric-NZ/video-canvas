@@ -247,4 +247,14 @@ describe("utils/drama/board：画布上的故事板节点", () => {
     expect(BOARD_LINE).toContain("图片1");
     expect(BOARD_LINE).toContain("分镜宫格图");
   });
+
+  test("提示词说明行：按格子顺序对应镜头、只参考构图；成片不带宫格线、编号、线稿和批注文字（故事板是带批注的手绘稿）", () => {
+    expect(BOARD_LINE).toContain("手绘");
+    expect(BOARD_LINE).toContain("编号顺序");
+    expect(BOARD_LINE).toContain("只参考构图");
+    for (const word of ["宫格线", "编号", "线稿", "批注文字"]) {
+      expect(BOARD_LINE.slice(BOARD_LINE.indexOf("不出现"))).toContain(word);
+    }
+    expect(BOARD_LINE).toContain("下面写的画风");
+  });
 });

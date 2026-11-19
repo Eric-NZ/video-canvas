@@ -69,7 +69,7 @@ function AdaptTabs({ segment, format }: { segment: Segment; format: AdaptFormat 
   }, [actions, segment, setView]);
 
   return (
-    <div className="grid gap-2.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <div
           role="tablist"
@@ -122,7 +122,7 @@ function AdaptTabs({ segment, format }: { segment: Segment; format: AdaptFormat 
       {view === "source" ? (
         <AutosavedPrompt segment={segment} kind="source" />
       ) : (
-        <div className="grid gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           {error && (
             <Bar tone="destructive" icon={<CircleX />} action="重试" onAction={() => void run()}>
               {error}
@@ -362,7 +362,8 @@ function AutosavedPrompt({
       }}
       onDrop={() => setOver(false)}
       className={cn(
-        "bg-panel border-border rounded-[14px] border px-3.5 py-3 transition-[border-color,box-shadow,opacity]",
+        // 撑满右侧剩下的高度，文字多了在框里滚，不让整个右栏出滚动条；太矮时留 12rem 的底，再矮才由右栏滚
+        "bg-panel border-border flex min-h-48 flex-1 flex-col rounded-[14px] border px-3.5 py-3 transition-[border-color,box-shadow,opacity]",
         "focus-within:border-ring",
         over && "ring-status-running/50 ring-2",
         disabled && "opacity-60",
@@ -372,6 +373,7 @@ function AutosavedPrompt({
         <PromptEditor
           ref={editorRef}
           large
+          fill
           value={value}
           onValueChange={onChange}
           disabled={disabled}
@@ -379,7 +381,7 @@ function AutosavedPrompt({
           onSubmit={() => void actions.generate(segment)}
           mention={mention}
           acceptDrop={readDroppedAsset}
-          className="max-h-[50vh] min-h-36 text-[13.5px] leading-[2.05]"
+          className="max-h-none min-h-36 flex-1 text-[13.5px] leading-[2.05]"
         />
       </PromptChipResolverProvider>
     </div>

@@ -13,9 +13,18 @@ import { useStudio } from "./use-studio";
 /** 右侧检查器：撑满所在分栏（宽度由用户拖动），自己滚动 */
 const INSPECTOR = "bg-card h-full w-full min-w-0 overflow-y-auto";
 
-/** 右侧编辑区：集名（原来在顶部条左边；片段序号在下方时间线上看）、参考素材条、提示词、失败提示（时长、视频模型和生成按钮在顶栏） */
+/** 编辑区标题「第 N 集 · 第 M 段」：M 是当前选中的片段序号（和底部片段条格子上的序号一致），随选中片段变 */
+export function EditorHeading({ no, seq }: { no: number; seq: number }) {
+  return (
+    <h2 className="font-display min-w-0 truncate text-[17px] font-bold tracking-wide">
+      第 {no} 集 · 第 {seq + 1} 段
+    </h2>
+  );
+}
+
+/** 右侧编辑区：标题（第几集第几段）、参考素材条、提示词、失败提示（时长、视频模型和生成按钮在顶栏） */
 export function Editor() {
-  const { selected, actions, segmentsStatus, no, episode } = useStudio();
+  const { selected, actions, segmentsStatus, no } = useStudio();
 
   if (!selected) {
     return (
@@ -41,12 +50,10 @@ export function Editor() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: DURATION.base, ease: EASE_OUT }}
-        className="grid gap-4 px-4 pt-4 pb-8"
+        className="flex h-full flex-col gap-4 px-4 pt-4 pb-4"
       >
         <div className="flex items-baseline gap-2">
-          <h2 className="font-display min-w-0 truncate text-[17px] font-bold tracking-wide">
-            第 {no} 集 · {episode.title}
-          </h2>
+          <EditorHeading no={no} seq={selected.seq} />
           <span className="flex-1" />
           {selected.status === "error" && <StatusPill tone="destructive">生成失败</StatusPill>}
           {selected.status === "running" && (

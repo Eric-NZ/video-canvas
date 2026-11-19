@@ -4,7 +4,7 @@ import type { Segment } from "@/api/drama/type";
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import type { BoardNode, BoardStatus } from "@/utils/drama/board";
 import type {
-  BoardProgress as BoardProgressType,
+  BoardFillButton as BoardFillButtonType,
   BoardStage as BoardStageType,
   ViewSwitch as ViewSwitchType,
 } from "@/pages/drama/studio/board-stage";
@@ -17,13 +17,13 @@ import type {
 
 /**
  * 片场里的故事板（故事板并进片场）：预览顶部「故事板 | 视频」切换、故事板一面按状态显示、
- * 顶部条的故事板进度和「补齐故事板」。
+ * 「批量生成故事板」按钮（在底部片段条右上，和「批量生成分镜视频」并排）。
  */
 
 let dom: DomEnv;
 let BoardStage: typeof BoardStageType;
 let ViewSwitch: typeof ViewSwitchType;
-let BoardProgress: typeof BoardProgressType;
+let BoardFillButton: typeof BoardFillButtonType;
 let StudioViewToggle: typeof StudioViewToggleType;
 let StudioContext: typeof StudioContextType;
 beforeAll(async () => {
@@ -31,7 +31,7 @@ beforeAll(async () => {
   const mod = await import("@/pages/drama/studio/board-stage");
   BoardStage = mod.BoardStage;
   ViewSwitch = mod.ViewSwitch;
-  BoardProgress = mod.BoardProgress;
+  BoardFillButton = mod.BoardFillButton;
   StudioViewToggle = (await import("@/pages/drama/studio/view-toggle")).StudioViewToggle;
   StudioContext = (await import("@/pages/drama/studio/use-studio")).StudioContext;
 });
@@ -450,7 +450,7 @@ describe("片场故事板：故事板这一面", () => {
   });
 });
 
-describe("片场故事板：顶部条「补齐故事板」", () => {
+describe("片场故事板：「批量生成故事板」按钮", () => {
   test("有要补的才能点，按钮上是还要补的张数，悬停写已可用张数 / 片段数；没有进度条文字", async () => {
     const segments = [segment(0), segment(1), segment(2)];
     const { value, calls } = studio({
@@ -458,9 +458,11 @@ describe("片场故事板：顶部条「补齐故事板」", () => {
       statuses: { s0: "ready", s1: "stale", s2: "empty" },
       targets: [segments[1], segments[2]],
     });
-    const m = await mount(value, <BoardProgress />);
+    const m = await mount(value, <BoardFillButton />);
     expect(m.container.textContent).not.toContain("1/3");
-    const fill = button(m.container, "补齐故事板") as HTMLButtonElement;
+    const fill = button(m.container, "批量生成故事板") as HTMLButtonElement;
+    // 不带图标（和「批量生成分镜视频」一样只有文字）
+    expect(fill.querySelector("svg")).toBeNull();
     expect(fill.textContent).toContain("· 2");
     expect(fill.title).toContain("已可用 1/3");
     await dom.click(fill);
@@ -468,8 +470,8 @@ describe("片场故事板：顶部条「补齐故事板」", () => {
     await m.unmount();
 
     const done = studio({ segments: [segment(0)], statuses: { s0: "ready" } });
-    const m2 = await mount(done.value, <BoardProgress />);
-    expect((button(m2.container, "补齐故事板") as HTMLButtonElement).disabled).toBe(true);
+    const m2 = await mount(done.value, <BoardFillButton />);
+    expect((button(m2.container, "批量生成故事板") as HTMLButtonElement).disabled).toBe(true);
     await m2.unmount();
   });
 });
@@ -480,6 +482,8 @@ describe("片场：列表 | 画布 切换（和资产管理同款）", () => {
     const m = await mount(value, <StudioViewToggle />);
     const buttons = [...m.container.querySelectorAll("button")] as HTMLButtonElement[];
     expect(buttons.map((b) => b.textContent)).toEqual(["片场", "画布"]);
+    // 片场用电影场记板图标，不是资产管理那个四方格
+    expect(buttons[0].querySelector("svg")?.getAttribute("class")).toContain("lucide-clapperboard");
     expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
     // 不转圈、不禁用：画布早在后台挂好了
     expect(buttons.every((b) => !b.disabled && !b.querySelector(".animate-spin"))).toBe(true);

@@ -186,7 +186,7 @@ function Shell() {
                 </ResizablePanelGroup>
               </ResizablePanel>
               <ResizableHandle className={HANDLE} />
-              <ResizablePanel id="clips" defaultSize={132} minSize={112} maxSize="60%">
+              <ResizablePanel id="clips" defaultSize={152} minSize={140} maxSize="60%">
                 <Phased name="clips" on={phase >= 2}>
                   <ClipBar />
                 </Phased>

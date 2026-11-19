@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Reorder } from "motion/react";
-import { CircleX, Film, Layers, Loader2, Pause, Play, Plus } from "lucide-react";
+import { CircleX, Film, Loader2, Pause, Play, Plus } from "lucide-react";
 
 import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import type { Segment } from "@/api/drama/type";
 import type { BoardStatus } from "@/utils/drama/board";
 import { applyOrder, clipWidth, orderIds, playableTake, sameOrder } from "@/utils/drama/segments";
 
+import { BoardFillButton } from "./board-stage";
 import { usePlaybackContext } from "./use-playback";
 import { useStudio } from "./use-studio";
 
@@ -168,8 +169,8 @@ export function ClipBar() {
   };
 
   return (
-    <div className="bg-sidebar h-full overflow-y-auto px-4 pt-2.5 pb-3 [scrollbar-gutter:stable]">
-      <div className="mb-1.5 flex items-center gap-2">
+    <div className="bg-sidebar flex h-full flex-col overflow-hidden px-4 pt-2.5 pb-3">
+      <div className="mb-0.5 flex shrink-0 items-center gap-2">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -198,12 +199,13 @@ export function ClipBar() {
           </span>
         )}
         <span className="flex-1" />
+        <BoardFillButton />
         <Button variant="ghost" size="sm" onClick={() => void actions.batch()}>
-          <Layers />
-          批量生成
-        </Button>{" "}
+          批量生成分镜视频
+        </Button>
       </div>
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
+      {/* 上、左多留 4px（再用负外边距抵回去）：选中格的描边和光晕画在格子外面，滚动行会把外面的裁掉 */}
+      <div className="-mx-1 flex min-h-0 flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden px-1 pt-1 pb-1 [scrollbar-gutter:stable]">
         <div className="relative shrink-0">
           <Reorder.Group
             axis="x"

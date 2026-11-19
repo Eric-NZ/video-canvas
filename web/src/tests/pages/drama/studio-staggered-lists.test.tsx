@@ -67,7 +67,14 @@ const studio = {
   selected: segments[0],
   select: () => {},
   submitting: new Set<string>(),
-  boards: { statusOf: () => "empty", nodeOf: () => undefined },
+  boards: {
+    statusOf: () => "empty",
+    nodeOf: () => undefined,
+    targets: segments.slice(0, 3),
+    ready: 0,
+    blocked: null,
+    fill: async () => {},
+  },
   actions: { reorder: async () => {}, add: async () => {}, batch: async () => {} },
 } as unknown as Studio;
 
@@ -179,10 +186,14 @@ describe("分批追加时画面不抖", () => {
         <WithPlaybackBar />
       </StudioContext.Provider>,
     );
-    const bar = m2.container.querySelector(".overflow-y-auto") as HTMLElement;
-    expect(bar.className).toContain("[scrollbar-gutter:stable]");
+    // 片段条整体竖向不出滚动条（高度由分栏的最小高度保证放得下），只有格子那一行能横向滚
+    expect(m2.container.querySelector(".overflow-y-auto")).toBeNull();
     const row = m2.container.querySelector(".overflow-x-auto") as HTMLElement;
     expect(row.className).toContain("[scrollbar-gutter:stable]");
+    // 选中片段的描边和光晕会画在格子外面，滚动行（overflow 会裁掉外面的东西）要在上、左留出空位，不然上沿和最左一格被遮住
+    expect(row.className).toMatch(/\bpt-1\b/);
+    expect(row.className).toMatch(/\bpx-1\b/);
+    expect(row.className).toContain("overflow-y-hidden");
     await m2.unmount();
   });
 });
@@ -204,6 +215,10 @@ describe("片段条：没视频时缩略图用故事板的缩略图", () => {
       boards: {
         statusOf: () => "ready",
         nodeOf: () => ({ src: "/files/assets/31.png" }),
+        targets: [],
+        ready: 2,
+        blocked: null,
+        fill: async () => {},
       },
     } as unknown as Studio;
     const m = await dom.mount(
@@ -219,5 +234,51 @@ describe("片段条：没视频时缩略图用故事板的缩略图", () => {
     // 每一格的故事板图都是缩略图地址
     expect(srcs.every((src) => src === "/files/assets/31.png?v=thumb")).toBe(true);
     await m.unmount();
+  });
+});
+
+describe("片段条：右上角「批量生成故事板」", () => {
+  test("和「批量生成分镜视频」并排在右上角，样式一样、都不带图标，点了补齐故事板；不再有要补的就禁用", async () => {
+    let filled = 0;
+    const withFill = {
+      ...studio,
+      boards: { ...studio.boards, fill: async () => void (filled += 1) },
+    } as unknown as Studio;
+    const m = await dom.mount(
+      <StudioContext.Provider value={withFill}>
+        <WithPlaybackBar />
+      </StudioContext.Provider>,
+    );
+    const find = (text: string) =>
+      [...m.container.querySelectorAll("button")].find((b) =>
+        (b.textContent ?? "").includes(text),
+      ) as HTMLButtonElement;
+    const fill = find("批量生成故事板");
+    const batch = find("批量生成分镜视频");
+    expect(fill.className).toBe(batch.className);
+    expect(fill.parentElement).toBe(batch.parentElement);
+    // 批量生成故事板在批量生成分镜视频左边，图标是宫格加一格
+    expect(fill.compareDocumentPosition(batch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fill.querySelector("svg")).toBeNull();
+    expect(batch.querySelector("svg")).toBeNull();
+    expect(fill.textContent).toContain("· 3");
+    await dom.click(fill);
+    expect(filled).toBe(1);
+    await m.unmount();
+
+    const done = {
+      ...studio,
+      boards: { ...studio.boards, targets: [], ready: 30 },
+    } as unknown as Studio;
+    const m2 = await dom.mount(
+      <StudioContext.Provider value={done}>
+        <WithPlaybackBar />
+      </StudioContext.Provider>,
+    );
+    const disabled = [...m2.container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("批量生成故事板"),
+    ) as HTMLButtonElement;
+    expect(disabled.disabled).toBe(true);
+    await m2.unmount();
   });
 });

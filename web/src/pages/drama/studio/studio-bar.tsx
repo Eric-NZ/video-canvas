@@ -12,7 +12,6 @@ import { useStoryboardStart } from "../workspace/storyboard-start";
 import { StoryboardBatchButton } from "../workspace/storyboard-batch-dialog";
 import { GenerateControls } from "./generate-controls";
 import type { SaveSummary } from "../workspace/use-workspace";
-import { BoardProgress } from "./board-stage";
 import { StudioViewToggle } from "./view-toggle";
 import { useStudio } from "./use-studio";
 
@@ -116,7 +115,7 @@ function SecondsChip() {
 const NO_JOBS: never[] = [];
 
 /**
- * 片场顶部条：左边是「列表 | 画布」切换（画布视图下只剩它）和保存出错时的状态（集名挪到右侧面板顶部了），右边是「补齐故事板」、「批量生成脚本」、
+ * 片场顶部条：左边是「列表 | 画布」切换（画布视图下只剩它）和保存出错时的状态（集名挪到右侧面板顶部了），右边是「批量生成脚本」、
  * 「重新生成分镜脚本」，再往右是当前片段的时长、分辨率、比例，最右是视频模型和「立即生成」。
  * 合成整集挪到了「成片」页；这里只管把片段做出来。
  */
@@ -145,7 +144,6 @@ export function StudioBar() {
       {/* 画布视图里用不上这些按钮，藏起来免得误点；只留左边的切换 */}
       {canvasEntry.view === "list" && (
         <>
-          <BoardProgress />
           <StoryboardBatchButton current={no} maxSeconds={video.maxSeconds} />
           <Button
             variant="ghost"

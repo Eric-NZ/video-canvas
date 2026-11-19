@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Frame, LayoutGrid, Loader2 } from "lucide-react";
+import { Frame, LayoutGrid, Loader2, type LucideIcon } from "lucide-react";
 
 import { getCanvas } from "@/api/canvas";
 import { listSegments } from "@/api/drama";
@@ -168,22 +168,25 @@ export function DramaCanvas({
   );
 }
 
-/** 「列表 ⇄ 画布」切换：资产管理和片场共用；第一项的名字不同，资产管理叫「列表」，片场叫「片场」 */
+/** 「列表 ⇄ 画布」切换：资产管理和片场共用；第一项的名字和图标不同，资产管理是四方格「列表」，片场是场记板「片场」 */
 export function ViewToggle({
   view,
   onChange,
   listLabel = "列表",
+  listIcon = LayoutGrid,
 }: {
   view: "list" | "canvas";
   onChange: (view: "list" | "canvas") => void;
   /** 第一项的名字 */
   listLabel?: string;
+  /** 第一项的图标 */
+  listIcon?: LucideIcon;
 }) {
   return (
     <div role="group" aria-label="视图" className="bg-muted flex rounded-lg p-0.5">
       {(
         [
-          ["list", listLabel, LayoutGrid],
+          ["list", listLabel, listIcon],
           ["canvas", "画布", Frame],
         ] as const
       ).map(([key, label, Icon]) => (

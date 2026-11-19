@@ -1,3 +1,5 @@
+import { Clapperboard } from "lucide-react";
+
 import { ViewToggle } from "../workspace/assets-area";
 import { useStudio } from "./use-studio";
 
@@ -11,6 +13,7 @@ export function StudioViewToggle() {
     <ViewToggle
       view={canvasEntry.view}
       listLabel="片场"
+      listIcon={Clapperboard}
       onChange={(next) => (next === "canvas" ? showCanvas() : showList())}
     />
   );

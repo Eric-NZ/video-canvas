@@ -100,6 +100,19 @@ describe("片场：原稿 / 转写标签", () => {
   });
 });
 
+describe("片场：提示词框撑满剩余高度", () => {
+  test("框占右栏剩下的高度（flex-1），文字多了在框里滚，不按视口限高，也不让整个右栏滚", () => {
+    for (const format of ["seedance", "h3"] as const) {
+      const html = render(studio({ format }), <PromptPane segment={seg()} />);
+      const box =
+        html.match(/<div[^>]*class="([^"]*bg-panel[^"]*rounded-\[14px\][^"]*)"/)?.[1] ?? "";
+      expect(box).toContain("flex-1");
+      expect(box).toContain("min-h-48");
+      expect(html).not.toContain("max-h-[50vh]");
+    }
+  });
+});
+
 describe("片场：生成按钮的拦截原因", () => {
   test("选的是原稿：H3 模型还没转写也能生成（原稿直接生成，不要求先转写）", () => {
     const html = render(studio({ selected: seg(), promptView: "source" }), <GenerateControls />);
