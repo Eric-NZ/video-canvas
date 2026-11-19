@@ -20,18 +20,31 @@ afterEach(() => {
 
 describe("片段工作区偏好（按短剧存在本机）", () => {
   test("没存过：空偏好", () => {
-    expect(readPrefs("d1")).toEqual({ videoModel: "", overrides: {} });
+    expect(readPrefs("d1")).toEqual({
+      videoModel: "",
+      overrides: {},
+      boardModel: "",
+      boardOff: false,
+    });
+  });
+
+  test("故事板的图片模型和关闭开关：读得到，形状不对时回到默认", () => {
+    memory.set("drama-studio:d1", JSON.stringify({ boardModel: "flux", boardOff: true }));
+    expect(readPrefs("d1")).toMatchObject({ boardModel: "flux", boardOff: true });
+    memory.set("drama-studio:d1", JSON.stringify({ boardModel: 1, boardOff: "yes" }));
+    expect(readPrefs("d1")).toMatchObject({ boardModel: "", boardOff: false });
   });
 
   test("旧版本存过首帧模型：读出来不再带它", () => {
     memory.set("drama-studio:d1", JSON.stringify({ videoModel: "veo", imageModel: "flux" }));
-    expect(readPrefs("d1")).toEqual({ videoModel: "veo", overrides: {} });
+    expect(readPrefs("d1")).toMatchObject({ videoModel: "veo", overrides: {} });
+    expect(readPrefs("d1")).not.toHaveProperty("imageModel");
   });
 
   test("patch 写进内存与本机，下次读得到；不同短剧互不影响", () => {
     useStudioPrefsStore.getState().patch("d1", { videoModel: "veo" });
     useStudioPrefsStore.getState().patch("d1", { overrides: { resolution: "1080P" } });
-    expect(useStudioPrefsStore.getState().get("d1")).toEqual({
+    expect(useStudioPrefsStore.getState().get("d1")).toMatchObject({
       videoModel: "veo",
       overrides: { resolution: "1080P" },
     });
@@ -43,7 +56,12 @@ describe("片段工作区偏好（按短剧存在本机）", () => {
     memory.set("drama-studio:d1", "{不是 json");
     expect(readPrefs("d1").videoModel).toBe("");
     memory.set("drama-studio:d1", JSON.stringify({ videoModel: 3, overrides: [1] }));
-    expect(readPrefs("d1")).toEqual({ videoModel: "", overrides: {} });
+    expect(readPrefs("d1")).toEqual({
+      videoModel: "",
+      overrides: {},
+      boardModel: "",
+      boardOff: false,
+    });
   });
 
   test("localStorage 不可用（隐私模式）：读写都不抛", () => {

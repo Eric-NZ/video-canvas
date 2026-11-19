@@ -70,8 +70,8 @@ function DoneCover({ item }: { item: AssetItem }) {
   return <DramaPoster seed={item.name + item.look} className="absolute inset-0" />;
 }
 
-/** 空状态里的一块说明（待生成 / 生成中 / 失败） */
-function EmptyFrame({
+/** 空状态里的一块说明（待生成 / 生成中 / 失败）；故事板卡也用 */
+export function EmptyFrame({
   tone = "idle",
   children,
 }: {
@@ -92,9 +92,13 @@ function EmptyFrame({
   );
 }
 
-/** 分段胶囊里的一段：透明底，悬停提亮（同 ChromeSegment） */
-const SEGMENT_CLASS =
+/** 分段胶囊里的一段：透明底，悬停提亮（同 ChromeSegment）；故事板卡也用 */
+export const SEGMENT_CLASS =
   "hover:bg-chrome-hover text-foreground focus-visible:ring-ring/60 inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-xs transition-colors duration-150 outline-none focus-visible:ring-2 [&_svg]:size-3.5 [&_svg]:shrink-0";
+
+/** 贴在封面底部、悬停卡片（group/card）时浮出的半透明分段胶囊；触屏一直显示。故事板卡也用 */
+export const HOVER_PILL_CLASS =
+  "bg-chrome ring-chrome-border flex translate-y-1.5 items-center gap-0.5 rounded-full p-1 opacity-0 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150 transition-[opacity,translate] duration-150 ease-out will-change-[opacity,translate] group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:duration-200 focus-within:translate-y-0 focus-within:opacity-100 focus-within:duration-200 motion-reduce:transition-none [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100";
 
 /**
  * 空卡的上传入口：贴在封面底部的半透明分段胶囊（coding-standards 6.1），左上传、右素材库。
@@ -111,7 +115,7 @@ function FillActions({
     <div className="absolute inset-x-2.5 bottom-2.5 z-20">
       {/* 淡入淡出加在带模糊的这一层上：祖先半透明会让 backdrop-blur 失效，淡出一开始模糊就突然没了，看着像卡顿。
           退出 150ms，约为进入 200ms 的 70% */}
-      <div className="bg-chrome ring-chrome-border flex translate-y-1.5 items-center gap-0.5 rounded-full p-1 opacity-0 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150 transition-[opacity,translate] duration-150 ease-out will-change-[opacity,translate] group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:duration-200 focus-within:translate-y-0 focus-within:opacity-100 focus-within:duration-200 motion-reduce:transition-none [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
+      <div className={HOVER_PILL_CLASS}>
         <button type="button" className={SEGMENT_CLASS} onClick={onUpload}>
           <Upload />
           上传

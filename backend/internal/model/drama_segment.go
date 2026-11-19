@@ -96,3 +96,13 @@ type GenerateDramaSegmentReq struct {
 	ModelID string         `json:"model_id" binding:"required,max=128" label:"模型"`
 	Input   map[string]any `json:"input" binding:"required" label:"生成参数"`
 }
+
+// DramaSegmentStats 是某集片段的实时聚合。
+type DramaSegmentStats struct {
+	Count   int
+	Seconds int
+	// Done 有采用视频的片段数
+	Done int
+	// Boards 有故事板且没过期的片段数（故事板是短剧画布上的图片节点，见 DramaBoardHashes）
+	Boards int
+}

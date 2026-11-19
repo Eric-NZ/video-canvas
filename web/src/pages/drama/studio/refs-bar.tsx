@@ -1,4 +1,4 @@
-import { AudioLines, Box, Image as ImageIcon, User } from "lucide-react";
+import { AudioLines, Box, Grid2x2, Image as ImageIcon, User, X } from "lucide-react";
 
 import { MediaPreview } from "@/components/canvas/media-preview";
 import { StatusPill } from "@/components/drama/status-pill";
@@ -63,6 +63,71 @@ function Chip({ view }: { view: RefView }) {
 }
 
 /**
+ * 参考素材条最前面的故事板：带入时是第一张参考图，可以本次关掉；过期、模型不收、没有故事板都标在芯片上。
+ */
+function BoardChip() {
+  const { plan, selected, board: ref, setBoardOff } = useStudio();
+  if (!plan || !selected) return null;
+  const { state, reason } = plan.board;
+  if (state === "none") {
+    return (
+      <span className="bg-muted text-muted-foreground inline-flex h-[30px] items-center gap-1.5 rounded-lg px-2 text-xs">
+        <Grid2x2 className="size-3.5" />
+        未引用故事板
+      </span>
+    );
+  }
+  const off = state === "off";
+  return (
+    <span
+      title={reason || undefined}
+      className={cn(
+        "bg-muted ring-primary/40 inline-flex h-[30px] items-center gap-1.5 rounded-lg pr-1 pl-[3px] text-xs ring-1",
+        (off || state === "unsupported") && "opacity-60 ring-0",
+      )}
+    >
+      <span className="bg-background/60 text-muted-foreground grid size-6 shrink-0 place-items-center overflow-hidden rounded-md">
+        {ref ? (
+          <MediaPreview src={ref.src} mode="thumb" fit="cover" draggable={false} />
+        ) : (
+          <Grid2x2 className="size-3.5" />
+        )}
+      </span>
+      故事板
+      {state === "stale" && (
+        <StatusPill tone="warning" className="h-4 text-[10px]">
+          已过期
+        </StatusPill>
+      )}
+      {state === "unsupported" && (
+        <StatusPill tone="warning" className="h-4 text-[10px]">
+          未带入
+        </StatusPill>
+      )}
+      {off ? (
+        <button
+          type="button"
+          onClick={() => setBoardOff(false)}
+          className="text-primary hover:bg-background/60 rounded-md px-1.5 py-0.5"
+        >
+          带上
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-label="本次不带故事板"
+          title="本次不带故事板"
+          onClick={() => setBoardOff(true)}
+          className="text-muted-foreground hover:bg-background/60 hover:text-foreground grid size-5 place-items-center rounded-md"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
  * 参考素材条：按提示词里的 @ 解析出这次会带上的参考图 / 音频，标出「只用文字」「角色卡声音未生效」，
  * 右上角是 n/上限（参考图张数）。不另列说明文字，状态都标在每个素材上。解析规则见 utils/drama/segment-input.ts。
  */
@@ -83,6 +148,7 @@ export function RefsBar() {
         )}
       </div>
       <div className="flex flex-wrap gap-1.5">
+        <BoardChip />
         {plan.refs.map((view) => (
           <Chip key={view.id} view={view} />
         ))}

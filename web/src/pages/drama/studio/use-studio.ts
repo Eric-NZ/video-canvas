@@ -40,6 +40,7 @@ import {
   type BatchPick,
   type TargetFormat,
 } from "@/utils/drama/adaptation";
+import { boardRef, type BoardRef } from "@/utils/drama/board";
 import { reloadSegments } from "@/utils/drama/segment-events";
 import type { RefAsset } from "@/utils/drama/segment-assets";
 import { planSegmentInput, type SegmentPlan } from "@/utils/drama/segment-input";
@@ -82,6 +83,11 @@ export type Studio = {
   /** 顶栏选的生成参数（分辨率等） */
   overrides: Record<string, unknown>;
   setOverride: (name: string, value: unknown) => void;
+  /** 选中片段的故事板（画布上的图片节点），生视频时作为第一张参考图；没有为 null */
+  board: BoardRef | null;
+  /** 生视频时不带故事板（本机偏好，按短剧分开） */
+  boardOff: boolean;
+  setBoardOff: (off: boolean) => void;
   /**
    * 选中片段此刻要提交的文字（还没存下来的也算）：目标格式是 Seedance 时是原稿，
    * 其他格式有转写稿时是转写稿、没有时是原稿；参考素材条和报价跟着它变
@@ -199,6 +205,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     assets,
     status: assetsStatus,
     reload: reloadAssets,
+    boards,
+    boardsNow,
   } = useDramaAssets(drama.canvasId, settled);
   const video = useDramaVideoModel(dramaId, drama.videoModel);
   const prefs = useStudioPrefs(dramaId);
@@ -234,6 +242,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     },
     [adapting, format, hashOf, sourceOf],
   );
+  /** 选中片段的故事板：过期按原稿（含还没存下的编辑）算 */
+  const board = useMemo(
+    () => (selected ? boardRef(boards.get(selected.id), hashOf(sourceOf(selected))) : null),
+    [boards, hashOf, selected, sourceOf],
+  );
   const prompt = useMemo(() => {
     if (!selected) return "";
     const adaptation = format === "seedance" ? undefined : selected.adaptations[format];
@@ -250,9 +263,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             ratio: drama.ratio,
             overrides: prefs.overrides,
             assets,
+            board,
+            boardOff: prefs.boardOff,
           })
         : null,
-    [assets, caps, drama.ratio, prefs.overrides, prompt, selected],
+    [assets, board, caps, drama.ratio, prefs.boardOff, prefs.overrides, prompt, selected],
   );
   const credits = useMemo(() => {
     if (!plan || !video.model || Object.keys(plan.input).length === 0) return undefined;
@@ -410,6 +425,12 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         ratio: drama.ratio,
         overrides: prefs.overrides,
         assets: latest,
+        // 故事板取刚重读的画布；过期按存下来的原稿算（segment.prompt 可能已换成转写稿）
+        board: boardRef(
+          boardsNow().get(segment.id),
+          await sha256Hex((latestOf(segment.id) ?? segment).prompt),
+        ),
+        boardOff: prefs.boardOff,
       });
       const firstError = Object.values(built.errors)[0];
       if (firstError) return { ok: false as const, message: firstError };
@@ -420,7 +441,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
         return { ok: false as const, message: describeSubmitError(e).message };
       }
     },
-    [drama.ratio, prefs.overrides, video.model],
+    [boardsNow, drama.ratio, latestOf, prefs.boardOff, prefs.overrides, video.model],
   );
 
   /**
@@ -711,6 +732,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     };
   }, []);
 
+  const setBoardOff = useCallback(
+    (off: boolean) => useStudioPrefsStore.getState().patch(dramaId, { boardOff: off }),
+    [dramaId],
+  );
+
   const setOverride = useCallback(
     (name: string, value: unknown) =>
       useStudioPrefsStore
@@ -733,6 +759,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     video,
     overrides: prefs.overrides,
     setOverride,
+    board,
+    boardOff: prefs.boardOff,
+    setBoardOff,
     prompt,
     setDraft,
     format,

@@ -226,23 +226,25 @@ type DramaSummary struct {
 
 // DramaEpisodeSummary 集概要。
 type DramaEpisodeSummary struct {
-	Hook             string     `json:"hook"`
-	Cliffhanger      string     `json:"cliffhanger"`
-	UnitFrom         int        `json:"unit_from"`
-	UnitTo           int        `json:"unit_to"`
-	No               int        `json:"no"`
-	Title            string     `json:"title"`
-	Synopsis         string     `json:"synopsis"`
-	ScriptStatus     string     `json:"script_status"`
-	StoryboardStatus string     `json:"storyboard_status"`
-	SegmentCount     int        `json:"segment_count"`
-	SegmentSeconds   int        `json:"segment_seconds"`
-	DoneSegmentCount int        `json:"done_segment_count"`
-	Locked           bool       `json:"locked"`
-	Revision         int64      `json:"revision"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	Final            *AssetView `json:"final"`
-	FinalStale       bool       `json:"final_stale"`
+	Hook             string `json:"hook"`
+	Cliffhanger      string `json:"cliffhanger"`
+	UnitFrom         int    `json:"unit_from"`
+	UnitTo           int    `json:"unit_to"`
+	No               int    `json:"no"`
+	Title            string `json:"title"`
+	Synopsis         string `json:"synopsis"`
+	ScriptStatus     string `json:"script_status"`
+	StoryboardStatus string `json:"storyboard_status"`
+	SegmentCount     int    `json:"segment_count"`
+	SegmentSeconds   int    `json:"segment_seconds"`
+	DoneSegmentCount int    `json:"done_segment_count"`
+	// DoneBoardCount 有采用且未过期故事板的片段数
+	DoneBoardCount int        `json:"done_board_count"`
+	Locked         bool       `json:"locked"`
+	Revision       int64      `json:"revision"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	Final          *AssetView `json:"final"`
+	FinalStale     bool       `json:"final_stale"`
 }
 
 // DramaEpisodeView 单集正文。

@@ -107,6 +107,8 @@ export interface BackendEpisodeSummary {
   segment_count?: number;
   segment_seconds?: number;
   done_segment_count?: number;
+  /** 有采用且未过期故事板的片段数；老后端没有按 0 */
+  done_board_count?: number;
   /** 三期字段（契约 §14）：成片与是否过期；后端还没带时按「没有成片」处理 */
   final?: BackendAssetDto | null;
   final_stale?: boolean;
@@ -240,6 +242,8 @@ export interface EpisodeSummary {
   segmentSeconds: number;
   /** 有「采用」视频的片段数 */
   doneSegmentCount: number;
+  /** 有采用且未过期故事板的片段数 */
+  doneBoardCount: number;
   /** 合成好的成片；没有为 null */
   final: AssetDto | null;
   /** 成片之后有片段改了采用 / 顺序 / 增删：提示「成片已过期，可重新合成」 */
@@ -473,6 +477,9 @@ export interface BackendSegmentView {
   /** 按格式存的转写稿；老后端可能没有 */
   adaptations?: Partial<Record<AdaptFormat, BackendSegmentAdaptation>> | null;
 }
+
+/** 故事板宫格布局（列 x 行） */
+export type BoardLayout = "2x2" | "2x3" | "3x2" | "3x3";
 
 /** 需要转写的提示词格式（Seedance 是原稿本身，不存转写稿） */
 export type AdaptFormat = "h3" | "generic";

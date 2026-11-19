@@ -211,16 +211,17 @@ func (r *dramaMemory) ReplaceSegments(_ context.Context, userID, episodeID uint6
 func (r *dramaMemory) HasSegmentTakes(context.Context, uint64, uint64) (bool, error) {
 	return r.hasTakes, nil
 }
-func (r *dramaMemory) Summary(ctx context.Context, userID, episodeID uint64) (count, seconds, done int, err error) {
+func (r *dramaMemory) Summary(ctx context.Context, userID, episodeID uint64, _ map[string]string) (model.DramaSegmentStats, error) {
+	var stats model.DramaSegmentStats
 	segments, err := r.Segments(ctx, userID, episodeID)
 	for _, segment := range segments {
-		count++
-		seconds += segment.Seconds
+		stats.Count++
+		stats.Seconds += segment.Seconds
 		if segment.ChosenTaskID != nil {
-			done++
+			stats.Done++
 		}
 	}
-	return count, seconds, done, err
+	return stats, err
 }
 func (r *dramaMemory) GetByID(_ context.Context, userID, canvasID uint64) (*model.CanvasProject, error) {
 	if userID != r.project.UserID || canvasID != r.project.CanvasID {

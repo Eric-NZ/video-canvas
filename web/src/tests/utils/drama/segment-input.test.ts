@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Capabilities } from "@/api/model/type";
 import type { NodeCharacter } from "@/types";
 import type { RefAsset } from "@/utils/drama/segment-assets";
+import { BOARD_LINE } from "@/utils/drama/board";
 import { planSegmentInput } from "@/utils/drama/segment-input";
 
 /** 角色卡节点自带的数据：补充图 2、音频音色 9（素材 id 在 payload 里是字符串） */
@@ -250,5 +251,97 @@ describe("planSegmentInput：时长与校验", () => {
       assets: [],
     });
     expect(plan.input).toEqual({});
+  });
+});
+
+describe("planSegmentInput：故事板作为第一张参考图", () => {
+  const assets = [character("n1"), scene("n2")];
+  const board = { assetId: "31", src: "https://cdn/31.png", stale: false };
+  const prompt = "@[林川](n1)走进@[村口](n2)";
+
+  test("有故事板：排在参考图第一张，提示词开头加说明行，其余引用从图片2起编号", () => {
+    const plan = planSegmentInput({ ...base, caps: video(), prompt, assets, board });
+    expect(plan.op).toBe("omni");
+    expect(plan.input.images).toEqual([31, 5, 1, 2]);
+    expect(plan.input.prompt).toStartWith(`${BOARD_LINE}\n林川（图片3中的人物）走进图片2`);
+    expect(plan.board).toEqual({ state: "image", reason: "" });
+    expect(plan.errors).toEqual({});
+    expect(plan.imageCount).toBe(4);
+    // 参考素材条只列提示词里的资产，故事板单独显示
+    expect(plan.refs.map((ref) => ref.id)).toEqual(["n1", "n2"]);
+  });
+
+  test("没有引用任何资产也能带故事板：从文生视频变成全能参考", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "一个人走进村口",
+      assets,
+      board,
+    });
+    expect(plan.op).toBe("omni");
+    expect(plan.input.images).toEqual([31]);
+    const without = planSegmentInput({ ...base, caps: video(), prompt: "一个人走进村口", assets });
+    expect(without.op).toBe("t2v");
+    expect(without.input.images).toBeUndefined();
+  });
+
+  test("故事板过期：照样带上，并提示已过期", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt,
+      assets,
+      board: { ...board, stale: true },
+    });
+    expect((plan.input.images as number[])[0]).toBe(31);
+    expect(plan.board.state).toBe("stale");
+    expect(plan.notices).toContain("故事板已过期，原稿在出图之后改过");
+  });
+
+  test("只有图生视频的模型会把第一张图当首帧：不带故事板", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video({ ops: ["t2v", "i2v"] }),
+      prompt,
+      assets,
+      board,
+    });
+    expect(plan.op).toBe("i2v");
+    expect(plan.input.images).not.toContain(31);
+    expect(plan.input.prompt).not.toContain(BOARD_LINE);
+    expect(plan.board).toEqual({
+      state: "unsupported",
+      reason: "当前模型把第一张图当首帧，故事板未带入",
+    });
+  });
+
+  test("只能文生视频的模型：不带故事板", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video({ ops: ["t2v"] }),
+      prompt: "走进村口",
+      assets,
+      board,
+    });
+    expect(plan.input.images).toBeUndefined();
+    expect(plan.board).toEqual({
+      state: "unsupported",
+      reason: "当前模型不收参考图，故事板未带入",
+    });
+  });
+
+  test("本次关掉故事板：不带，和没有故事板时一样组装", () => {
+    const off = planSegmentInput({ ...base, caps: video(), prompt, assets, board, boardOff: true });
+    const none = planSegmentInput({ ...base, caps: video(), prompt, assets });
+    expect(off.input).toEqual(none.input);
+    expect(off.board).toEqual({ state: "off", reason: "本次已关掉故事板" });
+    expect(none.board).toEqual({ state: "none", reason: "" });
+  });
+
+  test("带上故事板后超出参考图上限：故事板仍在第一张，报错提示可以关掉故事板", () => {
+    const plan = planSegmentInput({ ...base, caps: video({ max: 2 }), prompt, assets, board });
+    expect((plan.input.images as number[])[0]).toBe(31);
+    expect(plan.errors.images).toContain("关掉故事板");
   });
 });

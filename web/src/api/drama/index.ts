@@ -65,6 +65,7 @@ export const mapEpisodeSummary = (raw: BackendEpisodeSummary): EpisodeSummary =>
   segmentCount: raw.segment_count ?? 0,
   segmentSeconds: raw.segment_seconds ?? 0,
   doneSegmentCount: raw.done_segment_count ?? 0,
+  doneBoardCount: raw.done_board_count ?? 0,
   final: raw.final ? mapAsset(raw.final) : null,
   finalStale: raw.final_stale ?? false,
   hook: raw.hook ?? "",
