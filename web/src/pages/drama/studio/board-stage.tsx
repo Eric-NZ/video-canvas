@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { CircleX, Film, Grid2x2, RotateCw } from "lucide-react";
 
-import { MediaLightbox } from "@/components/canvas/media-lightbox";
+import { MediaPreview } from "@/components/canvas/media-preview";
 import { TaskGenerationStatus } from "@/components/generation-status";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -107,7 +107,7 @@ export function ViewSwitch() {
 /** 横向滚轮 / 触控板横滑累积多少像素换一版，换完冷却多久（毫秒），免得一滑就跳好几版（同视频的版本轮播） */
 const WHEEL_THRESHOLD = 60;
 const WHEEL_COOLDOWN = 260;
-/** 在大图上按住左右拖超过多少像素算「换版」，没超过算轻点（放大） */
+/** 在大图上按住左右拖超过多少像素算「换版」 */
 const DRAG_THRESHOLD = 40;
 
 /**
@@ -157,14 +157,14 @@ const thumbOf = (src: string) => variantUrl(src, "thumb").url;
 
 /**
  * 预览的「故事板」一面：选中片段的 16:9 宫格图，按状态显示——已出图（过期时左上角提示重新生成）、生成中、失败、还没有。
- * 大图和下方多版的小图都只加载缩略图，点大图放大看原图；多版时点哪版就把哪版设为当前版本（生视频带的就是它）。
+ * 大图先铺缩略图、原图加载完再淡入盖上去（不做点击放大）；下方多版的小图只加载缩略图；
+ * 多版时左右拖动 / 滚轮 / ← → / 点小图都能换版，换到哪版就把哪版设为当前版本（生视频带的就是它）。
  * 下面是镜头数 / 宫格、重新生成、进入画布查看；分镜时节点就建好了，没出图（包括失败）也能进画布。
  */
 export function BoardStage() {
   const { selected, boards, openBoardInCanvas } = useStudio();
-  const [zoomed, setZoomed] = useState(false);
-  /** 在大图上按下的位置；抬起时位移够大就换版，并让随后的点击不再放大 */
-  const press = useRef<{ x: number; dragged: boolean } | null>(null);
+  /** 在大图上按下的位置；抬起时位移够大就换版 */
+  const pressX = useRef<number | null>(null);
   if (!selected) return null;
   const status = boards.statusOf(selected);
   const node = boards.nodeOf(selected);
@@ -190,17 +190,6 @@ export function BoardStage() {
     const next = neighborVersion(versions, node?.activeId ?? null, delta);
     if (next) void boards.selectVersion(selected, next);
   };
-  const previewItems =
-    hasImage && node?.src
-      ? [
-          {
-            id: node.nodeId,
-            src: node.src,
-            mediaType: "image" as const,
-            label: `片段 ${selected.seq + 1} 的故事板`,
-          },
-        ]
-      : [];
 
   return (
     <BoardSwipe
@@ -210,6 +199,17 @@ export function BoardStage() {
       <div
         data-slot="board-frame"
         style={{ aspectRatio: BOARD_RATIO.replace(":", "/") }}
+        onPointerDown={(event) => {
+          pressX.current = event.clientX;
+        }}
+        onPointerUp={(event) => {
+          const from = pressX.current;
+          pressX.current = null;
+          if (from === null) return;
+          const dx = event.clientX - from;
+          // 向左拖看更新的一版，向右拖回前一版；挪得太少不算
+          if (Math.abs(dx) >= DRAG_THRESHOLD) step(dx < 0 ? 1 : -1);
+        }}
         className={cn(
           "relative grid max-h-full w-full max-w-[860px] place-items-center overflow-hidden rounded-2xl [corner-shape:squircle]",
           hasImage || status === "running"
@@ -224,35 +224,12 @@ export function BoardStage() {
           <TaskGenerationStatus className="size-full" />
         ) : hasImage ? (
           <>
-            {/* 大图只加载缩略图，点一下放大才看原图 */}
-            <button
-              type="button"
-              aria-label="放大查看原图"
-              onPointerDown={(event) => {
-                press.current = { x: event.clientX, dragged: false };
-              }}
-              onPointerUp={(event) => {
-                const start = press.current;
-                if (!start) return;
-                const dx = event.clientX - start.x;
-                if (Math.abs(dx) < DRAG_THRESHOLD) return;
-                // 向左拖看更新的一版，向右拖回前一版
-                start.dragged = true;
-                step(dx < 0 ? 1 : -1);
-              }}
-              onClick={() => {
-                const dragged = press.current?.dragged;
-                press.current = null;
-                if (!dragged) setZoomed(true);
-              }}
-              className="size-full cursor-zoom-in touch-pan-y outline-none select-none"
-            >
-              <img
-                src={thumbOf(node.src ?? "")}
-                alt={`片段 ${selected.seq + 1} 的故事板`}
-                className="size-full object-contain"
-              />
-            </button>
+            {/* 大图先铺缩略图，原图加载完再淡入盖上去 */}
+            <MediaPreview
+              src={node.src ?? ""}
+              alt={`片段 ${selected.seq + 1} 的故事板`}
+              mode="full"
+            />
             {status === "stale" && (
               <div className="text-primary absolute top-3 left-3 flex h-7 items-center gap-1.5 rounded-full bg-black/70 py-0 pr-1 pl-3 text-[12.5px] ring-1 ring-amber-400/35 backdrop-blur-md">
                 原稿已改
@@ -361,14 +338,6 @@ export function BoardStage() {
           )}
         </div>
       )}
-
-      <MediaLightbox
-        items={previewItems}
-        target={zoomed && previewItems[0] ? { id: previewItems[0].id, origin: null } : null}
-        onActiveChange={() => {}}
-        countLabel="故事板"
-        onClose={() => setZoomed(false)}
-      />
     </BoardSwipe>
   );
 }

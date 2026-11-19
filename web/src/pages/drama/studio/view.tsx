@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 
 import type { Drama } from "@/api/drama/type";
-import type { WorkspaceStage } from "@/utils/drama/stages";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { studioColumns } from "@/utils/drama/studio-layout";
@@ -12,6 +11,7 @@ import { Editor } from "./editor";
 import { Library } from "./library";
 import { Preview } from "./preview";
 import { StudioBar } from "./studio-bar";
+import { StudioCanvas } from "./studio-canvas";
 import { PlaybackContext, usePlayback } from "./use-playback";
 import { StudioContext, useStudio, useStudioState } from "./use-studio";
 
@@ -24,15 +24,12 @@ export function StudioView({
   drama,
   no,
   refresh,
-  onGo,
 }: {
   drama: Drama;
   no: number;
   refresh: () => Promise<void>;
-  /** 切工序（故事板的「进入画布查看」去资产管理的画布） */
-  onGo: (stage: WorkspaceStage, ep?: number) => void;
 }) {
-  const state = useStudioState(drama, no, refresh, onGo);
+  const state = useStudioState(drama, no, refresh);
   return (
     <StudioContext.Provider value={state}>
       <Shell />
@@ -45,11 +42,11 @@ const HANDLE =
   "hover:bg-primary/60 data-[separator=active]:bg-primary transition-colors duration-150";
 
 /**
- * 连播状态（预览与时间线共用）和整体布局：
+ * 连播状态（预览与时间线共用）和整体布局；顶部条的「列表 | 画布」选了画布时整块换成短剧画布：
  * 上下两块（三栏区 / 时间线）、三栏之间（资产库 / 预览 / 编辑区）都能拖动调整大小，拖好的尺寸记在本机。
  */
 function Shell() {
-  const { segments, select } = useStudio();
+  const { segments, select, canvasView } = useStudio();
   const playback = usePlayback(segments);
 
   // 连播切到哪个片段，选中（时间线描边、提示词编辑区）就跟到哪个
@@ -68,45 +65,52 @@ function Shell() {
     <PlaybackContext.Provider value={playback}>
       <div className="flex h-full min-h-0 flex-col">
         <StudioBar />
-        <ResizablePanelGroup
-          orientation="vertical"
-          className="min-h-0 flex-1"
-          defaultLayout={rowsLayout.defaultLayout}
-          onLayoutChanged={rowsLayout.onLayoutChanged}
-        >
-          <ResizablePanel id="main" minSize={240}>
-            <ResizablePanelGroup
-              key={columns.join("|")}
-              orientation="horizontal"
-              defaultLayout={columnsLayout.defaultLayout}
-              onLayoutChanged={columnsLayout.onLayoutChanged}
-            >
-              {columns.includes("library") && (
-                <>
-                  <ResizablePanel id="library" defaultSize={224} minSize={180} maxSize="35%">
-                    <Library />
-                  </ResizablePanel>
-                  <ResizableHandle className={HANDLE} />
-                </>
-              )}
-              {columns.includes("preview") && (
-                <>
-                  <ResizablePanel id="preview" minSize={280}>
-                    <Preview />
-                  </ResizablePanel>
-                  <ResizableHandle className={HANDLE} />
-                </>
-              )}
-              <ResizablePanel id="editor" defaultSize={400} minSize={320}>
-                <Editor />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </ResizablePanel>
-          <ResizableHandle className={HANDLE} />
-          <ResizablePanel id="clips" defaultSize={132} minSize={112} maxSize="60%">
-            <ClipBar />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+        {canvasView === "canvas" ? (
+          // 画布视图：整块换成当前这张短剧画布（不留片段条）；切回列表时画布卸载
+          <div className="min-h-0 flex-1">
+            <StudioCanvas />
+          </div>
+        ) : (
+          <ResizablePanelGroup
+            orientation="vertical"
+            className="min-h-0 flex-1"
+            defaultLayout={rowsLayout.defaultLayout}
+            onLayoutChanged={rowsLayout.onLayoutChanged}
+          >
+            <ResizablePanel id="main" minSize={240}>
+              <ResizablePanelGroup
+                key={columns.join("|")}
+                orientation="horizontal"
+                defaultLayout={columnsLayout.defaultLayout}
+                onLayoutChanged={columnsLayout.onLayoutChanged}
+              >
+                {columns.includes("library") && (
+                  <>
+                    <ResizablePanel id="library" defaultSize={224} minSize={180} maxSize="35%">
+                      <Library />
+                    </ResizablePanel>
+                    <ResizableHandle className={HANDLE} />
+                  </>
+                )}
+                {columns.includes("preview") && (
+                  <>
+                    <ResizablePanel id="preview" minSize={280}>
+                      <Preview />
+                    </ResizablePanel>
+                    <ResizableHandle className={HANDLE} />
+                  </>
+                )}
+                <ResizablePanel id="editor" defaultSize={400} minSize={320}>
+                  <Editor />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </ResizablePanel>
+            <ResizableHandle className={HANDLE} />
+            <ResizablePanel id="clips" defaultSize={132} minSize={112} maxSize="60%">
+              <ClipBar />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
       </div>
     </PlaybackContext.Provider>
   );

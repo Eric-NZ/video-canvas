@@ -125,7 +125,6 @@ export function StudioArea({
         drama={drama}
         no={episode.no}
         refresh={refresh}
-        onGo={onGo}
       />
     );
   }

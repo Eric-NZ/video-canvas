@@ -8,7 +8,6 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
 import { Button } from "@/components/ui/button";
-import { useApplyCanvasFocus } from "@/hooks/use-apply-canvas-focus";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { cn } from "@/lib/utils";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
@@ -262,14 +261,6 @@ export function AssetsArea({
     }),
     [filter, generateAllTarget, multi, selected, setNewDrama, type, view],
   );
-
-  // 片场的「进入画布查看」：编辑器挂好后切到画布视图并飞到那个节点
-  const showCanvas = useCallback(() => {
-    setView("canvas");
-    setMulti(false);
-    setSelected(new Set());
-  }, []);
-  useApplyCanvasFocus(drama.id, commands, showCanvas);
 
   /** 新建节点默认「全集」；从列表新建时按列表当前的类型 / 集数归类 */
   const onNodeCreate = useCallback((node: CanvasNode): CanvasNode => {

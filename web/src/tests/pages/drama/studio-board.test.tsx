@@ -8,6 +8,7 @@ import type {
   BoardStage as BoardStageType,
   ViewSwitch as ViewSwitchType,
 } from "@/pages/drama/studio/board-stage";
+import type { StudioViewToggle as StudioViewToggleType } from "@/pages/drama/studio/view-toggle";
 import type {
   PreviewView,
   Studio,
@@ -23,6 +24,7 @@ let dom: DomEnv;
 let BoardStage: typeof BoardStageType;
 let ViewSwitch: typeof ViewSwitchType;
 let BoardProgress: typeof BoardProgressType;
+let StudioViewToggle: typeof StudioViewToggleType;
 let StudioContext: typeof StudioContextType;
 beforeAll(async () => {
   dom = await installDom();
@@ -30,6 +32,7 @@ beforeAll(async () => {
   BoardStage = mod.BoardStage;
   ViewSwitch = mod.ViewSwitch;
   BoardProgress = mod.BoardProgress;
+  StudioViewToggle = (await import("@/pages/drama/studio/view-toggle")).StudioViewToggle;
   StudioContext = (await import("@/pages/drama/studio/use-studio")).StudioContext;
 });
 afterAll(() => dom.restore());
@@ -76,12 +79,14 @@ function studio(over: {
   statuses?: Record<string, BoardStatus>;
   nodes?: Record<string, BoardNode>;
   view?: PreviewView;
+  canvasView?: "list" | "canvas";
   credits?: number;
   targets?: Segment[];
   blocked?: string | null;
 }) {
   const calls = {
     canvas: [] as string[],
+    canvasView: [] as string[],
     select: [] as string[],
     generate: [] as string[][],
     fill: 0,
@@ -94,6 +99,8 @@ function studio(over: {
     segments,
     submitting: new Set<string>(),
     openBoardInCanvas: (nodeId: string) => void calls.canvas.push(nodeId),
+    canvasView: over.canvasView ?? "list",
+    setCanvasView: (v: "list" | "canvas") => void calls.canvasView.push(v),
     view: over.view ?? "board",
     setView: (v: PreviewView) => calls.view.push(v),
     actions: { generate: async (s: Segment) => void calls.video.push(s.id) },
@@ -142,12 +149,13 @@ describe("片场故事板：故事板这一面", () => {
     await m.unmount();
   });
 
-  test("出过图：大图显示缩略图，不直接加载原图；镜头 / 宫格；「进入画布查看」跳到画布并定位", async () => {
+  test("出过图：大图先铺缩略图，原图加载完再叠上去（两层都在）；镜头 / 宫格；「进入画布查看」跳到画布并定位", async () => {
     const { value, calls } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
     const m = await mount(value, <BoardStage />);
-    expect(m.container.querySelector("img")?.getAttribute("src")).toBe(
-      "/files/assets/31.png?v=thumb",
-    );
+    const frame = m.container.querySelector('[data-slot="board-frame"]') as HTMLElement;
+    const srcs = [...frame.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+    // 缩略图在下面垫底（先出来），原图在上面（加载完淡入）
+    expect(srcs).toEqual(["/files/assets/31.png?v=thumb", "/files/assets/31.png"]);
     expect(m.container.textContent).toContain("3 镜 · 2×2 · 16:9");
     expect(m.container.textContent).not.toContain("原稿已改");
     await dom.click(button(m.container, "进入画布查看"));
@@ -240,14 +248,14 @@ describe("片场故事板：故事板这一面", () => {
     await m.unmount();
   });
 
-  test("在大图上向左拖过一段距离换到下一版，向右拖回上一版；轻点不算拖动（还是放大）", async () => {
+  test("在大图上向左拖过一段距离换到下一版，向右拖回上一版；挪几个像素不算拖动", async () => {
     const versions = [version("30"), version("31"), version("32")];
     const { value, calls } = studio({
       statuses: { s0: "ready" },
       nodes: { s0: node({ versions, activeId: "31", src: versions[1].src }) },
     });
     const m = await mount(value, <BoardStage />);
-    const frame = m.container.querySelector('[data-slot="board-frame"] button') as HTMLElement;
+    const frame = m.container.querySelector('[data-slot="board-frame"]') as HTMLElement;
     const drag = async (from: number, to: number) => {
       await dom.act(async () => {
         frame.dispatchEvent(
@@ -266,28 +274,13 @@ describe("片场故事板：故事板这一面", () => {
     await m.unmount();
   });
 
-  test("拖动换版后随之而来的点击不放大；纯点击才放大", async () => {
-    const versions = [version("30"), version("31")];
-    const { value } = studio({
-      statuses: { s0: "ready" },
-      nodes: { s0: node({ versions, activeId: "30", src: versions[0].src }) },
-    });
+  test("大图不再点击放大：没有放大按钮，点一下也不弹灯箱", async () => {
+    const { value } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
     const m = await mount(value, <BoardStage />);
-    const frame = m.container.querySelector('[data-slot="board-frame"] button') as HTMLElement;
-    const origins = () =>
-      [...dom.win.document.body.querySelectorAll("img")]
-        .map((img) => img.getAttribute("src"))
-        .filter((src) => src === "/files/assets/30.png");
-    await dom.act(async () => {
-      frame.dispatchEvent(new dom.win.MouseEvent("pointerdown", { clientX: 400, bubbles: true }));
-      frame.dispatchEvent(new dom.win.MouseEvent("pointerup", { clientX: 300, bubbles: true }));
-      frame.dispatchEvent(new dom.win.MouseEvent("click", { clientX: 300, bubbles: true }));
-    });
+    expect(m.container.querySelector('[aria-label="放大查看原图"]')).toBeNull();
+    await dom.click(m.container.querySelector('[data-slot="board-frame"]'));
     await dom.flush();
-    expect(origins()).toHaveLength(0);
-    await dom.click(frame);
-    await dom.flush();
-    expect(origins().length).toBeGreaterThan(0);
+    expect(dom.win.document.body.querySelector('[aria-label="媒体预览"]')).toBeNull();
     await m.unmount();
   });
 
@@ -295,18 +288,6 @@ describe("片场故事板：故事板这一面", () => {
     const { value } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
     const m = await mount(value, <BoardStage />);
     expect(m.container.querySelector("[data-version]")).toBeNull();
-    await m.unmount();
-  });
-
-  test("点大图放大看原图：灯箱里是原图地址，不是缩略图", async () => {
-    const { value } = studio({ statuses: { s0: "ready" }, nodes: { s0: node() } });
-    const m = await mount(value, <BoardStage />);
-    await dom.click(m.container.querySelector('[data-slot="board-frame"] button'));
-    await dom.flush();
-    const originals = [...dom.win.document.body.querySelectorAll("img")].map((img) =>
-      img.getAttribute("src"),
-    );
-    expect(originals).toContain("/files/assets/31.png");
     await m.unmount();
   });
 
@@ -360,6 +341,27 @@ describe("片场故事板：顶部条「补齐故事板」", () => {
     const done = studio({ segments: [segment(0)], statuses: { s0: "ready" } });
     const m2 = await mount(done.value, <BoardProgress />);
     expect((button(m2.container, "补齐故事板") as HTMLButtonElement).disabled).toBe(true);
+    await m2.unmount();
+  });
+});
+
+describe("片场：列表 | 画布 切换（和资产管理同款）", () => {
+  test("两个选项，当前视图高亮；点另一个就切过去", async () => {
+    const { value, calls } = studio({});
+    const m = await mount(value, <StudioViewToggle />);
+    const buttons = [...m.container.querySelectorAll("button")];
+    expect(buttons.map((b) => b.textContent)).toEqual(["列表", "画布"]);
+    expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    await dom.click(buttons[1]);
+    expect(calls.canvasView).toEqual(["canvas"]);
+    await m.unmount();
+
+    const inCanvas = studio({ canvasView: "canvas" });
+    const m2 = await mount(inCanvas.value, <StudioViewToggle />);
+    const pressed = [...m2.container.querySelectorAll("button")].map((b) =>
+      b.getAttribute("aria-pressed"),
+    );
+    expect(pressed).toEqual(["false", "true"]);
     await m2.unmount();
   });
 });

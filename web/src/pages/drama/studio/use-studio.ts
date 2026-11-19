@@ -26,8 +26,6 @@ import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
-import type { WorkspaceStage } from "@/utils/drama/stages";
-import { useCanvasFocusStore } from "@/store/drama-canvas-focus";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import {
   adaptState,
@@ -98,8 +96,14 @@ export type Studio = {
   setBoardOff: (off: boolean) => void;
   /** 每个片段的故事板：状态、生成、补齐整集 */
   boards: StudioBoards;
-  /** 进入资产画布查看某个故事板节点：切到资产管理的画布视图并飞到它（看大图、切换历史版本） */
+  /** 片场整体看哪一面：列表（资产库 / 预览 / 编辑 / 片段条）或画布（当前这张短剧画布）；切走再切回来时画布重新挂载 */
+  canvasView: "list" | "canvas";
+  setCanvasView: (view: "list" | "canvas") => void;
+  /** 进入画布查看某个故事板节点：切到画布视图并飞到它（看大图、切换历史版本）；就在片场里，不跳工序 */
   openBoardInCanvas: (nodeId: string) => void;
+  /** 画布视图挂好后要飞到的节点；飞过去（或放弃）后用 clearFocusNode 清掉 */
+  focusNode: string | null;
+  clearFocusNode: () => void;
   /** 中间预览看哪一面：故事板 / 视频；没手动切过时，选中片段有视频看视频，没有看故事板 */
   view: PreviewView;
   setView: (view: PreviewView) => void;
@@ -178,12 +182,7 @@ export function useStudio(): Studio {
  * 片段工作区的数据层：片段列表（HTTP 读取 + WebSocket 推送 + 生成中兜底轮询）、资产库、模型与偏好、
  * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、批量生成这些动作。
  */
-export function useStudioState(
-  drama: Drama,
-  no: number,
-  refresh: () => Promise<void>,
-  onGo: (stage: WorkspaceStage, ep?: number) => void,
-): Studio {
+export function useStudioState(drama: Drama, no: number, refresh: () => Promise<void>): Studio {
   const dramaId = drama.id;
   const episode = drama.episodes.find((ep) => ep.no === no);
   const key = segmentKey(dramaId, no);
@@ -786,13 +785,13 @@ export function useStudioState(
     };
   }, []);
 
-  const openBoardInCanvas = useCallback(
-    (nodeId: string) => {
-      useCanvasFocusStore.getState().request(dramaId, nodeId);
-      onGo("assets", 0);
-    },
-    [dramaId, onGo],
-  );
+  const [canvasView, setCanvasView] = useState<"list" | "canvas">("list");
+  const [focusNode, setFocusNode] = useState<string | null>(null);
+  const openBoardInCanvas = useCallback((nodeId: string) => {
+    setFocusNode(nodeId);
+    setCanvasView("canvas");
+  }, []);
+  const clearFocusNode = useCallback(() => setFocusNode(null), []);
 
   const setBoardOff = useCallback(
     (off: boolean) => useStudioPrefsStore.getState().patch(dramaId, { boardOff: off }),
@@ -825,7 +824,11 @@ export function useStudioState(
     boardOff: prefs.boardOff,
     setBoardOff,
     boards: studioBoards,
+    canvasView,
+    setCanvasView,
     openBoardInCanvas,
+    focusNode,
+    clearFocusNode,
     view,
     setView,
     prompt,
