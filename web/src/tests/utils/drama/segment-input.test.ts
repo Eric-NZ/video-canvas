@@ -47,6 +47,22 @@ const scene = (id: string, patch: Partial<RefAsset> = {}): RefAsset => ({
   ...patch,
 });
 
+/** 画布上的音频节点资产：没有形象图，只提供参考音频 */
+const audio = (id: string, patch: Partial<RefAsset> = {}): RefAsset => ({
+  id,
+  type: "audio",
+  name: "旁白",
+  look: "",
+  label: "旁白",
+  episodes: [],
+  kind: "audio",
+  src: "https://cdn/a",
+  mediaType: "audio",
+  assetId: "24",
+  generating: false,
+  ...patch,
+});
+
 /** 全能参考视频模型：参考图 ≤ max、可选参考音频，时长 4–15 */
 const video = (
   over: { ops?: Capabilities["ops"]; max?: number; audio?: boolean } = {},
@@ -128,6 +144,93 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     });
     expect(plan.input.audios).toBeUndefined();
     expect(plan.refs[0].voice).toBe("none");
+  });
+
+  test("音频资产 @ 后作为参考音频提交；没有参考图时退回全能参考，不报缺参考素材", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "旁白用@[旁白](a1)的音色",
+      assets: [audio("a1")],
+    });
+    expect(plan.op).toBe("omni");
+    expect(plan.input.audios).toEqual([24]);
+    expect(plan.input.prompt).toBe("旁白用音频1的音色");
+    expect(plan.refs[0]).toMatchObject({ id: "a1", state: "audio", imageCount: 0 });
+    expect(plan.errors).toEqual({});
+  });
+
+  test("音频和角色卡同时引用：音频在前占音频1，角色声音排在后面", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "@[林川](n1)看着窗外。旁白用@[旁白](a1)的音色",
+      assets: [character("n1"), audio("a1")],
+    });
+    expect(plan.input.audios).toEqual([24, 9]);
+    expect(plan.input.prompt).toContain("旁白用音频1的音色");
+    expect(plan.input.prompt).toContain("林川（图片1中的人物）说话时，音色参考音频2。");
+  });
+
+  test("音频节点还没有素材：不当参考音频，标成只用文字", () => {
+    const caps = video();
+    caps.params.generate_audio = {
+      type: "boolean",
+      label: "生成音频",
+      open: true,
+      default: false,
+    };
+    const plan = planSegmentInput({
+      ...base,
+      caps,
+      prompt: "旁白用@[旁白](a1)的音色",
+      assets: [audio("a1", { src: null, assetId: undefined })],
+    });
+    expect(plan.input.audios).toBeUndefined();
+    expect(plan.refs[0]).toMatchObject({ state: "text" });
+    expect(plan.op).toBe("t2v");
+    // 音频没带进请求，就不能因为默认关声音而拦下这个纯文字片段
+    expect(plan.errors.generate_audio).toBeUndefined();
+  });
+
+  test("模型不支持参考音频：@ 了旁白就阻止提交，不静默丢掉音色", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video({ ops: ["t2v", "i2v"] }),
+      prompt: "旁白用@[旁白](a1)的音色",
+      assets: [audio("a1")],
+    });
+    expect(plan.input.audios).toBeUndefined();
+    expect(plan.errors.audios).toBeTruthy();
+  });
+
+  test("模型支持全能参考但没开参考音频：旁白同样阻止提交", () => {
+    const plan = planSegmentInput({
+      ...base,
+      caps: video({ audio: false }),
+      prompt: "@[村口](n2)，旁白用@[旁白](a1)的音色",
+      assets: [scene("n2"), audio("a1")],
+    });
+    expect(plan.input.audios).toBeUndefined();
+    expect(plan.errors.audios).toBeTruthy();
+  });
+
+  test("带独立旁白音频时关闭声音生成：报错要求开启", () => {
+    const caps = video();
+    caps.params.generate_audio = {
+      type: "boolean",
+      label: "生成音频",
+      open: true,
+      default: true,
+    };
+    const plan = planSegmentInput({
+      ...base,
+      caps,
+      overrides: { generate_audio: false },
+      prompt: "旁白用@[旁白](a1)的音色",
+      assets: [audio("a1")],
+    });
+    expect(plan.errors.generate_audio).toBeTruthy();
   });
 
   test("声音仍在生成时阻止片段提交，失败后可复用已经绑定的声音", () => {

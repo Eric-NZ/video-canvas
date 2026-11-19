@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Box, GripVertical, Image as ImageIcon, User } from "lucide-react";
+import { AudioLines, Box, GripVertical, Image as ImageIcon, User } from "lucide-react";
 
 import { MediaPreview } from "@/components/canvas/media-preview";
 import { StatusPill } from "@/components/drama/status-pill";
@@ -22,6 +22,7 @@ const TYPE_ICON: Record<DramaAssetType, typeof User> = {
   character: User,
   scene: ImageIcon,
   prop: Box,
+  audio: AudioLines,
 };
 
 /** 有没有能当参考图的形象：角色卡节点看主图，其余看节点素材；正在生成的不算（assetId 还指着上一版） */
@@ -48,7 +49,7 @@ function Item({ asset }: { asset: RefAsset }) {
       className="hover:bg-chrome-hover mx-1 flex w-[calc(100%-0.5rem)] cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs active:cursor-grabbing"
     >
       <span className="bg-muted text-muted-foreground grid size-[30px] shrink-0 place-items-center overflow-hidden rounded-[7px]">
-        {asset.src ? (
+        {asset.src && asset.type !== "audio" ? (
           <MediaPreview src={asset.src} mode="thumb" fit="cover" draggable={false} />
         ) : (
           <Icon className="size-3.5" />
@@ -57,7 +58,7 @@ function Item({ asset }: { asset: RefAsset }) {
       <span className="min-w-0 flex-1 truncate">{asset.label}</span>
       {noImage && (
         <StatusPill tone="warning" className="h-4 text-[10px]">
-          无图
+          {asset.type === "audio" ? "无音频" : "无图"}
         </StatusPill>
       )}
       <GripVertical className="text-muted-foreground size-3.5 shrink-0" />

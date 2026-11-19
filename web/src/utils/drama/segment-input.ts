@@ -6,6 +6,7 @@ import {
   hasImageRefs,
   imageLinksOf,
   resolveBindings,
+  toAssetNumber,
   type Bindings,
   type IncomingLink,
 } from "@/utils/tasks/capabilities";
@@ -18,8 +19,8 @@ export type RefView = {
   id: string;
   label: string;
   type: DramaAssetType | null;
-  /** image 带了参考图；text 只用文字（没图 / 被截断）；dead 节点已被删 */
-  state: "image" | "text" | "dead";
+  /** image 带了参考图；audio 是参考音频；text 只用文字（没图 / 被截断）；dead 节点已被删 */
+  state: "image" | "audio" | "text" | "dead";
   /** 这个资产在 input.images 里占了几张 */
   imageCount: number;
   /** 超出参考图上限，被截掉了一部分 */
@@ -120,6 +121,21 @@ function refViews(linked: Linked, bindings: Bindings): RefView[] {
         voice: "none",
       };
     }
+    // 没有素材地址的音频仍会挂在 bindings 上，但 buildTaskInput 会跳过它，这里按能提交的算
+    const audioCount = bindings.audios.filter(
+      (link) => link.sourceId === id && toAssetNumber(link.assetId) !== null,
+    ).length;
+    if (asset.kind === "audio")
+      return {
+        id,
+        label,
+        type: asset.type,
+        // 没有素材地址时只当文字，不假装带了参考音频
+        state: audioCount > 0 ? "audio" : "text",
+        imageCount: 0,
+        truncated: false,
+        voice: "none",
+      };
     const imageCount = countOf(bindings.images, id);
     const droppedImage = bindings.dropped.some(
       (link) => link.sourceId === id && link.fromCharacter?.part !== "voice",
@@ -179,15 +195,30 @@ export function planSegmentInput(args: {
 }): SegmentPlan {
   const { caps, prompt } = args;
   const linked = linkRefs(prompt, args.assets);
-  const op = pickVideoOp(caps, {
-    hasImages: hasImageRefs({}, { images: imageLinksOf(linked.links) }),
-  });
+  const hasImages = hasImageRefs({}, { images: imageLinksOf(linked.links) });
+  const readyAudio = linked.links.filter(
+    (link) => link.sourceKind === "audio" && toAssetNumber(link.assetId) !== null,
+  );
+  // 只 @ 了音频（没有参考图）时也要走全能参考，文生视频没有参考素材口
+  const audioOnly = !hasImages && readyAudio.length > 0;
+  const op = audioOnly && caps?.ops?.includes("omni") ? "omni" : pickVideoOp(caps, { hasImages });
   const params = {
     prompt,
     ...segmentParams(caps, { seconds: args.seconds, ratio: args.ratio, overrides: args.overrides }),
   };
   const bindings = resolveBindings(caps, op, linked.links, params);
   const built = buildTaskInput(caps, params, bindings, op, linked.links);
+  // 模型不收参考音频时音频会被静默丢掉，旁白就变成没有音色的普通文字
+  const audios = Array.isArray(built.input.audios) ? built.input.audios : [];
+  const narrator = readyAudio.filter((link) => audios.includes(toAssetNumber(link.assetId)));
+  if (caps && narrator.length < readyAudio.length)
+    built.errors.audios ??=
+      "当前模型或生成方式不接收参考音频，旁白音色带不进去；请换支持参考音频的模型，或去掉音频引用";
+  // 声音生成关掉时参考音频没有意义，只拦真正带进这次请求的音频
+  const sound = caps?.params?.generate_audio;
+  const soundValue = sound?.open ? built.input.generate_audio : sound?.default;
+  if (narrator.length > 0 && sound && (soundValue === false || soundValue === "false"))
+    built.errors.generate_audio ??= "使用参考音频时请开启声音生成";
 
   const notices = [...bindings.notices];
   const duration = durationField(caps);
