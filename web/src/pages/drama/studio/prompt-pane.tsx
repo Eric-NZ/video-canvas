@@ -53,9 +53,11 @@ type View = "source" | "adapted";
 
 /** 原稿 / 转写两个标签 + 转写按钮 */
 function AdaptTabs({ segment, format }: { segment: Segment; format: AdaptFormat }) {
-  const { actions, adaptStateOf, adaptErrors } = useStudio();
+  const { actions, adaptStateOf, adaptErrors, promptView, setPromptView } = useStudio();
   const adaptation = segment.adaptations[format];
-  const [view, setView] = useState<View>(adaptation ? "adapted" : "source");
+  // 选哪个标签就是用哪份文字生成：标签的选择放在片场状态里，生成按钮、费用预估、批量都按它走
+  const view: View = promptView;
+  const setView = setPromptView;
   const state = adaptStateOf(segment);
   const busy = state === "busy";
   const error = adaptErrors[adaptKey(segment.id, format)];
@@ -64,7 +66,7 @@ function AdaptTabs({ segment, format }: { segment: Segment; format: AdaptFormat 
   const run = useCallback(async () => {
     setView("adapted");
     await actions.adapt(segment);
-  }, [actions, segment]);
+  }, [actions, segment, setView]);
 
   return (
     <div className="grid gap-2.5">

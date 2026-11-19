@@ -120,6 +120,24 @@ func TestDramaBoardBuiltinTemplate(t *testing.T) {
 			t.Fatalf("内置故事板模板缺 %s：%s", want, body)
 		}
 	}
+	// 手绘线稿风格，每格标注镜头类型 / 表演提示 / 音效说明，镜头要串成一段顺畅的动作
+	for _, want := range []string{"手绘风格分镜稿", "铅笔单线条线稿", "镜头类型", "表演提示", "音效说明", "完整串联"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("内置故事板模板缺 %q：%s", want, body)
+		}
+	}
+	// 人物要和参考图一致
+	for _, want := range []string{"保持人物与参考图完全一致", "面部特征100%相同", "禁止美化", "禁止改变年龄"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("内置故事板模板缺人物一致性要求 %q", want)
+		}
+	}
+	// 这是出图不是出视频：视频用语（字幕、贴图、旁白、背景音乐）不适用，不写
+	for _, banned := range []string{"字幕", "贴图", "旁白", "背景音乐"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("内置故事板模板不该带视频用语 %q：%s", banned, body)
+		}
+	}
 	// 内置模板原样保存成「我的」也得合格，用户点「新建」会预填它
 	r := newDramaMemory()
 	svc, _ := dramaTestService(r, &dramaTextStreamer{}, nil)

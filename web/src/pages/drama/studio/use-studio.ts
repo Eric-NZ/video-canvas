@@ -35,7 +35,9 @@ import {
   segmentNos,
   sha256Hex,
   splitBatch,
-  submitText,
+  submitTextFor,
+  effectiveView,
+  type PromptView,
   targetFormat,
   type AdaptState,
   type BatchPick,
@@ -127,6 +129,13 @@ export type Studio = {
   setDraft: (id: string, text: string, kind?: DraftKind) => void;
   /** 顶栏视频模型要的提示词格式（按后台配置的 prompt_format） */
   format: TargetFormat;
+  /**
+   * 选中片段此刻用哪份文字生成：提示词面板上选了「原稿」就用原稿（不转写也能生成），选了「转写」就用转写稿；
+   * 视频模型本身吃 Seedance 原稿时只有原稿
+   */
+  promptView: PromptView;
+  /** 在提示词面板上选标签；只对选中的片段有效，换片段回到默认 */
+  setPromptView: (view: PromptView) => void;
   /** 正在转写的片段 */
   adapting: ReadonlySet<string>;
   /** 转写失败原因，键为「片段 id:格式」；重新转写或成功后清掉 */
@@ -277,12 +286,32 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     () => (selected ? boardRef(boards.get(selected.id), hashOf(sourceOf(selected))) : null),
     [boards, hashOf, selected, sourceOf],
   );
+  /** 提示词面板上手动选的标签只对当时选中的片段有效，换片段回到默认 */
+  const [promptViewPick, setPromptViewPick] = useState<{ id: string; view: PromptView } | null>(
+    null,
+  );
+  const promptView: PromptView = selected
+    ? effectiveView(
+        format,
+        promptViewPick?.id === selected.id ? promptViewPick.view : null,
+        selected,
+      )
+    : "source";
+  const setPromptView = useCallback(
+    (view: PromptView) => {
+      if (selectedId0) setPromptViewPick({ id: selectedId0, view });
+    },
+    [selectedId0],
+  );
   const prompt = useMemo(() => {
     if (!selected) return "";
     const adaptation = format === "seedance" ? undefined : selected.adaptations[format];
-    if (!adaptation) return sourceOf(selected);
-    return drafts[`${selected.id}:${format}`] ?? adaptation.prompt;
-  }, [drafts, format, selected, sourceOf]);
+    // 选了「转写」且有转写稿：用转写稿（含还没存下的编辑）；其余用原稿
+    if (promptView === "adapted" && adaptation) {
+      return drafts[`${selected.id}:${format}`] ?? adaptation.prompt;
+    }
+    return sourceOf(selected);
+  }, [drafts, format, promptView, selected, sourceOf]);
   const plan = useMemo(
     () =>
       selected
@@ -509,7 +538,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   const resolveSubmit = useCallback(
     async (segment: Segment): Promise<Segment | null> => {
       let current = latestOf(segment.id) ?? segment;
-      if (format === "seedance") return current;
+      // 选了「原稿」（或视频模型本身吃 Seedance 原稿）：直接交原稿，不要求转写
+      if (promptView === "source" || format === "seedance") return current;
       const adaptation = current.adaptations[format];
       if (!adaptation) {
         toast.error(`先把原稿转写为 ${formatLabel(format)}`);
@@ -533,9 +563,9 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           current = latestOf(segment.id) ?? current;
         }
       }
-      return { ...current, prompt: submitText(current, format) };
+      return { ...current, prompt: submitTextFor(current, format, "adapted") };
     },
-    [adapt, format, latestOf],
+    [adapt, format, latestOf, promptView],
   );
 
   const generate = useCallback<Studio["actions"]["generate"]>(
@@ -614,7 +644,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       targets: Segment[],
     ): Promise<{ targets: Segment[]; source: ReadonlySet<string> } | null> => {
       const noSource: ReadonlySet<string> = new Set();
-      if (format === "seedance") return { targets, source: noSource };
+      // 选了「原稿」（或视频模型本身吃 Seedance 原稿）：这一批全部直接用原稿生成，不要求转写
+      if (format === "seedance" || promptView === "source") return { targets, source: noSource };
       const hashes = new Map(
         await Promise.all(
           targets.map(async (item) => [item.id, await sha256Hex(item.prompt)] as const),
@@ -654,11 +685,11 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           const current = latestOf(item.id) ?? item;
           return source.has(item.id)
             ? current
-            : { ...current, prompt: submitText(current, format) };
+            : { ...current, prompt: submitTextFor(current, format, "adapted") };
         });
       return { targets: picks, source };
     },
-    [adapt, format, latestOf],
+    [adapt, format, latestOf, promptView],
   );
 
   const batch = useCallback<Studio["actions"]["batch"]>(async () => {
@@ -854,6 +885,8 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     prompt,
     setDraft,
     format,
+    promptView,
+    setPromptView,
     adapting,
     adaptErrors,
     adaptStateOf,
