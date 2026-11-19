@@ -10,6 +10,7 @@ import {
   type IncomingLink,
 } from "@/utils/tasks/capabilities";
 
+import { BOARD_LINE, type BoardRef } from "./board";
 import type { DramaAssetType, RefAsset } from "./segment-assets";
 import { durationField, fitDuration, segmentParams } from "./video-models";
 
@@ -43,7 +44,45 @@ export type SegmentPlan = {
   imageMax: number;
   /** 引用了已被删除的节点，存下来的名字 */
   deadLabels: string[];
+  /** 故事板这次带没带、为什么 */
+  board: BoardPlan;
 };
+
+/**
+ * 故事板在这次请求里的去向：image 带入（第一张参考图）/ stale 带入但已过期 / off 用户本次关掉 /
+ * none 没有可用的故事板 / unsupported 模型不是全能参考，不带
+ */
+export type BoardPlan = {
+  state: "image" | "stale" | "off" | "none" | "unsupported";
+  /** 没带入的原因，带入时为空串 */
+  reason: string;
+};
+
+/** 故事板的虚拟连线 id：不和任何画布节点重名 */
+const BOARD_LINK_ID = "__board__";
+
+/**
+ * 决定故事板带不带：只有全能参考（omni）才带，图生视频会把第一张图当首帧、文生视频不收图。
+ * 带的时候生成方式固定为 omni，故事板作为普通图片连线排在所有引用前面，于是固定是图片1。
+ */
+function planBoard(
+  caps: Capabilities | undefined,
+  board: BoardRef | null | undefined,
+  off: boolean,
+): BoardPlan {
+  if (!board) return { state: "none", reason: "" };
+  if (off) return { state: "off", reason: "本次已关掉故事板" };
+  const ops = caps?.ops ?? [];
+  const images = caps?.refs?.image?.on ? caps.refs.image.max : 0;
+  if (!ops.includes("omni") || images <= 0) {
+    const reason =
+      ops.includes("i2v") && images > 0
+        ? "当前模型把第一张图当首帧，故事板未带入"
+        : "当前模型不收参考图，故事板未带入";
+    return { state: "unsupported", reason };
+  }
+  return { state: board.stale ? "stale" : "image", reason: "" };
+}
 
 type Cited = { id: string; label: string; asset: RefAsset | undefined };
 
@@ -94,6 +133,14 @@ const isDead = (asset: RefAsset | undefined): boolean =>
   !asset || (asset.kind === "character" && !asset.character);
 
 type Linked = { links: IncomingLink[]; cited: Cited[] };
+
+/**
+ * 提示词里 @ 的资产转成连线（同画布连线的规则）：失效的引用不带；故事板拿它带参考图
+ * @param prompt 提示词（含 `@[名](节点id)`）
+ * @param assets 画布上的资产
+ */
+export const assetLinks = (prompt: string, assets: readonly RefAsset[]): IncomingLink[] =>
+  linkRefs(prompt, assets).links;
 
 function linkRefs(prompt: string, assets: readonly RefAsset[]): Linked {
   const cited = citedRefs(prompt, assets);
@@ -176,20 +223,45 @@ export function planSegmentInput(args: {
   ratio: string;
   overrides: Record<string, unknown>;
   assets: readonly RefAsset[];
+  /** 片段采用的故事板；没有为 null */
+  board?: BoardRef | null;
+  /** 用户本次关掉了故事板 */
+  boardOff?: boolean;
 }): SegmentPlan {
   const { caps, prompt } = args;
   const linked = linkRefs(prompt, args.assets);
-  const op = pickVideoOp(caps, {
-    hasImages: hasImageRefs({}, { images: imageLinksOf(linked.links) }),
-  });
+  const board = planBoard(caps, args.board, !!args.boardOff);
+  const withBoard = (board.state === "image" || board.state === "stale") && args.board;
+  const links: IncomingLink[] = withBoard
+    ? [
+        {
+          edgeId: BOARD_LINK_ID,
+          sourceId: BOARD_LINK_ID,
+          sourceKind: "image",
+          sourceLabel: "故事板",
+          targetHandle: null,
+          assetId: withBoard.assetId,
+        },
+        ...linked.links,
+      ]
+    : linked.links;
+  const op = withBoard
+    ? "omni"
+    : pickVideoOp(caps, {
+        hasImages: hasImageRefs({}, { images: imageLinksOf(linked.links) }),
+      });
   const params = {
-    prompt,
+    prompt: withBoard ? `${BOARD_LINE}\n${prompt}` : prompt,
     ...segmentParams(caps, { seconds: args.seconds, ratio: args.ratio, overrides: args.overrides }),
   };
-  const bindings = resolveBindings(caps, op, linked.links, params);
-  const built = buildTaskInput(caps, params, bindings, op, linked.links);
+  const bindings = resolveBindings(caps, op, links, params);
+  const built = buildTaskInput(caps, params, bindings, op, links);
+  if (withBoard && built.errors.images) {
+    built.errors.images = `${built.errors.images}（含故事板 1 张，可以在参考素材里关掉故事板）`;
+  }
 
   const notices = [...bindings.notices];
+  if (board.state === "stale") notices.push("故事板已过期，原稿在出图之后改过");
   const duration = durationField(caps);
   if (duration) {
     const fit = fitDuration(duration, args.seconds);
@@ -205,5 +277,6 @@ export function planSegmentInput(args: {
     imageCount: Array.isArray(images) ? images.length : 0,
     imageMax: caps?.refs?.image?.max ?? 0,
     deadLabels: deadLabelsOf(linked),
+    board,
   };
 }
