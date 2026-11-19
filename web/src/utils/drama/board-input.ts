@@ -1,20 +1,15 @@
-import type { Segment } from "@/api/drama/type";
+import type { BoardGenerateBody, Segment } from "@/api/drama/type";
 import type { ModelInfo } from "@/api/model/type";
-import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
-import type { CanvasEdge, CanvasNode, CanvasNodeData, NodeDrama } from "@/types";
-import { nodeFrameSize } from "@/utils/canvas/node-frame";
+import type { NodeDrama } from "@/types";
 import { parsePrompt } from "@/utils/canvas/prompt-tokens";
+import { buildFreshInput } from "@/utils/tasks/fresh-input";
 
-import {
-  BOARD_RATIO,
-  boardPrompt,
-  boardsFromGraph,
-  isBoardNode,
-  type NodeBoardMeta,
-} from "./board";
+import { BOARD_RATIO, boardPrompt, type NodeBoardMeta } from "./board";
+import { assetLinks } from "./segment-input";
+import type { RefAsset } from "./segment-assets";
 import { segmentParams } from "./video-models";
 
-/** 故事板节点的初始数据：交给画布节点，生成由节点自己按模型能力组装 input */
+/** 故事板节点的初始数据：提示词、参数、模型、drama.board 标记和要连进来的资产 */
 export type BoardSeed = {
   /** 节点标题，如「故事板 · 第 3 集 · 01」 */
   label: string;
@@ -98,110 +93,56 @@ export function pickBoardModel(
   );
 }
 
-/** 故事板区离资产区的距离、格子之间的间距（像素） */
-const BOARD_AREA_GAP = 400;
-const BOARD_COL_GAP = 48;
-const BOARD_ROW_GAP = 96;
-
-/**
- * 新故事板节点的位置：放在所有非故事板节点的右边，每集一行、每段一列，不和资产挤在一起。
- * 已有的故事板节点不参与算基准（用户拖动过也不影响新节点的排布）。
- * @param nodes 画布上现有的节点
- * @param episodeNo 集号，从 1 起
- * @param seq 片段序号，从 0 起
- * @param size 节点框大小
- */
-export function boardNodePosition(
-  nodes: readonly {
-    position: { x: number; y: number };
-    width?: number;
-    measured?: { width?: number };
-    data: object;
-  }[],
-  episodeNo: number,
-  seq: number,
-  size: { width: number; height: number },
-): { x: number; y: number } {
-  let right = -BOARD_AREA_GAP;
-  let top = Number.POSITIVE_INFINITY;
-  for (const node of nodes) {
-    if (isBoardNode(node.data)) continue;
-    const width = node.measured?.width ?? node.width ?? 0;
-    right = Math.max(right, node.position.x + width);
-    top = Math.min(top, node.position.y);
-  }
-  const baseX = right + BOARD_AREA_GAP;
-  const baseY = Number.isFinite(top) ? top : 0;
-  return {
-    x: baseX + seq * (size.width + BOARD_COL_GAP),
-    y: baseY + (episodeNo - 1) * (size.height + BOARD_ROW_GAP),
-  };
-}
-
-/** 建 / 改故事板节点要用到的画布操作（React Flow 实例的子集，测试里可以直接传假的） */
-export type BoardFlow = {
-  getNodes: () => CanvasNode[];
-  getEdges: () => CanvasEdge[];
-  addNodes: (node: CanvasNode) => void;
-  addEdges: (edges: CanvasEdge[]) => void;
-  updateNodeData: (id: string, update: (node: CanvasNode) => Partial<CanvasNodeData>) => void;
+/** 片场生成一张故事板要交给后端的内容；不能提交时 error 写原因 */
+export type BoardPlan = {
+  body: BoardGenerateBody | null;
+  /** 不能提交的原因（没有模型、参考图缺图等）；能提交为 null */
+  error: string | null;
+  /** 给用户看的提醒（没识别到时间轴、镜头过多），没有为空串 */
+  notice: string;
 };
 
-/** 故事板节点框：16:9 横版 */
-const BOARD_SIZE = nodeFrameSize(16 / 9);
-
 /**
- * 建好或更新一个片段的故事板节点，返回节点 id（同步完成，批量时按顺序建、不会抢位置）：
- * 已有节点就用现在的原稿重写提示词和 drama.board（模型、参数是用户在节点上调过的，不动）；
- * 没有就在故事板区按集 / 段排开新建。原稿里 @ 的资产节点连线进来，参考图靠连线带入。
+ * 组装片场「生成故事板」的请求：按模板拼宫格提示词（boardNodeSeed），原稿里 @ 的资产按图片节点的规则带成参考图，
+ * 提示词里的 @ 展开成图片编号（buildFreshInput）。后端据此写画布上的故事板节点并建任务。
+ * @param args.assets 画布上的资产（资产库同一份），只带画布上还在、已经出图的
  */
-export function ensureBoardNode(
-  flow: BoardFlow,
-  args: {
-    segment: Pick<Segment, "id" | "seq" | "prompt">;
-    episodeNo: number;
-    hash: string;
-    model: ModelInfo | undefined;
-    template: string;
-  },
-): string {
-  const nodes = flow.getNodes();
-  const current = boardsFromGraph(nodes).get(args.segment.id);
-  const seed = boardNodeSeed({ ...args, nodeIds: new Set(nodes.map((node) => node.id)) });
-  let id: string;
-  if (current) {
-    id = current.nodeId;
-    flow.updateNodeData(id, (node) => ({
-      prompt: seed.data.prompt,
-      params: { ...node.data.params, ...seed.data.params },
-      model: node.data.model ?? seed.data.model,
-      drama: seed.data.drama,
-    }));
-  } else {
-    id = crypto.randomUUID();
-    flow.addNodes({
-      id,
-      type: "canvas",
-      position: boardNodePosition(nodes, args.episodeNo, args.segment.seq, BOARD_SIZE),
-      data: { kind: "image", label: seed.label, ...seed.data },
-    });
+export function planBoardInput(args: {
+  segment: Pick<Segment, "id" | "seq" | "prompt">;
+  episodeNo: number;
+  /** 当前原稿的 SHA-256 */
+  hash: string;
+  model: ModelInfo | undefined;
+  /** 项目设置里选的故事板提示词模板正文 */
+  template: string;
+  assets: readonly RefAsset[];
+}): BoardPlan {
+  const seed = boardNodeSeed({ ...args, nodeIds: new Set(args.assets.map((asset) => asset.id)) });
+  if (!args.model) return { body: null, error: "没有可用的图片模型", notice: seed.notice };
+  if (!args.segment.prompt.trim()) {
+    return { body: null, error: "片段原稿是空的", notice: seed.notice };
   }
-  const edges = flow.getEdges();
-  const missing = seed.refs.filter(
-    (source) => !edges.some((edge) => edge.source === source && edge.target === id),
+  const links = assetLinks(seed.data.prompt, args.assets).filter((link) =>
+    seed.refs.includes(link.sourceId),
   );
-  if (missing.length > 0) {
-    flow.addEdges(
-      missing.map(
-        (source) =>
-          ({
-            id: `xy-edge__${source}-${id}`,
-            source,
-            target: id,
-            ...ANIMATED_EDGE_OPTIONS,
-          }) as CanvasEdge,
-      ),
-    );
-  }
-  return id;
+  const built = buildFreshInput(args.model.capabilities, seed.data.params, links);
+  const error = Object.values(built.errors)[0] ?? null;
+  const { board } = seed.data.drama;
+  return {
+    body: error
+      ? null
+      : {
+          model_id: args.model.key,
+          input: built.input,
+          prompt: seed.data.prompt,
+          params: seed.data.params,
+          label: seed.label,
+          source_hash: board.sourceHash,
+          layout: board.layout,
+          shot_count: board.shotCount,
+          refs: seed.refs,
+        },
+    error,
+    notice: seed.notice,
+  };
 }

@@ -18,6 +18,7 @@ import {
   type PromptDraft,
 } from "@/utils/drama/prompts";
 
+import { PlaceholderEditor } from "./placeholder-editor";
 import type { PromptLibrary } from "./use-prompt-library";
 
 /** 内置正文没加载到时的占位：页结构照旧，正文留空让用户自己写 */
@@ -129,14 +130,26 @@ export function PromptEditorPane({
         </div>
       )}
       <div className="grid gap-1.5">
-        <Textarea
-          value={body}
-          aria-label="提示词正文"
-          onChange={(event) =>
-            setDraft({ ...draft, bodies: { ...draft.bodies, [draft.page]: event.target.value } })
-          }
-          className="bg-chrome-hover border-chrome-border h-72 resize-none rounded-2xl px-4 py-3 font-mono text-[13px] leading-relaxed"
-        />
+        {step === "board" ? (
+          // 故事板模板里有占位符：整体不可编辑，上面的按钮往里插
+          <PlaceholderEditor
+            value={body}
+            ariaLabel="提示词正文"
+            onChange={(text) =>
+              setDraft((prev) => ({ ...prev, bodies: { ...prev.bodies, [prev.page]: text } }))
+            }
+            className="h-72"
+          />
+        ) : (
+          <Textarea
+            value={body}
+            aria-label="提示词正文"
+            onChange={(event) =>
+              setDraft({ ...draft, bodies: { ...draft.bodies, [draft.page]: event.target.value } })
+            }
+            className="bg-chrome-hover border-chrome-border h-72 resize-none rounded-2xl px-4 py-3 font-mono text-[13px] leading-relaxed"
+          />
+        )}
         <div
           className={cn(
             "text-muted-foreground text-right font-mono text-[11.5px] tabular-nums",

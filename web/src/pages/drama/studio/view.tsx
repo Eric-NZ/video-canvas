@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 
 import type { Drama } from "@/api/drama/type";
+import type { WorkspaceStage } from "@/utils/drama/stages";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { studioColumns } from "@/utils/drama/studio-layout";
@@ -23,12 +24,15 @@ export function StudioView({
   drama,
   no,
   refresh,
+  onGo,
 }: {
   drama: Drama;
   no: number;
   refresh: () => Promise<void>;
+  /** 切工序（故事板的「进入画布查看」去资产管理的画布） */
+  onGo: (stage: WorkspaceStage, ep?: number) => void;
 }) {
-  const state = useStudioState(drama, no, refresh);
+  const state = useStudioState(drama, no, refresh, onGo);
   return (
     <StudioContext.Provider value={state}>
       <Shell />

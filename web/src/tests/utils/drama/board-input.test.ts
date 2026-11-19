@@ -1,14 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Capabilities, ModelInfo } from "@/api/model/type";
-import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
-import {
-  boardNodePosition,
-  boardNodeSeed,
-  ensureBoardNode,
-  pickBoardModel,
-  type BoardFlow,
-} from "@/utils/drama/board-input";
+import { boardNodeSeed, pickBoardModel, planBoardInput } from "@/utils/drama/board-input";
+import type { RefAsset } from "@/utils/drama/segment-assets";
 
 /** 图片模型：文生图 + 图生图，参考图 ≤ max，有比例参数 */
 const image = (over: { max?: number } = {}): Capabilities => ({
@@ -121,106 +115,83 @@ describe("pickBoardModel：故事板用哪个图片模型", () => {
   });
 });
 
-describe("boardNodePosition：故事板节点放在哪", () => {
-  const node = (id: string, x: number, y: number, board = false) => ({
+describe("planBoardInput：片场生成故事板的请求", () => {
+  const asset = (id: string, name: string, over: Partial<RefAsset> = {}): RefAsset => ({
     id,
-    position: { x, y },
-    width: 100,
-    height: 50,
-    data: board ? { drama: { episodes: [1], board: { segmentId: id } } } : {},
+    type: "scene",
+    name,
+    look: "",
+    label: name,
+    episodes: [],
+    kind: "image",
+    src: `https://cdn/${id}.png`,
+    mediaType: "image",
+    assetId: id === "n_kitchen" ? "5" : "6",
+    generating: false,
+    ...over,
   });
+  const assets = [asset("n_kitchen", "周家厨房"), asset("n_runtu", "闰土")];
+  const segment = { id: "s1", seq: 0, prompt: PROMPT };
 
-  test("放在所有非故事板节点右边留出间距，每集一行、每段一列", () => {
-    const nodes = [
-      node("a", 0, 40, false),
-      node("b", 300, -20, false),
-      node("old", 5000, 5000, true),
-    ];
-    const size = { width: 576, height: 324 };
-    // 资产最右边到 400，最上边 -20；故事板节点自己不参与算基准
-    expect(boardNodePosition(nodes, 1, 0, size)).toEqual({ x: 800, y: -20 });
-    expect(boardNodePosition(nodes, 1, 2, size)).toEqual({ x: 800 + 2 * (576 + 48), y: -20 });
-    expect(boardNodePosition(nodes, 3, 0, size)).toEqual({ x: 800, y: -20 + 2 * (324 + 96) });
-  });
-
-  test("画布上还没有别的节点：从原点开始", () => {
-    expect(boardNodePosition([], 1, 1, { width: 576, height: 324 })).toEqual({ x: 624, y: 0 });
-  });
-});
-
-describe("ensureBoardNode：建 / 改故事板节点", () => {
-  /** 内存里的假画布：只实现故事板要用的几个操作 */
-  function fakeFlow(nodes: CanvasNode[]) {
-    const edges: CanvasEdge[] = [];
-    const updates: Array<[string, Partial<CanvasNodeData>]> = [];
-    const flow: BoardFlow = {
-      getNodes: () => nodes,
-      getEdges: () => edges,
-      addNodes: (node) => nodes.push(node),
-      addEdges: (list) => edges.push(...list),
-      updateNodeData: (id, update) => {
-        const node = nodes.find((n) => n.id === id)!;
-        const patch = update(node);
-        updates.push([id, patch]);
-        node.data = { ...node.data, ...patch };
-      },
-    };
-    return { flow, nodes, edges, updates };
-  }
-  const kitchen: CanvasNode = {
-    id: "n_kitchen",
-    type: "canvas",
-    position: { x: 0, y: 0 },
-    data: {
-      kind: "image",
-      label: "厨房",
-      drama: { type: "scene", name: "周家厨房", episodes: [] },
-    },
-  };
-
-  test("第一次：在故事板区新建 16:9 图片节点，带片段标记，连上原稿里 @ 的资产", () => {
-    const { flow, nodes, edges } = fakeFlow([kitchen]);
-    const id = ensureBoardNode(flow, {
-      segment: { id: "s1", seq: 0, prompt: PROMPT },
-      episodeNo: 1,
+  test("提示词按模板拼；@ 的资产带成参考图（画布上没有的不带），提示词里的 @ 换成图片编号；节点内容一并交给后端", () => {
+    const plan = planBoardInput({
+      segment,
+      episodeNo: 2,
       hash: "h1",
       model: model(),
       template: TEMPLATE,
+      assets,
     });
-    const created = nodes.find((n) => n.id === id)!;
-    expect(created.data).toMatchObject({
-      kind: "image",
-      label: "故事板 · 第 1 集 · 01",
-      model: "img-1",
-      drama: { episodes: [1], board: { segmentId: "s1", sourceHash: "h1" } },
+    expect(plan.error).toBeNull();
+    const body = plan.body!;
+    expect(body).toMatchObject({
+      model_id: "img-1",
+      label: "故事板 · 第 2 集 · 01",
+      source_hash: "h1",
+      layout: "2x2",
+      shot_count: 2,
+      refs: ["n_kitchen", "n_runtu"],
     });
-    expect(created.position.x).toBeGreaterThan(0);
-    expect(edges.map((e) => [e.source, e.target])).toEqual([["n_kitchen", id]]);
+    expect(body.prompt).toContain("@[周家厨房](n_kitchen)");
+    expect(body.params).toMatchObject({ aspect_ratio: "16:9" });
+    expect(body.input.images).toEqual([5, 6]);
+    expect(String(body.input.prompt)).not.toContain("@[");
+    expect(String(body.input.prompt)).toContain("图片1");
   });
 
-  test("再次生成：改已有节点的提示词和标记，保留用户在节点上换过的模型，连线不重复", () => {
-    const { flow, nodes, edges, updates } = fakeFlow([kitchen]);
-    const id = ensureBoardNode(flow, {
-      segment: { id: "s1", seq: 0, prompt: PROMPT },
+  test("参考图有上限：只带前几个", () => {
+    const plan = planBoardInput({
+      segment,
       episodeNo: 1,
-      hash: "h1",
-      model: model(),
+      hash: "h",
+      model: model(image({ max: 1 })),
       template: TEMPLATE,
+      assets,
     });
-    nodes.find((n) => n.id === id)!.data.model = "user-picked";
-    const again = ensureBoardNode(flow, {
-      segment: { id: "s1", seq: 0, prompt: `${PROMPT}\n6-9秒：近景。` },
-      episodeNo: 1,
-      hash: "h2",
-      model: model(),
-      template: TEMPLATE,
-    });
-    expect(again).toBe(id);
-    expect(nodes.filter((n) => n.data.drama?.board)).toHaveLength(1);
-    expect(updates[0][1]).toMatchObject({
-      model: "user-picked",
-      drama: { board: { sourceHash: "h2", shotCount: 3 } },
-    });
-    expect(edges).toHaveLength(1);
+    expect(plan.body?.refs).toEqual(["n_kitchen"]);
+    expect(plan.body?.input.images).toEqual([5]);
+  });
+
+  test("没有模型、原稿是空的：不能提交并写原因", () => {
+    expect(
+      planBoardInput({
+        segment,
+        episodeNo: 1,
+        hash: "h",
+        model: undefined,
+        template: TEMPLATE,
+        assets,
+      }),
+    ).toMatchObject({ body: null, error: "没有可用的图片模型" });
+    expect(
+      planBoardInput({
+        segment: { ...segment, prompt: "  " },
+        episodeNo: 1,
+        hash: "h",
+        model: model(),
+        template: TEMPLATE,
+        assets,
+      }),
+    ).toMatchObject({ body: null, error: "片段原稿是空的" });
   });
 });

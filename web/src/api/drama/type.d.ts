@@ -564,6 +564,25 @@ export interface SegmentGenerateBody {
 
 export type SegmentGenerateResult = { task: TaskView };
 
+/** POST /drama-segments/:sid/board 请求体：片场生成故事板，后端写画布上的故事板节点并建图片任务 */
+export interface BoardGenerateBody {
+  model_id: string;
+  /** 按图片模型能力组装好的任务输入 */
+  input: Record<string, unknown>;
+  /** 节点上的提示词（@ 引用原样保留） */
+  prompt: string;
+  /** 节点参数（含 prompt、比例） */
+  params: Record<string, unknown>;
+  /** 新建节点的标题 */
+  label: string;
+  /** 出图时原稿的 SHA-256 */
+  source_hash: string;
+  layout: BoardLayout;
+  shot_count: number;
+  /** 要连进故事板节点的资产节点 id */
+  refs: string[];
+}
+
 /** WebSocket drama.segment 事件载荷（原样 snake_case） */
 export interface DramaSegmentEvent {
   drama_id: string;

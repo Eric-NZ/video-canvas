@@ -13,7 +13,6 @@ import { formatPageTitle } from "@/utils/page-title";
 
 import { useComposeNotices } from "../use-compose";
 import { AssetsArea } from "./assets-area";
-import { BoardArea } from "./board-area";
 import { BreakdownDialog } from "./breakdown-dialog";
 import { CommandPalette } from "./command-palette";
 import { DramaWorkspaceContext } from "./context";
@@ -63,7 +62,7 @@ function Workspace({ id }: { id: string }) {
 
   const hints = useMemo(() => stageHints(drama?.episodes ?? [], jobs), [drama?.episodes, jobs]);
 
-  // 快捷键：⌘K 命令面板；1–6 切工序，[ ] 切集。在输入框 / 编辑器里、或开着弹窗时不响应
+  // 快捷键：⌘K 命令面板；1–5 切工序，[ ] 切集。在输入框 / 编辑器里、或开着弹窗时不响应
   const { go, setEp, ep: currentEp } = nav;
   const episodeNos = useMemo(() => drama?.episodes.map((episode) => episode.no), [drama?.episodes]);
   useEffect(() => {
@@ -77,7 +76,7 @@ function Workspace({ id }: { id: string }) {
       const typing = target?.closest("input, textarea, select, [contenteditable='true']");
       if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
       if (paletteOpen || breakdownOpen || document.querySelector("[role='dialog']")) return;
-      if (/^[1-6]$/.test(event.key)) {
+      if (/^[1-5]$/.test(event.key)) {
         go(STAGES[Number(event.key) - 1].key);
       } else if ((event.key === "[" || event.key === "]") && episodeNos?.length) {
         const index = Math.max(0, episodeNos.indexOf(currentEp));
@@ -164,7 +163,6 @@ function Workspace({ id }: { id: string }) {
                 {stage === "assets" && (
                   <AssetsArea ep={ep} onBreakdownOpen={() => setBreakdownOpen(true)} />
                 )}
-                {stage === "board" && <BoardArea ep={ep} onGo={nav.go} />}
                 {stage === "studio" && (
                   <StudioArea
                     ep={ep}

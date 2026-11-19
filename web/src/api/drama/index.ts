@@ -9,6 +9,7 @@ import type {
   BackendEpisodeView,
   BackendJobView,
   BackendSegmentView,
+  BoardGenerateBody,
   AdaptFormat,
   AdaptSegmentInput,
   AddSegmentInput,
@@ -557,6 +558,16 @@ export const generateSegment = (
   idempotencyKey: string,
 ): Promise<SegmentGenerateResult> =>
   service.post<SegmentGenerateResult>(`/drama-segments/${sid}/generate`, body, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+
+/** 片场生成故事板（202）；统一经 utils/tasks/gateway.ts 调用，那里管幂等键与重试 */
+export const generateBoard = (
+  sid: string,
+  body: BoardGenerateBody,
+  idempotencyKey: string,
+): Promise<SegmentGenerateResult> =>
+  service.post<SegmentGenerateResult>(`/drama-segments/${sid}/board`, body, {
     headers: { "Idempotency-Key": idempotencyKey },
   });
 

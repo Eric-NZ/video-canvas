@@ -49,6 +49,8 @@ type DramaSegmentDeps struct {
 	Broadcaster ws.Broadcaster
 	// Adapter 转写原稿；为 nil 时转写返回「没有可用的 Agent 模型」
 	Adapter DramaSegmentAdapter
+	// Canvas 片场生成故事板时读写短剧画布；为 nil 时不能生成故事板，也不回写故事板任务
+	Canvas DramaBoardCanvasRepo
 }
 
 // DramaSegmentService 管理片段编辑、真实任务结果与自动采用。
@@ -58,6 +60,7 @@ type DramaSegmentService struct {
 	assets  DramaSegmentAssetReader
 	bc      ws.Broadcaster
 	adapter DramaSegmentAdapter
+	canvas  DramaBoardCanvasRepo
 	// adapting 是进程内的转写锁，键为「片段:格式」
 	adapting sync.Map
 }
@@ -68,7 +71,7 @@ func NewDramaSegmentService(d DramaSegmentDeps) *DramaSegmentService {
 	if bc == nil {
 		bc = ws.NopBroadcaster{}
 	}
-	return &DramaSegmentService{repo: d.Repo, tasks: d.Tasks, assets: d.Assets, bc: bc, adapter: d.Adapter}
+	return &DramaSegmentService{repo: d.Repo, tasks: d.Tasks, assets: d.Assets, bc: bc, adapter: d.Adapter, canvas: d.Canvas}
 }
 
 // List 校验用户项目后按顺序返回片段，并恢复漏处理的成功任务写回。

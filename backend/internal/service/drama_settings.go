@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -51,6 +53,28 @@ var DramaPromptSteps = []string{"plan", "scripts", "assets", "asset_prompts", "v
 
 // boardShotsPlaceholder 是故事板模板里放逐镜画面的占位符，自定义模板必须保留它。
 const boardShotsPlaceholder = "{{画面}}"
+
+// boardPlaceholders 是故事板模板认的全部占位符（名字不含花括号），要和前端 BOARD_PLACEHOLDERS 保持一致。
+var boardPlaceholders = []string{"格数", "列数", "行数", "比例", "画面"}
+
+// boardPlaceholderRE 匹配一个写完整的占位符，括号里不允许再有花括号。
+var boardPlaceholderRE = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
+
+// checkBoardTemplate 校验故事板模板：只能用 boardPlaceholders 里的占位符，花括号要成对，且必须保留 {{画面}}。
+func checkBoardTemplate(body string) error {
+	for _, m := range boardPlaceholderRE.FindAllStringSubmatch(body, -1) {
+		if !slices.Contains(boardPlaceholders, m[1]) {
+			return errcode.ErrDramaPromptInvalid.WithMsg("不认识的占位符 " + m[0])
+		}
+	}
+	if rest := boardPlaceholderRE.ReplaceAllString(body, ""); strings.Contains(rest, "{{") || strings.Contains(rest, "}}") {
+		return errcode.ErrDramaPromptInvalid.WithMsg("占位符没写完整，花括号要成对写成 {{名字}}")
+	}
+	if !strings.Contains(body, boardShotsPlaceholder) {
+		return errcode.ErrDramaPromptInvalid.WithMsg("故事板提示词必须保留 " + boardShotsPlaceholder)
+	}
+	return nil
+}
 
 // DramaPromptPages 固定各环节允许替换的页面：每个环节一页。
 func DramaPromptPages(step string) []string {
@@ -140,8 +164,10 @@ func validateDramaPrompt(req *model.SaveDramaPromptReq) error {
 		if !allowed || strings.TrimSpace(body) == "" || utf8.RuneCountInString(body) > 20000 {
 			return errcode.ErrDramaPromptInvalid
 		}
-		if req.Step == "board" && !strings.Contains(body, boardShotsPlaceholder) {
-			return errcode.ErrDramaPromptInvalid
+		if req.Step == "board" {
+			if err := checkBoardTemplate(body); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

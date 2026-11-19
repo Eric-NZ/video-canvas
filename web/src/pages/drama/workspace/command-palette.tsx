@@ -1,7 +1,6 @@
 import {
   Clapperboard,
   Film,
-  Grid2x2,
   LayoutGrid,
   Moon,
   ScanSearch,
@@ -31,7 +30,6 @@ const STAGE_ICON: Record<WorkspaceStage, LucideIcon> = {
   overview: LayoutGrid,
   script: ScrollText,
   assets: Users,
-  board: Grid2x2,
   studio: Clapperboard,
   final: Film,
 };

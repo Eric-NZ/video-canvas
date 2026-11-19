@@ -47,7 +47,6 @@ function cellTarget(column: ColumnKey, cell: MatrixCell): WorkspaceStage {
   if (column === "script") return "script";
   if (column === "breakdown") return cell.state === "done" ? "assets" : "script";
   if (column === "final") return "final";
-  if (column === "board") return "board";
   return "studio";
 }
 

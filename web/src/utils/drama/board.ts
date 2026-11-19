@@ -1,7 +1,7 @@
 import type { BoardLayout } from "@/api/drama/type";
 import type { CanvasNodeData } from "@/types";
 
-import { BOARD_SHOTS_PLACEHOLDER } from "./prompts";
+import { BOARD_SHOTS_PLACEHOLDER } from "./placeholders";
 
 /**
  * 故事板：每个片段一张宫格分镜图（docs/design/故事板/故事板.md）。

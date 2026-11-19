@@ -26,6 +26,8 @@ import { useDramaVideoModel } from "@/hooks/use-drama-video-model";
 import { useCreditsStore } from "@/store/credits";
 import { useDramaJobsStore } from "@/store/drama";
 import { segmentKey, useDramaSegmentsStore } from "@/store/drama-segments";
+import type { WorkspaceStage } from "@/utils/drama/stages";
+import { useCanvasFocusStore } from "@/store/drama-canvas-focus";
 import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import {
   adaptState,
@@ -50,11 +52,14 @@ import {
   chooseCheck,
   isRunning,
   orderIds,
+  playableTake,
   runBatch,
   sameOrder,
 } from "@/utils/drama/segments";
 import { describeSubmitError } from "@/utils/tasks/submit";
 import { submitSegmentTask } from "@/utils/tasks/gateway";
+
+import { useStudioBoards, type StudioBoards } from "./use-studio-boards";
 import { priceSpecOf } from "@/utils/tasks/capabilities";
 import { quote } from "@/utils/pricing/quote";
 import { ApiError } from "@/utils/requests/request";
@@ -63,6 +68,9 @@ import { summarizeSave, type SaveSummary } from "../workspace/use-workspace";
 import type { AutosaveStatus } from "@/utils/drama/autosave";
 
 const NO_SEGMENTS: Segment[] = [];
+
+/** 中间预览的两面 */
+export type PreviewView = "board" | "video";
 /** 有片段在生成时多久对账一次：WebSocket 是主通道，这里兜底 */
 const POLL_MS = 8000;
 /** 新增片段的默认时长（秒），不超过模型上限 */
@@ -88,6 +96,13 @@ export type Studio = {
   /** 生视频时不带故事板（本机偏好，按短剧分开） */
   boardOff: boolean;
   setBoardOff: (off: boolean) => void;
+  /** 每个片段的故事板：状态、生成、补齐整集 */
+  boards: StudioBoards;
+  /** 进入资产画布查看某个故事板节点：切到资产管理的画布视图并飞到它（看大图、切换历史版本） */
+  openBoardInCanvas: (nodeId: string) => void;
+  /** 中间预览看哪一面：故事板 / 视频；没手动切过时，选中片段有视频看视频，没有看故事板 */
+  view: PreviewView;
+  setView: (view: PreviewView) => void;
   /**
    * 选中片段此刻要提交的文字（还没存下来的也算）：目标格式是 Seedance 时是原稿，
    * 其他格式有转写稿时是转写稿、没有时是原稿；参考素材条和报价跟着它变
@@ -163,7 +178,12 @@ export function useStudio(): Studio {
  * 片段工作区的数据层：片段列表（HTTP 读取 + WebSocket 推送 + 生成中兜底轮询）、资产库、模型与偏好、
  * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、批量生成这些动作。
  */
-export function useStudioState(drama: Drama, no: number, refresh: () => Promise<void>): Studio {
+export function useStudioState(
+  drama: Drama,
+  no: number,
+  refresh: () => Promise<void>,
+  onGo: (stage: WorkspaceStage, ep?: number) => void,
+): Studio {
   const dramaId = drama.id;
   const episode = drama.episodes.find((ep) => ep.no === no);
   const key = segmentKey(dramaId, no);
@@ -414,6 +434,33 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
    */
   const freshAssets = useCallback(() => reloadAssets(), [reloadAssets]);
 
+  const studioBoards = useStudioBoards({
+    drama,
+    no,
+    segments,
+    boards,
+    sourceOf,
+    hashOf,
+    flushEditors,
+    freshAssets,
+    latestOf,
+  });
+
+  /** 手动切过的那一面只对当时选中的片段有效，换片段回到默认 */
+  const [viewPick, setViewPick] = useState<{ id: string; view: PreviewView } | null>(null);
+  const view: PreviewView =
+    selected && viewPick?.id === selected.id
+      ? viewPick.view
+      : selected && playableTake(selected)
+        ? "video"
+        : "board";
+  const setView = useCallback(
+    (next: PreviewView) => {
+      if (selectedId0) setViewPick({ id: selectedId0, view: next });
+    },
+    [selectedId0],
+  );
+
   const submitVideo = useCallback(
     async (segment: Segment, latest: RefAsset[]) => {
       const model = video.model;
@@ -519,6 +566,12 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
           toast.error(result.message, { id: `studio-submit:${result.message}` });
           return;
         }
+        // 提交了就切到「视频」看进度
+        setViewPick((prev) =>
+          prev?.id === segment.id || segment.id === selectedId0
+            ? { id: segment.id, view: "video" }
+            : prev,
+        );
         void reloadSegments(dramaId, no);
       } finally {
         markSubmitting(segment.id, false);
@@ -529,6 +582,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       dramaId,
       flushEditors,
       freshAssets,
+      selectedId0,
       markSubmitting,
       no,
       prefs.overrides,
@@ -732,6 +786,14 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     };
   }, []);
 
+  const openBoardInCanvas = useCallback(
+    (nodeId: string) => {
+      useCanvasFocusStore.getState().request(dramaId, nodeId);
+      onGo("assets", 0);
+    },
+    [dramaId, onGo],
+  );
+
   const setBoardOff = useCallback(
     (off: boolean) => useStudioPrefsStore.getState().patch(dramaId, { boardOff: off }),
     [dramaId],
@@ -762,6 +824,10 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     board,
     boardOff: prefs.boardOff,
     setBoardOff,
+    boards: studioBoards,
+    openBoardInCanvas,
+    view,
+    setView,
     prompt,
     setDraft,
     format,

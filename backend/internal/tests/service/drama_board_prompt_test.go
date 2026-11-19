@@ -87,6 +87,31 @@ func TestDramaBoardPromptRequiresShotsPlaceholder(t *testing.T) {
 	}
 }
 
+// 故事板模板里只认五个占位符：写了不认识的、或花括号没配成对，都不能保存。
+func TestDramaBoardPromptRejectsUnknownPlaceholders(t *testing.T) {
+	r := newDramaMemory()
+	s, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
+	for _, body := range []string{
+		"{{画面}} {{颜色}}",
+		"{{画面}} {{格数 }}",
+		"{{画面}} {{}}",
+		"{{画面}} {{",
+		"{{画面}} }}",
+		"{{画面}} {{格数}",
+	} {
+		_, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "board", Name: "坏模板", Bodies: map[string]string{"board": body}})
+		dramaCheckCode(t, err, 67017)
+	}
+	all := "{{格数}}{{列数}}{{行数}}{{比例}}\n{{画面}} 单个 { 花括号 } 不算占位符"
+	if _, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "board", Name: "全用上", Bodies: map[string]string{"board": all}}); err != nil {
+		t.Fatal(err)
+	}
+	// 其他环节的正文里想写什么都行
+	if _, err := s.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "plan", Name: "随便写", Bodies: map[string]string{"plan": "{{颜色}} 没关系"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // 内置模板自己要合格：带全部占位符，且没有多余的段落标题。
 func TestDramaBoardBuiltinTemplate(t *testing.T) {
 	body := drama.PromptBody("board")
@@ -94,6 +119,12 @@ func TestDramaBoardBuiltinTemplate(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("内置故事板模板缺 %s：%s", want, body)
 		}
+	}
+	// 内置模板原样保存成「我的」也得合格，用户点「新建」会预填它
+	r := newDramaMemory()
+	svc, _ := dramaTestService(r, &dramaTextStreamer{}, nil)
+	if _, err := svc.SavePrompt(context.Background(), 7, 0, &model.SaveDramaPromptReq{Step: "board", Name: "照抄内置", Bodies: map[string]string{"board": body}}); err != nil {
+		t.Fatalf("内置模板自己过不了校验：%v", err)
 	}
 }
 

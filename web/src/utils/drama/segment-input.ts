@@ -134,6 +134,14 @@ const isDead = (asset: RefAsset | undefined): boolean =>
 
 type Linked = { links: IncomingLink[]; cited: Cited[] };
 
+/**
+ * 提示词里 @ 的资产转成连线（同画布连线的规则）：失效的引用不带；故事板拿它带参考图
+ * @param prompt 提示词（含 `@[名](节点id)`）
+ * @param assets 画布上的资产
+ */
+export const assetLinks = (prompt: string, assets: readonly RefAsset[]): IncomingLink[] =>
+  linkRefs(prompt, assets).links;
+
 function linkRefs(prompt: string, assets: readonly RefAsset[]): Linked {
   const cited = citedRefs(prompt, assets);
   const links = cited.flatMap(({ asset }) => (asset && !isDead(asset) ? [toLink(asset)] : []));

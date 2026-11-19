@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getCanvas } from "@/api/canvas";
 import { useTasksStore } from "@/store/tasks";
+import { subscribeCanvasPatch } from "@/utils/agent/patch-bus";
 import type { TaskMap } from "@/utils/tasks/merge";
 import { boardsFromGraph, type BoardNode } from "@/utils/drama/board";
 import { assetsFromGraph, type RefAsset } from "@/utils/drama/segment-assets";
@@ -32,7 +33,8 @@ const withVoiceTasks = (assets: RefAsset[], tasks: TaskMap): RefAsset[] =>
  * 短剧画布上的资产节点（角色 / 场景 / 道具）：分集卡片计数、片段工作区资产库和 @ 候选都读它；
  * 顺带取出故事板节点（生视频时作为第一张参考图）。
  * 只读画布，不占编辑锁；角色卡节点的形象、声音就在节点数据里，读到什么就是什么。
- * 页面回到前台时重新读一次，资产页里新生成的形象能跟上；reloadKey 变化也重读（拆解 / 写提示词任务收尾）。
+ * 页面回到前台时重新读一次，资产页里新生成的形象能跟上；reloadKey 变化也重读（拆解 / 写提示词任务收尾）；
+ * 后端改了这张画布（片场生成的故事板写节点、出图回写）推 canvas.patch 时也重读。
  */
 export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsState {
   const [assets, setAssets] = useState<RefAsset[]>(NONE);
@@ -80,6 +82,8 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reload]);
+
+  useEffect(() => subscribeCanvasPatch(canvasId, () => void reload()), [canvasId, reload]);
 
   const boardsNow = useCallback(() => boardsRef.current, []);
   return { assets: current, status, reload, boards, boardsNow };

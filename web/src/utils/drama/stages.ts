@@ -2,25 +2,24 @@ import type { DramaJob, DramaStep, EpisodeSummary } from "@/api/drama/type";
 
 import { isActiveJob } from "./jobs";
 
-/** 工作台的六道工序，同时也是顶部标签和地址栏 ?area= 的取值 */
-export type WorkspaceStage = "overview" | "script" | "assets" | "board" | "studio" | "final";
+/** 工作台的五道工序，同时也是顶部标签和地址栏 ?area= 的取值 */
+export type WorkspaceStage = "overview" | "script" | "assets" | "studio" | "final";
 
-/** 顶部工序标签，顺序即制作顺序（快捷键 1–6 按此排列） */
+/** 顶部工序标签，顺序即制作顺序（快捷键 1–5 按此排列） */
 export const STAGES: readonly { key: WorkspaceStage; label: string }[] = [
   { key: "overview", label: "总览" },
   { key: "script", label: "剧本" },
   { key: "assets", label: "资产管理" },
-  { key: "board", label: "故事板" },
   { key: "studio", label: "片场" },
   { key: "final", label: "成片" },
 ];
 
 /**
  * 解析地址栏 ?area=：没有或写错回到总览。
- * 旧版的 episodes（分集视频）并入了片场，旧链接仍能落到对应位置。
+ * 旧版的 episodes（分集视频）和 board（故事板）都并入了片场，旧链接仍能落到对应位置。
  */
 export function parseStage(raw: string | null): WorkspaceStage {
-  if (raw === "episodes") return "studio";
+  if (raw === "episodes" || raw === "board") return "studio";
   return STAGES.find((stage) => stage.key === raw)?.key ?? "overview";
 }
 
@@ -216,8 +215,7 @@ export type StageHints = Partial<Record<WorkspaceStage, "run" | "todo">>;
  * 哪些工序标签要亮提醒点：
  * 剧本——集在生成或研读 / 大纲 / 分集剧本任务在跑为 run，有集还没剧本为 todo；
  * 角色与场景——拆解 / 写资产提示词在跑为 run，有剧本写好却没拆解的集为 todo；
- * 故事板——有分镜但故事板没出齐（或已过期）的集为 todo；
- * 片场——分镜在生成或分镜任务在跑为 run；成片——合成任务在跑为 run。
+ * 片场——分镜在生成或分镜任务在跑为 run，有分镜但故事板没出齐（或已过期）的集为 todo；成片——合成任务在跑为 run。
  * 同一道工序 run 优先于 todo。
  */
 export function stageHints(
@@ -248,7 +246,7 @@ export function stageHints(
         ep.doneBoardCount < ep.segmentCount,
     )
   ) {
-    hints.board = "todo";
+    hints.studio = "todo";
   }
 
   if (episodes.some((ep) => ep.storyboardStatus === "generating") || running("storyboard")) {

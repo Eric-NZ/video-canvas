@@ -135,6 +135,24 @@ func (h *DramaSegmentHandler) Generate(c *gin.Context) {
 	response.Accepted(c, gin.H{"task": task})
 }
 
+// GenerateBoard 片场生成故事板：后端写短剧画布上的故事板节点并绑定图片任务，返回 202 和任务。
+func (h *DramaSegmentHandler) GenerateBoard(c *gin.Context) {
+	sid, ok := dramaSegmentPath(c)
+	if !ok {
+		return
+	}
+	var req model.GenerateDramaBoardReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	task, err := h.svc.GenerateBoard(c.Request.Context(), currentUserID(c), sid, c.GetHeader("Idempotency-Key"), &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.Accepted(c, gin.H{"task": task})
+}
+
 // dramaSegmentPath 校验并解码片段路径ID，非法编码统一为参数错误。
 func dramaSegmentPath(c *gin.Context) (uint64, bool) {
 	sid, ok := idcodec.Decode(c.Param("sid"))

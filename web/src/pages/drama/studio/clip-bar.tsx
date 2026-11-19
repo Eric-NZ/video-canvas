@@ -6,6 +6,7 @@ import { VideoPoster } from "@/components/canvas/media-preview";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Segment } from "@/api/drama/type";
+import type { BoardStatus } from "@/utils/drama/board";
 import { applyOrder, clipWidth, orderIds, playableTake, sameOrder } from "@/utils/drama/segments";
 
 import { usePlaybackContext } from "./use-playback";
@@ -13,6 +14,43 @@ import { useStudio } from "./use-studio";
 
 const mmss = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+
+/** 一段进度条的颜色：好了绿、过期琥珀、失败红、生成中闪、没有灰 */
+const STEP_CLASS: Record<"done" | "stale" | "failed" | "run" | "none", string> = {
+  done: "bg-emerald-400",
+  stale: "bg-amber-400",
+  failed: "bg-destructive",
+  run: "bg-amber-400 animate-pulse",
+  none: "bg-current opacity-30",
+};
+
+/** 片段两步的进度：左边故事板、右边视频 */
+function StepBars({ board, video }: { board: BoardStatus; video: "done" | "run" | "none" }) {
+  const boardStep = {
+    ready: "done",
+    stale: "stale",
+    failed: "failed",
+    running: "run",
+    empty: "none",
+  } as const;
+  return (
+    <span
+      className="inline-flex items-center gap-0.5"
+      title={`故事板${BOARD_TEXT[board]} · 视频${video === "done" ? "已生成" : video === "run" ? "生成中" : "未生成"}`}
+    >
+      <i className={cn("block h-1 w-3 rounded-full", STEP_CLASS[boardStep[board]])} />
+      <i className={cn("block h-1 w-3 rounded-full", STEP_CLASS[video])} />
+    </span>
+  );
+}
+
+const BOARD_TEXT: Record<BoardStatus, string> = {
+  ready: "已生成",
+  stale: "已过期",
+  failed: "生成失败",
+  running: "生成中",
+  empty: "未生成",
+};
 
 /** 片段条上的一格：宽度按时长；有采用视频显示封面，否则按状态显示图标 */
 function Clip({
@@ -24,9 +62,12 @@ function Clip({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { submitting } = useStudio();
+  const { submitting, boards } = useStudio();
   const take = playableTake(segment);
   const running = segment.status === "running" || submitting.has(segment.id);
+  const board = boards.statusOf(segment);
+  const boardSrc =
+    board === "ready" || board === "stale" ? (boards.nodeOf(segment)?.src ?? null) : null;
   return (
     <Reorder.Item
       value={segment}
@@ -55,6 +96,9 @@ function Clip({
     >
       {take?.asset ? (
         <VideoPoster src={take.asset.url} />
+      ) : boardSrc && !running ? (
+        // 还没视频：缩略图显示故事板（压暗一点，和出了视频的区分开）
+        <img src={boardSrc} alt="" className="size-full object-cover opacity-60" />
       ) : (
         <div className="text-muted-foreground grid size-full place-items-center pb-4">
           {running ? (
@@ -72,7 +116,10 @@ function Clip({
           take ? "bg-black/55 text-white" : "bg-background/70 text-muted-foreground",
         )}
       >
-        <span>{String(segment.seq + 1).padStart(2, "0")}</span>
+        <span className="flex items-center gap-1.5">
+          {String(segment.seq + 1).padStart(2, "0")}
+          <StepBars board={board} video={running ? "run" : take ? "done" : "none"} />
+        </span>
         <span>{segment.seconds}s</span>
       </div>
     </Reorder.Item>

@@ -156,6 +156,20 @@ describe("提示词编辑器草稿", () => {
     expect(validatePromptDraft({ ...draftFromTemplate(video), name: "新" }, [])).toBeNull();
   });
 
+  test("故事板提示词：写了不认识的占位符、花括号没成对都不能保存；其他环节不查", () => {
+    const board = draftFromTemplate({
+      step: "board",
+      pages: [{ key: "board", label: "故事板提示词", body: "{{画面}}" }],
+    });
+    const check = (body: string) =>
+      validatePromptDraft({ ...board, name: "新", bodies: { board: body } }, []);
+    expect(check("{{格数}} 格\n{{画面}}")).toBeNull();
+    expect(check("{{画面}} {{颜色}}")).toContain("不认识的占位符 {{颜色}}");
+    expect(check("{{画面}} {{")).toBe("占位符没写完整，花括号要成对写成 {{名字}}");
+    const other = { ...draftFromTemplate(video), name: "新", bodies: { storyboard: "{{颜色}}" } };
+    expect(validatePromptDraft(other, [])).toBeNull();
+  });
+
   test("编辑自己时同名不算重复；报错带上是哪一页", () => {
     const draft = draftFromMine(adapt, {
       id: "1f",

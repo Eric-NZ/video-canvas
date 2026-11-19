@@ -184,8 +184,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
 	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	dramaRepo := repository.NewDramaRepository(db)
-	dramaCanvasSvc := service.NewDramaCanvasService(repository.NewDramaCanvasRepository(db), hub)
-	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub})
+	dramaCanvasRepo := repository.NewDramaCanvasRepository(db)
+	dramaCanvasSvc := service.NewDramaCanvasService(dramaCanvasRepo, hub)
+	// 片段服务也管片场里的故事板：后端写短剧画布上的故事板节点，任务结束后把结果写回
+	dramaSegments := service.NewDramaSegmentService(service.DramaSegmentDeps{Repo: dramaRepo, Tasks: taskSvc, Assets: assetSvc, Broadcaster: hub, Canvas: dramaCanvasRepo})
 	// 短剧和环节协议层共用同一个 LLM 网关实例，渠道限流（RPS / 并发）才是对两者合计生效。
 	textGateway := llmgateway.New(llmgateway.Options{IPAllowed: outboundIPPolicy(cfg), Observer: llmlog.Observer{}})
 	dramaSvc := service.NewDramaService(service.DramaDeps{
@@ -222,7 +224,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Repo: marketingRepo, Steps: stepRegistry, Resolver: stepSvc.Resolver(), Caller: stepCaller, Models: aiCfgSvc,
 		Assets: assetSvc, Tasks: taskSvc, Canvases: canvasProjectSvc, Frames: newVideoFrames(), Credits: settingsSvc, Broadcaster: hub,
 	})
-	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务。
+	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务；短剧画布上的故事板图片任务由片段服务认领。
 	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
 	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
 	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{

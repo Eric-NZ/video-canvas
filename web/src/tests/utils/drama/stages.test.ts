@@ -37,17 +37,9 @@ const ep = (patch: Partial<EpisodeSummary> = {}): EpisodeSummary => ({
 const FINAL = { id: "a1" } as unknown as NonNullable<EpisodeSummary["final"]>;
 
 describe("工序标签：地址栏 ?area= 的解析", () => {
-  test("六道工序按总览、剧本、资产管理、故事板、片场、成片排列", () => {
-    expect(STAGES.map((s) => s.key)).toEqual([
-      "overview",
-      "script",
-      "assets",
-      "board",
-      "studio",
-      "final",
-    ]);
-    expect(STAGES.find((s) => s.key === "board")?.label).toBe("故事板");
-    expect(parseStage("board")).toBe("board");
+  test("五道工序按总览、剧本、资产管理、片场、成片排列；故事板并进了片场，旧链接落到片场", () => {
+    expect(STAGES.map((s) => s.key)).toEqual(["overview", "script", "assets", "studio", "final"]);
+    expect(parseStage("board")).toBe("studio");
   });
 
   test("合法值原样返回，没有或写错回到总览", () => {
@@ -348,14 +340,15 @@ describe("工序标签上的提醒点", () => {
     expect(stageHints([done], [job("compose")])).toEqual({ final: "run" });
   });
 
-  test("有分镜但故事板没出齐：故事板是待办", () => {
+  test("有分镜但故事板没出齐：片场是待办（分镜在生成时仍是进行中）", () => {
     const shot = ep({
       scriptStatus: "ready",
       locked: true,
       storyboardStatus: "ready",
       segmentCount: 3,
     });
-    expect(stageHints([shot], [])).toEqual({ board: "todo" });
+    expect(stageHints([shot], [])).toEqual({ studio: "todo" });
+    expect(stageHints([shot], [job("storyboard")])).toEqual({ studio: "run" });
     expect(stageHints([{ ...shot, doneBoardCount: 3 }], [])).toEqual({});
   });
 
