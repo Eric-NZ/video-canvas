@@ -13,10 +13,13 @@ import {
   Type,
   Upload,
   UserRound,
+  UserRoundCheck,
+  UserRoundPlus,
   Video,
   type LucideIcon,
 } from "lucide-react";
 
+import type { VirtualHumanDto } from "@/api/virtual-human/type";
 import { MediaPreview } from "@/components/canvas/media-preview";
 import { DramaPoster } from "@/components/drama/poster";
 import { Button } from "@/components/ui/button";
@@ -24,6 +27,7 @@ import { DURATION, STAGGER, STAGGER_MAX, TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { canFillNode } from "@/utils/canvas/fill-upload";
 import { assetUploaded, type AssetItem, type AssetType } from "@/utils/drama/assets";
+import { FILING_LABEL } from "@/utils/virtual-human/virtual-human";
 
 export const TYPE_ICON: Record<AssetType, LucideIcon> = {
   character: UserRound,
@@ -141,6 +145,7 @@ export function AssetCard({
   onEditCharacter,
   onUpload,
   onPickLibrary,
+  enroll,
 }: {
   item: AssetItem;
   index: number;
@@ -156,6 +161,11 @@ export function AssetCard({
   onUpload?: () => void;
   /** 从素材库选一个放进这张空卡 */
   onPickLibrary?: () => void;
+  /**
+   * 角色形象图加入真人库：只有已有形象图、且管理员配置了虚拟人像库（或图片已在真人库）时才传。
+   * human 是图片已经所在的真人，这时只显示状态，不能重复加入。
+   */
+  enroll?: { human: VirtualHumanDto | null; onEnroll: () => void };
 }) {
   const Icon = TYPE_ICON[item.type];
   const uploaded = assetUploaded(item.data);
@@ -269,6 +279,7 @@ export function AssetCard({
             {item.name}
             {item.look && <span className="text-muted-foreground font-normal"> · {item.look}</span>}
           </div>
+          {enroll && <EnrollButton name={item.name} enroll={enroll} />}
           {generated && (
             <Button
               variant="ghost"
@@ -313,6 +324,55 @@ export function AssetCard({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/** 备案状态对应的图标颜色 */
+const ENROLLED_TONE = {
+  pending: "text-amber-500",
+  active: "text-emerald-500",
+  failed: "text-destructive",
+} as const;
+
+/**
+ * 卡片名字旁的真人库按钮：没加入时点了打开「加入真人库」；已加入时换成带状态颜色的图标，悬停看所属真人和备案状态。
+ * @param name 资产名，读屏用
+ * @param enroll 所在真人与加入回调
+ */
+function EnrollButton({
+  name,
+  enroll,
+}: {
+  name: string;
+  enroll: { human: VirtualHumanDto | null; onEnroll: () => void };
+}) {
+  const { human } = enroll;
+  if (human) {
+    const label = `已在真人库「${human.name}」· ${FILING_LABEL[human.status]}`;
+    return (
+      <span
+        role="img"
+        aria-label={label}
+        title={label}
+        className={cn(
+          "grid size-6 place-items-center [&_svg]:size-3.5",
+          ENROLLED_TONE[human.status],
+        )}
+      >
+        <UserRoundCheck />
+      </span>
+    );
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={`把 ${name} 的形象加入真人库`}
+      title="加入真人库"
+      onClick={enroll.onEnroll}
+    >
+      <UserRoundPlus />
+    </Button>
   );
 }
 
