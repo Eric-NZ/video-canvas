@@ -7,7 +7,7 @@ import type { RefView } from "@/utils/drama/segment-input";
 
 import { useStudio } from "./use-studio";
 
-const TYPE_ICON = { character: User, scene: ImageIcon, prop: Box } as const;
+const TYPE_ICON = { character: User, scene: ImageIcon, prop: Box, audio: AudioLines } as const;
 
 /** 参考素材条上的一项：缩略图 + 名字 + 状态标记（只用文字 / 角色卡声音未生效 / 失效 / 被截断） */
 function Chip({ view }: { view: RefView }) {
@@ -23,7 +23,7 @@ function Chip({ view }: { view: RefView }) {
       )}
     >
       <span className="bg-background/60 text-muted-foreground grid size-6 shrink-0 place-items-center overflow-hidden rounded-md">
-        {asset?.src && !dead ? (
+        {asset?.src && !dead && asset.kind !== "audio" ? (
           <MediaPreview src={asset.src} mode="thumb" fit="cover" draggable={false} />
         ) : (
           <Icon className="size-3.5" />
@@ -32,6 +32,9 @@ function Chip({ view }: { view: RefView }) {
       <span className={cn("max-w-32 truncate", dead && "line-through")}>{view.label}</span>
       {view.voice === "used" && (
         <AudioLines className="text-muted-foreground size-3.5" aria-label="带入了参考音频" />
+      )}
+      {view.state === "audio" && (
+        <AudioLines className="text-muted-foreground size-3.5" aria-label="参考音频" />
       )}
       {dead && (
         <StatusPill tone="destructive" className="h-4 text-[10px]">

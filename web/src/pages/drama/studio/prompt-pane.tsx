@@ -307,7 +307,7 @@ function AutosavedPrompt({
       kind: asset.kind,
       label: asset.label,
       src: asset.src,
-      mediaType: "image",
+      mediaType: asset.mediaType ?? (asset.kind === "audio" ? "audio" : "image"),
     }),
     [],
   );
@@ -335,7 +335,7 @@ function AutosavedPrompt({
         kind: asset.kind,
         label: asset.label,
         src: asset.src,
-        mediaType: "image",
+        mediaType: asset.mediaType ?? (asset.kind === "audio" ? "audio" : "image"),
       };
     },
     [assetsById, assetsStatus],

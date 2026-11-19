@@ -16,7 +16,7 @@ import { draftStore } from "@/utils/canvas/draft-idb";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { defaultDramaForNew, type AssetType, type EpisodeFilter } from "@/utils/drama/assets";
 import { busyReason } from "@/utils/drama/jobs";
-import { referenceWarning } from "@/utils/drama/segment-assets";
+import { dramaAssetTypeOf, referenceWarning } from "@/utils/drama/segment-assets";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
 import { AssetsUiContext, type AssetsUi } from "./assets-ui";
@@ -65,7 +65,7 @@ function DramaCanvas({
     const doomed = nodes.flatMap((node) => {
       if (node.type === "group") return [];
       const data = node.data as CanvasNodeData;
-      return data.drama?.type ? [{ id: node.id, label: data.label }] : [];
+      return dramaAssetTypeOf(data) ? [{ id: node.id, label: data.label }] : [];
     });
     const current = dramaRef.current;
     const episodes = current.episodes.filter((ep) => ep.segmentCount > 0);

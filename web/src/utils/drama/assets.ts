@@ -62,7 +62,7 @@ export function assetTypeOf(data: CanvasNodeData): AssetType | null {
  * 节点的出现集数：没有 drama 字段、或 episodes 为 null（所在的集被删了）是未分类（null），
  * 空数组是全集，其余升序去重
  */
-export function assetEpisodesOf(data: CanvasNodeData): number[] | null {
+export function assetEpisodesOf(data: Pick<CanvasNodeData, "drama">): number[] | null {
   if (!data.drama || data.drama.episodes === null) return null;
   return [...new Set(data.drama.episodes ?? [])].sort((a, b) => a - b);
 }
