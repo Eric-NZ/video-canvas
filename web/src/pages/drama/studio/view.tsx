@@ -1,9 +1,12 @@
 import { useEffect } from "react";
+import { motion } from "motion/react";
 import { useDefaultLayout } from "react-resizable-panels";
 
 import type { Drama } from "@/api/drama/type";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { usePhasedMount } from "@/hooks/use-staggered-mount";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 import { studioColumns } from "@/utils/drama/studio-layout";
 
 import { ClipBar } from "./clip-bar";
@@ -37,6 +40,34 @@ export function StudioView({
   );
 }
 
+/**
+ * 分拍挂载的一格：on 之前什么都不画（面板本身还在，占着位置），on 之后挂上内容并淡入。
+ * 只淡入、不做位移和缩放：内容是边挂边撑开的，位移会和尺寸变化叠在一起让画面抖。
+ */
+function Phased({
+  name,
+  on,
+  children,
+}: {
+  /** 区域名，只用来标记（测试和排查看谁什么时候挂上的） */
+  name: string;
+  on: boolean;
+  children: React.ReactNode;
+}) {
+  if (!on) return null;
+  return (
+    <motion.div
+      data-phased={name}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: DURATION.base, ease: EASE_OUT }}
+      className="size-full"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 /** 分栏线：平时是 1px 细线，悬停和拖动时亮成主题色，方便找到能拖的地方 */
 const HANDLE =
   "hover:bg-primary/60 data-[separator=active]:bg-primary transition-colors duration-150";
@@ -48,6 +79,9 @@ const HANDLE =
 function Shell() {
   const { segments, select, canvasView } = useStudio();
   const playback = usePlayback(segments);
+  // 分三拍挂载：0 骨架（顶部条 + 分栏）→ 1 预览 / 编辑区（用户马上要看的）→ 2 资产库 / 片段条（最重的两块）。
+  // 分栏面板一直在（分栏库要靠它记尺寸），面板里的内容晚一点挂，挂上时淡入，不在同一帧里画完。
+  const phase = usePhasedMount(2);
 
   // 连播切到哪个片段，选中（时间线描边、提示词编辑区）就跟到哪个
   useEffect(() => {
@@ -87,7 +121,9 @@ function Shell() {
                 {columns.includes("library") && (
                   <>
                     <ResizablePanel id="library" defaultSize={224} minSize={180} maxSize="35%">
-                      <Library />
+                      <Phased name="library" on={phase >= 2}>
+                        <Library />
+                      </Phased>
                     </ResizablePanel>
                     <ResizableHandle className={HANDLE} />
                   </>
@@ -95,19 +131,25 @@ function Shell() {
                 {columns.includes("preview") && (
                   <>
                     <ResizablePanel id="preview" minSize={280}>
-                      <Preview />
+                      <Phased name="preview" on={phase >= 1}>
+                        <Preview />
+                      </Phased>
                     </ResizablePanel>
                     <ResizableHandle className={HANDLE} />
                   </>
                 )}
                 <ResizablePanel id="editor" defaultSize={400} minSize={320}>
-                  <Editor />
+                  <Phased name="editor" on={phase >= 1}>
+                    <Editor />
+                  </Phased>
                 </ResizablePanel>
               </ResizablePanelGroup>
             </ResizablePanel>
             <ResizableHandle className={HANDLE} />
             <ResizablePanel id="clips" defaultSize={132} minSize={112} maxSize="60%">
-              <ClipBar />
+              <Phased name="clips" on={phase >= 2}>
+                <ClipBar />
+              </Phased>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}

@@ -161,6 +161,8 @@ export type BoardNode = NodeBoardMeta & {
   versions: NodeOutput[];
   /** 当前版本的 id（版本里选中的那一版）；没有版本为 null */
   activeId: string | null;
+  /** 节点上绑着的生成任务 id；生成中的故事板据此订阅实时进度，没有为 null */
+  taskId: string | null;
 };
 
 /** 读故事板只用到的节点字段：编辑器里的节点和接口读到的画布节点都满足 */
@@ -219,6 +221,7 @@ export function boardsFromGraph(
       ...meta,
       versions,
       activeId: activeOutputIdOf(nodeData) ?? null,
+      taskId: data.taskId || null,
       nodeId: node.id,
       src,
       assetId: src ? (data.assetId ?? undefined) : undefined,

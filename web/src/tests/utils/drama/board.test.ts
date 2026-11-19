@@ -174,6 +174,13 @@ describe("utils/drama/board：画布上的故事板节点", () => {
     expect(boardStatus(of({}), undefined)).toBe("ready");
   });
 
+  test("正在生成的任务 id：读节点上的 taskId，生成中的故事板才能订阅到实时进度；没有就是 null", () => {
+    const of = (data: Partial<CanvasNodeData>) => boardsFromGraph([boardNode(data)]).get("s1");
+    expect(of({ status: "running", taskId: "88" })?.taskId).toBe("88");
+    expect(of({})?.taskId).toBeNull();
+    expect(of({ taskId: "" })?.taskId).toBeNull();
+  });
+
   test("历史版本和当前版本：读节点的 outputs / activeOutputId；旧节点只有一张图时当唯一一版；空节点没有版本", () => {
     const of = (data: Partial<CanvasNodeData>) => boardsFromGraph([boardNode(data)]).get("s1");
     const v = (id: string) => ({

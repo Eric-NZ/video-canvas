@@ -70,6 +70,7 @@ const node = (over: Partial<BoardNode> = {}): BoardNode => ({
   error: "",
   versions: [version("31")],
   activeId: "31",
+  taskId: null,
   ...over,
 });
 
@@ -161,6 +162,38 @@ describe("片场故事板：故事板这一面", () => {
     await dom.click(button(m.container, "进入画布查看"));
     expect(calls.canvas).toEqual(["b1"]);
     await m.unmount();
+  });
+
+  test("生成中：显示和画布图片节点同一套的实时状态（进度、耗时），按节点上绑的任务订阅，不是一直「正在同步」", async () => {
+    const tasks = (await import("@/store/tasks")).useTasksStore;
+    const now = new Date().toISOString();
+    tasks.getState().upsert({
+      id: 88,
+      version: 1,
+      status: "running",
+      progress: 42,
+      created_at: now,
+      submitted_at: now,
+    } as never);
+    const running = (taskId: string | null) =>
+      studio({
+        statuses: { s0: "running" },
+        nodes: {
+          s0: node({ src: null, status: "running", taskId, versions: [], activeId: null }),
+        },
+      }).value;
+    const m = await mount(running("88"), <BoardStage />);
+    await dom.flush();
+    expect(m.container.textContent).toContain("生成中");
+    expect(m.container.textContent).toContain("42%");
+    expect(m.container.textContent).not.toContain("正在同步任务状态");
+    await m.unmount();
+
+    // 节点上还没绑任务（刚提交、画布还没读到）：才是「正在同步」
+    const m2 = await mount(running(null), <BoardStage />);
+    await dom.flush();
+    expect(m2.container.textContent).toContain("正在同步任务状态");
+    await m2.unmount();
   });
 
   test("没有出图也能进画布：空节点（分镜时就建好了）、生成失败时都有「进入画布查看」", async () => {

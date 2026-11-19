@@ -4,6 +4,7 @@ import { CircleX, Film, Layers, Loader2, Pause, Play, Plus } from "lucide-react"
 
 import { VideoPoster } from "@/components/canvas/media-preview";
 import { Button } from "@/components/ui/button";
+import { useStaggeredCount } from "@/hooks/use-staggered-mount";
 import { cn } from "@/lib/utils";
 import type { Segment } from "@/api/drama/type";
 import type { BoardStatus } from "@/utils/drama/board";
@@ -14,6 +15,10 @@ import { useStudio } from "./use-studio";
 
 const mmss = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+
+/** 片段条进入时先画几格、之后每帧追加几格 */
+const CLIPS_FIRST = 8;
+const CLIPS_BATCH = 6;
 
 /** 一段进度条的颜色：好了绿、过期琥珀、失败红、生成中闪、没有灰 */
 const STEP_CLASS: Record<"done" | "stale" | "failed" | "run" | "none", string> = {
@@ -56,9 +61,12 @@ const BOARD_TEXT: Record<BoardStatus, string> = {
 function Clip({
   segment,
   selected,
+  fade,
   onSelect,
 }: {
   segment: Segment;
+  /** 追加的片段才淡入；第一批随外壳整块淡入，不叠着再闪一次 */
+  fade: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -88,6 +96,7 @@ function Clip({
       whileDrag={{ scale: 1.03, zIndex: 2 }}
       className={cn(
         "bg-muted relative h-[76px] shrink-0 cursor-grab touch-none overflow-hidden rounded-lg outline-none select-none active:cursor-grabbing",
+        fade && "animate-in fade-in duration-200 motion-reduce:animate-none",
         "focus-visible:ring-ring/50 focus-visible:ring-2",
         selected
           ? "ring-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)] ring-2"
@@ -138,6 +147,11 @@ export function ClipBar() {
   // 拖动过程中只改本地顺序，松手再提交；store 里的片段一变（推送、服务端确认）就回到 store 的版本
   const [local, setLocal] = useState<{ base: Segment[]; list: Segment[] } | null>(null);
   const shown = local && local.base === segments ? local.list : segments;
+  // 进入片场时先画前一批，其余每帧追加一批（不在同一帧画完几十格）；追加完之前不能拖动排序，免得顺序和画出来的对不上
+  const drawn = useStaggeredCount(shown.length, { first: CLIPS_FIRST, batch: CLIPS_BATCH });
+  const complete = drawn >= shown.length;
+  const visible = complete ? shown : shown.slice(0, drawn);
+  const [first] = useState(() => new Set(visible.map((segment) => segment.id)));
 
   const commit = () => {
     if (!local || local.base !== segments) return;
@@ -152,7 +166,7 @@ export function ClipBar() {
   };
 
   return (
-    <div className="bg-sidebar h-full overflow-y-auto px-4 pt-2.5 pb-3">
+    <div className="bg-sidebar h-full overflow-y-auto px-4 pt-2.5 pb-3 [scrollbar-gutter:stable]">
       <div className="mb-1.5 flex items-center gap-2">
         <Button
           variant="ghost"
@@ -187,21 +201,24 @@ export function ClipBar() {
           批量生成
         </Button>{" "}
       </div>
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-gutter:stable]">
         <div className="relative shrink-0">
           <Reorder.Group
             axis="x"
             as="div"
-            values={shown}
-            onReorder={(list) => setLocal({ base: segments, list })}
+            values={visible}
+            onReorder={(list) => {
+              if (complete) setLocal({ base: segments, list });
+            }}
             onPointerUp={commit}
             className="flex shrink-0 gap-1"
           >
-            {shown.map((segment) => (
+            {visible.map((segment) => (
               <Clip
                 key={segment.id}
                 segment={segment}
                 selected={selected?.id === segment.id}
+                fade={!first.has(segment.id)}
                 onSelect={() => {
                   select(segment.id);
                   playback.jumpTo(segment.id);

@@ -221,7 +221,12 @@ export function BoardStage() {
         )}
       >
         {status === "running" ? (
-          <TaskGenerationStatus className="size-full" />
+          // 和画布图片节点同一套实时状态：按节点上绑的任务订阅排队 / 生成中 / 进度 / 耗时
+          <TaskGenerationStatus
+            taskId={node?.taskId ?? undefined}
+            mediaType="image"
+            className="size-full"
+          />
         ) : hasImage ? (
           <>
             {/* 大图先铺缩略图，原图加载完再淡入盖上去 */}
