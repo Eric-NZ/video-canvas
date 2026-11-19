@@ -166,13 +166,14 @@ export interface StartForm {
 /** 记住的上次选择：规划范围每本书不同，不记 */
 export type StartPrefs = Omit<StartForm, "kind" | "rangeEnd">;
 
-/** 五个环节全是内置 */
+/** 各环节全是内置 */
 export const builtinPrompts = (): StartPrompts => ({
   plan: { source: "builtin" },
   scripts: { source: "builtin" },
   assets: { source: "builtin" },
   asset_prompts: { source: "builtin" },
   video: { source: "builtin" },
+  board: { source: "builtin" },
 });
 
 const UNIT_WORD: Record<UnitKind, string> = {

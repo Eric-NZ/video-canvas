@@ -32,7 +32,7 @@ export type BoardSeed = {
 };
 
 /**
- * 按片段原稿拼一个故事板节点：内置宫格提示词、整图 16:9、所选图片模型、drama.board 标记（片段与出图时的原稿哈希），
+ * 按片段原稿拼一个故事板节点：按所选模板拼的宫格提示词、整图 16:9、所选图片模型、drama.board 标记（片段与出图时的原稿哈希），
  * 以及要连进来的资产节点（参考图靠连线带入，提示词里的 @ 由节点展开成图片编号）。
  */
 export function boardNodeSeed(args: {
@@ -41,10 +41,12 @@ export function boardNodeSeed(args: {
   /** 当前原稿的 SHA-256 */
   hash: string;
   model: ModelInfo | undefined;
+  /** 项目设置里选的故事板提示词模板正文 */
+  template: string;
   /** 画布上现有的节点 id */
   nodeIds: ReadonlySet<string>;
 }): BoardSeed {
-  const built = boardPrompt(args.segment.prompt);
+  const built = boardPrompt(args.segment.prompt, args.template);
   const caps = args.model?.capabilities;
   const max = caps?.refs?.image?.on ? caps.refs.image.max : 0;
   const refs: string[] = [];
@@ -79,19 +81,19 @@ export function boardNodeSeed(args: {
 }
 
 /**
- * 故事板默认用哪个图片模型：本机选过且仍在清单里就沿用；否则用建剧时选的场景图片模型；都没有取第一个。
+ * 故事板用哪个图片模型：项目设置里选了且仍在清单里就用它；否则跟随场景图片模型；都没有取第一个。
  * @param models 图片模型清单
- * @param savedKey 本机偏好，空串 = 没选
- * @param projectKey 建剧时的场景图片模型，空串 = 没指定
+ * @param boardKey 项目设置里的故事板模型，空串 = 没选
+ * @param sceneKey 场景图片模型，空串 = 没指定
  */
 export function pickBoardModel(
   models: readonly ModelInfo[],
-  savedKey: string,
-  projectKey: string,
+  boardKey: string,
+  sceneKey: string,
 ): ModelInfo | undefined {
   return (
-    models.find((info) => !!savedKey && info.key === savedKey) ??
-    models.find((info) => !!projectKey && info.key === projectKey) ??
+    models.find((info) => !!boardKey && info.key === boardKey) ??
+    models.find((info) => !!sceneKey && info.key === sceneKey) ??
     models[0]
   );
 }
@@ -160,6 +162,7 @@ export function ensureBoardNode(
     episodeNo: number;
     hash: string;
     model: ModelInfo | undefined;
+    template: string;
   },
 ): string {
   const nodes = flow.getNodes();

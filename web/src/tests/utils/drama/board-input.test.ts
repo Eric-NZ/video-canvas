@@ -44,6 +44,10 @@ const PROMPT = `【场景与光】@[周家厨房](n_kitchen)，午后。
 0-3秒：全景。闰土靠着灶台。
 3-6秒：中景。闰土抬头。`;
 
+/** 故事板提示词模板（项目设置里选的那份） */
+const TEMPLATE =
+  "生成一张 {{格数}} 格分镜图：{{列数}} 列 {{行数}} 行，整图比例 {{比例}}。\n{{画面}}";
+
 describe("boardNodeSeed：故事板节点的初始数据", () => {
   test("内置提示词、16:9、模型、drama.board 标记，以及要连线的资产节点（只连画布上还在的）", () => {
     const seed = boardNodeSeed({
@@ -51,6 +55,7 @@ describe("boardNodeSeed：故事板节点的初始数据", () => {
       episodeNo: 3,
       hash: "h1",
       model: model(),
+      template: TEMPLATE,
       nodeIds: new Set(["n_kitchen", "n_runtu"]),
     });
     expect(seed.label).toBe("故事板 · 第 3 集 · 01");
@@ -67,12 +72,26 @@ describe("boardNodeSeed：故事板节点的初始数据", () => {
     expect(seed.refs).toEqual(["n_kitchen", "n_runtu"]);
   });
 
+  test("提示词按传入的模板拼：自定义模板里的文字和占位符都生效", () => {
+    const seed = boardNodeSeed({
+      segment: { id: "s1", seq: 0, prompt: PROMPT },
+      episodeNo: 1,
+      hash: "h",
+      model: model(),
+      template: "水彩 {{格数}} 格\n{{画面}}",
+      nodeIds: new Set(),
+    });
+    expect(seed.data.prompt.startsWith("水彩 4 格\n")).toBe(true);
+    expect(seed.data.params).toMatchObject({ prompt: seed.data.prompt });
+  });
+
   test("参考图有上限：只连前几个；没有模型时不带模型和比例，也不连线", () => {
     const one = boardNodeSeed({
       segment: { id: "s1", seq: 0, prompt: PROMPT },
       episodeNo: 1,
       hash: "h",
       model: model(image({ max: 1 })),
+      template: TEMPLATE,
       nodeIds: new Set(["n_kitchen", "n_runtu"]),
     });
     expect(one.refs).toEqual(["n_kitchen"]);
@@ -81,6 +100,7 @@ describe("boardNodeSeed：故事板节点的初始数据", () => {
       episodeNo: 1,
       hash: "h",
       model: undefined,
+      template: TEMPLATE,
       nodeIds: new Set(["n_kitchen"]),
     });
     expect(none.data.model).toBeUndefined();
@@ -165,6 +185,7 @@ describe("ensureBoardNode：建 / 改故事板节点", () => {
       episodeNo: 1,
       hash: "h1",
       model: model(),
+      template: TEMPLATE,
     });
     const created = nodes.find((n) => n.id === id)!;
     expect(created.data).toMatchObject({
@@ -184,6 +205,7 @@ describe("ensureBoardNode：建 / 改故事板节点", () => {
       episodeNo: 1,
       hash: "h1",
       model: model(),
+      template: TEMPLATE,
     });
     nodes.find((n) => n.id === id)!.data.model = "user-picked";
     const again = ensureBoardNode(flow, {
@@ -191,6 +213,7 @@ describe("ensureBoardNode：建 / 改故事板节点", () => {
       episodeNo: 1,
       hash: "h2",
       model: model(),
+      template: TEMPLATE,
     });
     expect(again).toBe(id);
     expect(nodes.filter((n) => n.data.drama?.board)).toHaveLength(1);

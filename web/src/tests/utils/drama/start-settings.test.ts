@@ -62,6 +62,7 @@ const form = (patch: Partial<StartForm> = {}): StartForm => ({
     assets: { source: "builtin" },
     asset_prompts: { source: "builtin" },
     video: { source: "builtin" },
+    board: { source: "builtin" },
   },
   ...patch,
 });
@@ -149,6 +150,7 @@ describe("开拍设置：建剧请求", () => {
           assets: { source: "skill", skill: "cross" },
           asset_prompts: { source: "builtin" },
           video: { source: "builtin" },
+          board: { source: "builtin" },
         },
       }),
     );
@@ -168,6 +170,7 @@ describe("开拍设置：建剧请求", () => {
         assets: { source: "skill", skill: "cross" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
+        board: { source: "builtin" },
       },
     });
   });
@@ -186,6 +189,7 @@ describe("开拍设置：建剧请求", () => {
           assets: { source: "builtin" },
           asset_prompts: { source: "builtin" },
           video: { source: "builtin" },
+          board: { source: "builtin" },
         },
       }),
     );
@@ -204,6 +208,7 @@ describe("开拍设置：建剧请求", () => {
         assets: { source: "builtin" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
+        board: { source: "builtin" },
       }).video,
     ).toEqual({ source: "builtin" });
   });
@@ -260,6 +265,7 @@ describe("开拍设置：记住上次选择", () => {
       plan: { source: "skill", skill: "s1" },
       scripts: { source: "skill", skill: "s1" },
       video: { source: "builtin" },
+      board: { source: "builtin" },
     });
   });
 
@@ -282,6 +288,7 @@ describe("开拍设置：记住上次选择", () => {
         assets: { source: "skill", skill: "off" },
         asset_prompts: { source: "mine", id: "1f" },
         video: { source: "skill", skill: "on" },
+        board: { source: "mine", id: "gone" },
       },
       {
         plan: [],
@@ -289,13 +296,15 @@ describe("开拍设置：记住上次选择", () => {
         assets: [],
         asset_prompts: [{ id: "1f" }],
         video: [],
+        board: [],
       },
-      { plan: [], scripts: [], assets: [], asset_prompts: [], video: [{ name: "on" }] },
+      { plan: [], scripts: [], assets: [], asset_prompts: [], video: [{ name: "on" }], board: [] },
     );
     expect(next.plan).toEqual({ source: "builtin" });
     expect(next.assets).toEqual({ source: "builtin" });
     expect(next.asset_prompts).toEqual({ source: "mine", id: "1f" });
     expect(next.video).toEqual({ source: "skill", skill: "on" });
+    expect(next.board).toEqual({ source: "builtin" });
   });
 });
 

@@ -47,6 +47,7 @@ const makeLibrary = (items: MyPrompt[] = []) => {
       assets: [],
       asset_prompts: [],
       video: items.filter((i) => i.step === "video"),
+      board: [],
     },
     skills: {
       plan: [],
@@ -54,6 +55,7 @@ const makeLibrary = (items: MyPrompt[] = []) => {
       assets: [{ name: "cross", title: "跨集连续性", description: "保持角色一致" }],
       asset_prompts: [],
       video: [],
+      board: [],
     },
     save: async (draft) => {
       saved.push(draft);
@@ -210,12 +212,20 @@ describe("四行提示词下拉", () => {
       (b.textContent ?? "").includes(text),
     ) as HTMLButtonElement | undefined;
 
-  test("五行：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词，默认都是「内置」", async () => {
+  test("六行：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词 / 故事板提示词，默认都是「内置」", async () => {
     const { m } = await mount([]);
     const names = [...m.container.querySelectorAll('[data-slot="prompt-rows"] > div > span')].map(
       (el) => el.textContent,
     );
-    expect(names).toEqual(["分集规划", "分集剧本", "资产拆解", "资产图提示词", "视频提示词"]);
+    expect(names).toEqual([
+      "分集规划",
+      "分集剧本",
+      "资产拆解",
+      "资产图提示词",
+      "视频提示词",
+      "故事板提示词",
+    ]);
+    expect(rowChip(m.container, "故事板提示词").textContent).toBe("内置");
     expect(rowChip(m.container, "视频提示词").textContent).toBe("内置");
     await m.unmount();
   });

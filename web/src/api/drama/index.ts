@@ -102,13 +102,14 @@ export const mapJob = (raw: BackendJobView): DramaJob => ({
 /** 没有提示词设置（老项目）时各环节都是内置 */
 const BUILTIN_SETTING = { source: "builtin", label: "内置" } as const;
 
-/** 五个环节的提示词设置：缺的环节补成内置 */
+/** 六个环节的提示词设置：缺的环节补成内置 */
 export const mapPromptSettings = (raw: Partial<PromptSettings> | undefined): PromptSettings => ({
   plan: raw?.plan ?? BUILTIN_SETTING,
   scripts: raw?.scripts ?? BUILTIN_SETTING,
   assets: raw?.assets ?? BUILTIN_SETTING,
   asset_prompts: raw?.asset_prompts ?? BUILTIN_SETTING,
   video: raw?.video ?? BUILTIN_SETTING,
+  board: raw?.board ?? BUILTIN_SETTING,
 });
 
 export const mapDrama = (raw: BackendDramaView): Drama => ({
@@ -129,6 +130,7 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
     character: raw.image_models?.character ?? "",
     scene: raw.image_models?.scene ?? "",
     prop: raw.image_models?.prop ?? "",
+    board: raw.image_models?.board ?? "",
   },
   outlineMd: raw.outline_md ?? "",
   charactersMd: raw.characters_md ?? "",

@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { useReactFlow } from "@xyflow/react";
-import { CircleX, FolderOpen, Grid2x2, Loader2, RotateCw, Upload } from "lucide-react";
+import { CircleX, Grid2x2, Loader2, RotateCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Segment } from "@/api/drama/type";
@@ -10,17 +10,14 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { MediaPreview } from "@/components/canvas/media-preview";
 import { useCanvasEditor } from "@/components/canvas-editor/editor-api";
 import { submitNodeWhenReady } from "@/components/canvas-editor/node-actions";
-import { ModelMenu } from "@/components/drama/video-model-menu";
 import { Button } from "@/components/ui/button";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTextHashes } from "@/hooks/use-text-hashes";
 import { DURATION, STAGGER, STAGGER_MAX } from "@/lib/motion";
 import { useDramaSegmentsStore, segmentKey } from "@/store/drama-segments";
-import { useStudioPrefs, useStudioPrefsStore } from "@/store/drama-studio";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import { sha256Hex } from "@/utils/drama/adaptation";
 import {
-  BOARD_RATIO,
   boardsFromGraph,
   boardStatus,
   type BoardNode,
@@ -64,7 +61,7 @@ const needsBoard = (status: BoardStatus, segment: Segment) =>
 
 /**
  * 故事板卡（外观同资产卡）：16:9 封面按状态显示——已出图、生成中、失败、待生成；原稿改过左上角标出来。
- * 悬停浮出胶囊：空卡「生成 · 上传 · 素材库」，出过图的「重新生成」。点整张卡到画布里看这个节点（还没有节点时不响应）。
+ * 悬停浮出胶囊：空卡「生成 · 上传」，出过图的「重新生成」。点整张卡到画布里看这个节点（还没有节点时不响应）。
  */
 function BoardCard({
   segment,
@@ -75,7 +72,6 @@ function BoardCard({
   blocked,
   onGenerate,
   onUpload,
-  onPickLibrary,
   onLocate,
 }: {
   segment: Segment;
@@ -88,7 +84,6 @@ function BoardCard({
   blocked: string | null;
   onGenerate: () => void;
   onUpload: () => void;
-  onPickLibrary: () => void;
   onLocate: () => void;
 }) {
   const name = `片段 ${seqLabel(segment)}`;
@@ -160,11 +155,6 @@ function BoardCard({
                     <Upload />
                     上传
                   </button>
-                  <span aria-hidden className="bg-chrome-border h-4 w-px shrink-0" />
-                  <button type="button" className={SEGMENT_CLASS} onClick={onPickLibrary}>
-                    <FolderOpen />
-                    素材库
-                  </button>
                 </>
               )}
             </div>
@@ -206,12 +196,12 @@ export const BoardsOverlay = memo(function BoardsOverlay() {
   const boards = useMemo(() => boardsFromGraph(editor.nodes), [editor.nodes]);
   const hashOf = useTextHashes(useMemo(() => segments.map((s) => s.prompt), [segments]));
   const remote = useRemoteModels("image");
-  const prefs = useStudioPrefs(drama.id);
   const model = useMemo(
-    () => pickBoardModel(remote.models, prefs.boardModel, drama.imageModels.scene),
-    [drama.imageModels.scene, prefs.boardModel, remote.models],
+    () => pickBoardModel(remote.models, drama.imageModels.board, drama.imageModels.scene),
+    [drama.imageModels.board, drama.imageModels.scene, remote.models],
   );
   const credits = lowestUnit(model?.pricing);
+  const template = drama.promptSettings.board.bodies?.board ?? "";
   const [busy, setBusy] = useState(false);
 
   const { clearSelection } = editor;
@@ -226,8 +216,8 @@ export const BoardsOverlay = memo(function BoardsOverlay() {
 
   const ensureNode = useCallback(
     (segment: Segment, hash: string) =>
-      ensureBoardNode(flow, { segment, episodeNo: no, hash, model }),
-    [flow, model, no],
+      ensureBoardNode(flow, { segment, episodeNo: no, hash, model, template }),
+    [flow, model, no, template],
   );
 
   const hashNow = useCallback(
@@ -276,7 +266,7 @@ export const BoardsOverlay = memo(function BoardsOverlay() {
     if (go) await generate(targets);
   };
 
-  /** 空卡上传 / 从素材库选：先建好节点（记下当前原稿的哈希），等节点挂上再弹选择 */
+  /** 空卡上传：先建好节点（记下当前原稿的哈希），等节点挂上再弹选择 */
   const fillWith = async (segment: Segment, pick: (id: string) => void) => {
     const id = ensureNode(segment, await hashNow(segment));
     setTimeout(() => pick(id), SETTLE_MS);
@@ -294,14 +284,6 @@ export const BoardsOverlay = memo(function BoardsOverlay() {
           <span className="text-muted-foreground text-xs tabular-nums max-sm:hidden">
             {ready}/{segments.length}
           </span>
-          <ModelMenu
-            models={remote.models}
-            loading={remote.status === "idle" || remote.status === "loading"}
-            model={model}
-            onPick={(key) => useStudioPrefsStore.getState().patch(drama.id, { boardModel: key })}
-            kindName="图片"
-            title={`生成故事板用的图片模型（整图 ${BOARD_RATIO}）`}
-          />
           <Button
             size="sm"
             disabled={targets.length === 0 || !model || busy}
@@ -360,7 +342,6 @@ export const BoardsOverlay = memo(function BoardsOverlay() {
                 }
                 onGenerate={() => void generate([segment])}
                 onUpload={() => void fillWith(segment, editor.fill.pickFile)}
-                onPickLibrary={() => void fillWith(segment, editor.fill.pickAsset)}
                 onLocate={() => board && locate(board.nodeId)}
               />
             );

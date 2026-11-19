@@ -27,6 +27,7 @@ const FALLBACK_PAGES: Record<PromptStep, PromptTemplate["pages"]> = {
   assets: [{ key: "breakdown", label: "资产拆解", body: "" }],
   asset_prompts: [{ key: "asset_prompts", label: "资产图提示词", body: "" }],
   video: [{ key: "storyboard", label: "视频提示词", body: "" }],
+  board: [{ key: "board", label: "故事板提示词", body: "" }],
 };
 
 /**

@@ -1,6 +1,8 @@
 import type { BoardLayout } from "@/api/drama/type";
 import type { CanvasNodeData } from "@/types";
 
+import { BOARD_SHOTS_PLACEHOLDER } from "./prompts";
+
 /**
  * 故事板：每个片段一张宫格分镜图（docs/design/故事板/故事板.md）。
  * 格子按原稿【时间轴】的镜头一一对应，生视频时采用版作为第一张参考图。
@@ -12,10 +14,6 @@ export const BOARD_LINE =
 
 /** 故事板固定横版 16:9，不跟短剧画幅 */
 export const BOARD_RATIO = "16:9";
-
-/** 固定写在提示词最后：不要字幕等文字元素，人物与参考图保持一致 */
-export const BOARD_SUFFIX =
-  "无字幕，无贴图，无旁白，无背景音乐，保持人物与参考图完全一致，面部特征100%相同，保持相同的骨骼结构、眼间距和下颚几何形状，禁止美化，禁止改变年龄";
 
 /** 一个宫格最多几格；镜头再多就合并进最后一格 */
 const MAX_CELLS = 9;
@@ -74,11 +72,18 @@ export function boardLayout(shots: number): { layout: BoardLayout; cols: number;
 }
 
 /**
- * 拼宫格图的图片提示词（内置模板，不调文本模型，用户不另写）：宫格说明 + 原稿的画面风格、场景与光、人物与道具、站位 + 逐镜画面。
+ * 拼宫格图的图片提示词（不调文本模型）：把原稿填进项目设置里选的故事板模板（内置或「我的」）。
+ * 模板占位符：{{格数}} {{列数}} {{行数}} {{比例}}，以及 {{画面}} = 原稿的画面风格、场景与光、人物与道具、站位 + 逐镜画面。
+ * 模板里没有 {{画面}}（后端保存时会拦，这里兜底）就把画面接在最后，镜头内容不丢。
  * 原稿里的 `@[名](节点id)` 原样保留，组装 input 时换成参考图编号。
+ * @param prompt 片段原稿
+ * @param template 故事板模板正文；空串只放画面
  * @returns text 提示词；layout 布局；shotCount 数出的镜头数；notice 给用户看的提醒（没有为空串）
  */
-export function boardPrompt(prompt: string): {
+export function boardPrompt(
+  prompt: string,
+  template: string,
+): {
   text: string;
   layout: BoardLayout;
   shotCount: number;
@@ -113,12 +118,24 @@ export function boardPrompt(prompt: string): {
       ...shown.map((shot, index) => `${index + 1}. ${shot}`),
     ].join("\n");
   }
-  const text = [
-    `生成一张 ${cells} 格分镜图：${cols} 列 ${rows} 行，整图比例 ${BOARD_RATIO}，从左到右、从上到下依次对应下面的镜头。每格右上角标出编号，格与格之间用细白线隔开，没用到的格子留白；只画画面，不写台词和说明文字。`,
-    body,
-    BOARD_SUFFIX,
-  ].join("\n");
-  return { text, layout, shotCount: shots.length, notice };
+  const values: Record<string, string> = {
+    格数: String(cells),
+    列数: String(cols),
+    行数: String(rows),
+    比例: BOARD_RATIO,
+  };
+  const base = template.trim() || BOARD_SHOTS_PLACEHOLDER;
+  const filled = base.split(BOARD_SHOTS_PLACEHOLDER).join("\u0000");
+  const text = filled
+    .replace(/\{\{(格数|列数|行数|比例)\}\}/g, (_, name: string) => values[name])
+    .split("\u0000")
+    .join(body);
+  return {
+    text: base.includes(BOARD_SHOTS_PLACEHOLDER) ? text : `${text}\n${body}`,
+    layout,
+    shotCount: shots.length,
+    notice,
+  };
 }
 
 /** 故事板节点的 drama.board：属于哪个片段、出图时的原稿哈希、宫格信息（前端写入，后端据此数故事板） */

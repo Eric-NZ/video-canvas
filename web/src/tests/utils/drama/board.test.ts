@@ -4,7 +4,6 @@ import type { CanvasNodeData } from "@/types";
 import {
   BOARD_LINE,
   BOARD_RATIO,
-  BOARD_SUFFIX,
   boardLayout,
   boardPrompt,
   boardRef,
@@ -22,6 +21,13 @@ const PROMPT = `【画幅风格】9:16 竖屏，真人电影质感，暖黄低�
 0-3秒：全景、平视、固定。迅哥儿推门跑进厨房。台词：无
 3-6秒：中景、缓推。闰土低头躲在灶台边。
 6-9.5秒：近景、过肩。迅哥儿伸出手。迅哥儿（试探）：『你就是闰土？』台词：『你就是闰土？』`;
+
+/** 和后端内置的故事板模板一致（backend/internal/drama/prompts/board.md） */
+const TEMPLATE = [
+  "生成一张 {{格数}} 格分镜图：{{列数}} 列 {{行数}} 行，整图比例 {{比例}}，从左到右、从上到下依次对应下面的镜头。每格右上角标出编号，格与格之间用细白线隔开，没用到的格子留白；只画画面，不写台词和说明文字。",
+  "{{画面}}",
+  "无字幕，无贴图，无旁白，无背景音乐，保持人物与参考图完全一致，面部特征100%相同，保持相同的骨骼结构、眼间距和下颚几何形状，禁止美化，禁止改变年龄",
+].join("\n");
 
 type GraphNode = { id: string; type?: string; data: CanvasNodeData };
 
@@ -66,8 +72,8 @@ describe("utils/drama/board：镜头与布局", () => {
 });
 
 describe("utils/drama/board：宫格图提示词", () => {
-  test("全用内置模板：画面风格、场景、人物、站位和逐镜画面，保留 @ 引用，不带台词", () => {
-    const out = boardPrompt(PROMPT);
+  test("内置模板：画面风格、场景、人物、站位和逐镜画面，保留 @ 引用，不带台词", () => {
+    const out = boardPrompt(PROMPT, TEMPLATE);
     expect(out.layout).toBe("2x2");
     expect(out.shotCount).toBe(3);
     expect(out.notice).toBe("");
@@ -81,12 +87,34 @@ describe("utils/drama/board：宫格图提示词", () => {
     expect(out.text).toContain("3. 近景、过肩。迅哥儿伸出手。");
     expect(out.text).not.toContain("你就是闰土");
     // 固定结尾：无字幕等，人物与参考图一致
-    expect(out.text.endsWith(BOARD_SUFFIX)).toBe(true);
-    expect(BOARD_SUFFIX).toContain("面部特征100%相同");
+    expect(out.text.endsWith("禁止美化，禁止改变年龄")).toBe(true);
+    expect(out.text).not.toContain("{{");
+  });
+
+  test("自定义模板：占位符都被替换（同一个占位符出现多次也全换），模板其余文字原样保留", () => {
+    const out = boardPrompt(
+      PROMPT,
+      "水彩风。共 {{格数}} 格（{{列数}}×{{行数}}），比例 {{比例}}。\n{{画面}}\n再强调一次 {{格数}} 格。",
+    );
+    expect(out.text.startsWith("水彩风。共 4 格（2×2），比例 16:9。\n画面风格：")).toBe(true);
+    expect(out.text).toContain("1. 全景、平视、固定。迅哥儿推门跑进厨房。");
+    expect(out.text.endsWith("再强调一次 4 格。")).toBe(true);
+    expect(out.text).not.toContain("{{");
+    expect(out).toMatchObject({ layout: "2x2", shotCount: 3 });
+  });
+
+  test("模板里漏了 {{画面}}（不该发生）：画面接在最后，镜头内容不丢", () => {
+    const out = boardPrompt(PROMPT, "只有开头 {{格数}} 格");
+    expect(out.text.startsWith("只有开头 4 格\n")).toBe(true);
+    expect(out.text).toContain("1. 全景、平视、固定。");
+  });
+
+  test("没有模板（空串）：只放画面，不写死任何版式文字", () => {
+    expect(boardPrompt(PROMPT, "  ").text).toContain("1. 全景、平视、固定。");
   });
 
   test("没识别到时间轴：按 4 格出，并把原稿整段交给模型", () => {
-    const out = boardPrompt("一段没有分栏的原稿");
+    const out = boardPrompt("一段没有分栏的原稿", TEMPLATE);
     expect(out).toMatchObject({ layout: "2x2", shotCount: 0 });
     expect(out.notice).toBe("没识别到时间轴，按 4 格生成");
     expect(out.text).toContain("一段没有分栏的原稿");
@@ -96,7 +124,7 @@ describe("utils/drama/board：宫格图提示词", () => {
     const lines = Array.from({ length: 11 }, (_, i) => `${i}-${i + 1}秒：镜头${i + 1}。`).join(
       "\n",
     );
-    const out = boardPrompt(`【时间轴】\n${lines}`);
+    const out = boardPrompt(`【时间轴】\n${lines}`, TEMPLATE);
     expect(out).toMatchObject({ layout: "3x3", shotCount: 11 });
     expect(out.notice).toBe("镜头过多（11 个），第 9 格合并了剩下的镜头，建议拆段");
     expect(out.text).toContain("9. 镜头9。；镜头10。；镜头11。");

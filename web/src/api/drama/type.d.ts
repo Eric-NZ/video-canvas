@@ -35,7 +35,7 @@ export type PauseCode = "user" | "credits" | "failed" | "context" | "custom_prom
 export type UnitKind = "episode" | "scene" | "chapter" | "chunk";
 
 /** 提示词的五个环节：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词 */
-export type PromptStep = "plan" | "scripts" | "assets" | "asset_prompts" | "video";
+export type PromptStep = "plan" | "scripts" | "assets" | "asset_prompts" | "video" | "board";
 
 /** 任务状态 */
 export type DramaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -77,6 +77,8 @@ export interface PromptSetting extends PromptChoice {
   label: string;
   /** true 表示快照来源（我的提示词 / 技能）已被删或停用：快照照常可用，界面标红提示 */
   missing?: boolean;
+  /** 只有故事板环节带正文（{ board: 模板 }）：前端按它拼宫格图提示词；其他环节不返回 */
+  bodies?: Record<string, string>;
 }
 
 /** 已建剧的各环节提示词设置 */
@@ -150,11 +152,12 @@ export interface BackendJobView {
   batch_to?: number;
 }
 
-/** 三类资产各自的图片模型 key，空串 = 不指定 */
+/** 三类资产和故事板各自的图片模型 key，空串 = 不指定（故事板跟随场景图片模型） */
 export interface DramaImageModels {
   character: string;
   scene: string;
   prop: string;
+  board: string;
 }
 
 export interface BackendDramaView {
@@ -654,7 +657,7 @@ export interface SourceEstimateInput {
 
 /** 内置提示词的一页（现在每个环节一页） */
 export interface PromptPage {
-  /** 页 key：plan / scripts / breakdown / asset_prompts / storyboard */
+  /** 页 key：plan / scripts / breakdown / asset_prompts / storyboard / board */
   key: string;
   /** 页签名 */
   label: string;

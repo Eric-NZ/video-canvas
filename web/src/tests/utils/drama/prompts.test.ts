@@ -29,13 +29,14 @@ const video: PromptTemplate = {
 };
 
 describe("提示词环节", () => {
-  test("五个环节：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词", () => {
+  test("六个环节：分集规划 / 分集剧本 / 资产拆解 / 资产图提示词 / 视频提示词 / 故事板提示词", () => {
     expect(PROMPT_STEPS.map((s) => [s.key, s.name])).toEqual([
       ["plan", "分集规划"],
       ["scripts", "分集剧本"],
       ["assets", "资产拆解"],
       ["asset_prompts", "资产图提示词"],
       ["video", "视频提示词"],
+      ["board", "故事板提示词"],
     ]);
   });
 
@@ -141,6 +142,18 @@ describe("提示词编辑器草稿", () => {
       ),
     ).toContain("20,000");
     expect(validatePromptDraft({ ...base, name: "新" }, names)).toBeNull();
+  });
+
+  test("故事板提示词：正文必须保留 {{画面}}，其他环节没有这条", () => {
+    const board = draftFromTemplate({
+      step: "board",
+      pages: [{ key: "board", label: "故事板提示词", body: "内置 {{画面}}" }],
+    });
+    expect(validatePromptDraft({ ...board, name: "新" }, [])).toBeNull();
+    expect(
+      validatePromptDraft({ ...board, name: "新", bodies: { board: "水彩风宫格图" } }, []),
+    ).toBe("正文必须保留 {{画面}}，镜头内容会放在这里");
+    expect(validatePromptDraft({ ...draftFromTemplate(video), name: "新" }, [])).toBeNull();
   });
 
   test("编辑自己时同名不算重复；报错带上是哪一页", () => {

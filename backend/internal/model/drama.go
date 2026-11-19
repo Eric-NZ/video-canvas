@@ -119,17 +119,19 @@ type CreateDramaReq struct {
 	TextModel string `json:"text_model" binding:"max=128"`
 	// VideoModel 分镜与片段用的视频模型 key；空串表示不指定
 	VideoModel string `json:"video_model" binding:"max=128"`
-	// ImageModels 人物 / 场景 / 物品资产节点新建时默认的图片模型 key；空串表示不指定
+	// ImageModels 人物 / 场景 / 物品资产节点新建时默认的图片模型 key 和故事板的图片模型 key；空串表示不指定
 	ImageModels DramaImageModels `json:"image_models"`
 	// ImageParams 三类资产节点新建时默认的比例、分辨率等生成参数
 	ImageParams DramaImageParams `json:"image_params"`
 }
 
-// DramaImageModels 三类资产各自默认的图片模型 key，空串表示不指定。
+// DramaImageModels 三类资产各自默认的图片模型 key，加上故事板出图用的模型 key，空串表示不指定。
 type DramaImageModels struct {
 	Character string `json:"character" binding:"max=128"`
 	Scene     string `json:"scene" binding:"max=128"`
 	Prop      string `json:"prop" binding:"max=128"`
+	// Board 故事板出图的模型；空串跟随场景图片模型。不是资产类型，不进 ByType
+	Board string `json:"board,omitempty" binding:"max=128"`
 }
 
 // ByType 返回资产类型（character / scene / prop）到模型 key 的映射，只含已指定的项。

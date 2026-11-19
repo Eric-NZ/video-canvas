@@ -20,19 +20,14 @@ afterEach(() => {
 
 describe("片段工作区偏好（按短剧存在本机）", () => {
   test("没存过：空偏好", () => {
-    expect(readPrefs("d1")).toEqual({
-      videoModel: "",
-      overrides: {},
-      boardModel: "",
-      boardOff: false,
-    });
+    expect(readPrefs("d1")).toEqual({ videoModel: "", overrides: {}, boardOff: false });
   });
 
-  test("故事板的图片模型和关闭开关：读得到，形状不对时回到默认", () => {
+  test("故事板的关闭开关：读得到，形状不对时回到默认；旧版本存的故事板模型不再带出", () => {
     memory.set("drama-studio:d1", JSON.stringify({ boardModel: "flux", boardOff: true }));
-    expect(readPrefs("d1")).toMatchObject({ boardModel: "flux", boardOff: true });
-    memory.set("drama-studio:d1", JSON.stringify({ boardModel: 1, boardOff: "yes" }));
-    expect(readPrefs("d1")).toMatchObject({ boardModel: "", boardOff: false });
+    expect(readPrefs("d1")).toEqual({ videoModel: "", overrides: {}, boardOff: true });
+    memory.set("drama-studio:d1", JSON.stringify({ boardOff: "yes" }));
+    expect(readPrefs("d1")).toMatchObject({ boardOff: false });
   });
 
   test("旧版本存过首帧模型：读出来不再带它", () => {
@@ -56,12 +51,7 @@ describe("片段工作区偏好（按短剧存在本机）", () => {
     memory.set("drama-studio:d1", "{不是 json");
     expect(readPrefs("d1").videoModel).toBe("");
     memory.set("drama-studio:d1", JSON.stringify({ videoModel: 3, overrides: [1] }));
-    expect(readPrefs("d1")).toEqual({
-      videoModel: "",
-      overrides: {},
-      boardModel: "",
-      boardOff: false,
-    });
+    expect(readPrefs("d1")).toEqual({ videoModel: "", overrides: {}, boardOff: false });
   });
 
   test("localStorage 不可用（隐私模式）：读写都不抛", () => {

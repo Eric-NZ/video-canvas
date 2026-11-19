@@ -58,8 +58,8 @@ const pre = (patch: Partial<SourcePreflight> = {}): SourcePreflight => ({
 const library: PromptLibrary = {
   ready: true,
   templates: [],
-  mine: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [] },
-  skills: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [] },
+  mine: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [], board: [] },
+  skills: { plan: [], scripts: [], assets: [], asset_prompts: [], video: [], board: [] },
   save: async () => {
     throw new Error("not used");
   },
@@ -305,6 +305,7 @@ describe("开拍设置：点「开始」建剧", () => {
         assets: { source: "builtin" },
         asset_prompts: { source: "builtin" },
         video: { source: "builtin" },
+        board: { source: "builtin" },
       },
     });
     await m.unmount();

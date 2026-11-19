@@ -6,14 +6,21 @@ import type {
   PromptTemplate,
 } from "@/api/drama/type";
 
-/** 提示词的五个环节，按界面显示顺序 */
+/** 提示词的六个环节，按界面显示顺序 */
 export const PROMPT_STEPS: { key: PromptStep; name: string }[] = [
   { key: "plan", name: "分集规划" },
   { key: "scripts", name: "分集剧本" },
   { key: "assets", name: "资产拆解" },
   { key: "asset_prompts", name: "资产图提示词" },
   { key: "video", name: "视频提示词" },
+  { key: "board", name: "故事板提示词" },
 ];
+
+/** 能选「技能」的环节：故事板是前端拼图片提示词的模板，不走文本模型，没有技能来源 */
+export const SKILL_STEPS = PROMPT_STEPS.filter((item) => item.key !== "board");
+
+/** 故事板模板里放逐镜画面的占位符，自定义模板必须保留 */
+export const BOARD_SHOTS_PLACEHOLDER = "{{画面}}";
 
 /** 我的提示词名称上限（字） */
 export const PROMPT_NAME_MAX = 40;
@@ -159,6 +166,9 @@ export function validatePromptDraft(
     if (!body.trim()) return `${label}不能为空`;
     if (body.length > PROMPT_BODY_MAX) {
       return `${label}不能超过 ${PROMPT_BODY_MAX.toLocaleString("en-US")} 字`;
+    }
+    if (draft.step === "board" && !body.includes(BOARD_SHOTS_PLACEHOLDER)) {
+      return `${label}必须保留 ${BOARD_SHOTS_PLACEHOLDER}，镜头内容会放在这里`;
     }
   }
   return null;
