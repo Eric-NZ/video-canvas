@@ -33,6 +33,29 @@ func TestSiteFor(t *testing.T) {
 	}
 }
 
+func TestIsOfficialFilingHost(t *testing.T) {
+	cases := []struct {
+		baseURL  string
+		official bool
+	}{
+		{"https://ark.cn-beijing.volces.com/api/v3", true},
+		{"https://ARK.CN-BEIJING.VOLCES.COM", true},
+		{"https://ark.ap-southeast.bytepluses.com/api/v3", true},
+		{"https://ark.cn-beijing.volces.com:443/api/v3", true},
+		{"https://gw.example.com", false},
+		{"https://ark.cn-beijing.volces.com.evil.example.com", false},
+		{"https://example.com/ark.cn-beijing.volces.com", false},
+		{"https://ark.byteplus.example.com", false},
+		{"not a url", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := provider.IsOfficialFilingHost(c.baseURL); got != c.official {
+			t.Errorf("IsOfficialFilingHost(%q) = %v，期望 %v", c.baseURL, got, c.official)
+		}
+	}
+}
+
 // recorded 是测试服务器收到的一次请求。
 type recorded struct {
 	action string

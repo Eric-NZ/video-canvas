@@ -29,6 +29,7 @@ import {
   buildChannelRequest,
   channelFormFromView,
   emptyChannelForm,
+  showFilingSwitch,
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
 import { ADMIN_ERROR_CODE, errorMessage } from "@/utils/admin/errors";
@@ -354,7 +355,7 @@ function ChannelForm({
           </div>
         </div>
 
-        {channel && (
+        {channel && showFilingSwitch(form.baseUrl, form.filingEnabled) && (
           <FilingSection
             form={form}
             filing={channel.filing}

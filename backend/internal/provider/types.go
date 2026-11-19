@@ -390,6 +390,22 @@ type FilingSite struct {
 	Region string // 签名 region
 }
 
+// 虚拟人像库只对方舟官方渠道开放：国内站和 BytePlus 国际站各一个推理域名，第三方中转没有素材库接口。
+var officialFilingHosts = map[string]struct{}{
+	"ark.cn-beijing.volces.com":       {},
+	"ark.ap-southeast.bytepluses.com": {},
+}
+
+// IsOfficialFilingHost 判断渠道 base_url 是不是方舟 / BytePlus 官方域名（整个域名相等，忽略大小写和端口）。
+func IsOfficialFilingHost(baseURL string) bool {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return false
+	}
+	_, ok := officialFilingHosts[strings.ToLower(u.Hostname())]
+	return ok
+}
+
 // FilingSiteFor 按渠道 base_url 判断站点：域名里带 byteplus 的是 BytePlus 国际站，其余按方舟国内站。
 // 管理域名与推理域名是两套，不能从推理域名机械拼出来：国内 ark.cn-beijing.volcengineapi.com，国际 ark.ap-southeast-1.byteplusapi.com。
 func FilingSiteFor(baseURL string) FilingSite {

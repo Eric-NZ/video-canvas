@@ -55,7 +55,7 @@ func (s *AIChannelService) filingView(ctx context.Context, ch *model.AIChannel) 
 }
 
 // applyFiling 校验并套用虚拟人像库配置，返回校验问题；查库失败才返回 error。
-// 启用时素材组 ID 必填；整个平台只允许一个渠道启用——真人图片只备案到一个渠道，两个都启用就说不清该备案到哪。
+// 启用时素材组 ID 必填、渠道必须是方舟 / BytePlus 官方地址；整个平台只允许一个渠道启用——真人图片只备案到一个渠道，两个都启用就说不清该备案到哪。
 func (s *AIChannelService) applyFiling(ctx context.Context, next *model.AIChannel, in model.ChannelFiling) ([]string, error) {
 	f := model.ChannelFiling{
 		Enabled: in.Enabled, GroupID: strings.TrimSpace(in.GroupID), ProjectName: strings.TrimSpace(in.ProjectName),
@@ -67,6 +67,9 @@ func (s *AIChannelService) applyFiling(ctx context.Context, next *model.AIChanne
 	if f.Enabled {
 		if f.GroupID == "" {
 			problems = append(problems, "启用虚拟人像库时必须填写素材组 ID")
+		}
+		if !provider.IsOfficialFilingHost(next.BaseURL) {
+			problems = append(problems, "虚拟人像库只支持方舟 / BytePlus 官方渠道（Base URL 为 ark.cn-beijing.volces.com 或 ark.ap-southeast.bytepluses.com）")
 		}
 		other, err := s.otherFilingChannel(ctx, next.Key)
 		if err != nil {

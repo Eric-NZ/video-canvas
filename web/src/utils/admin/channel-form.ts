@@ -216,6 +216,10 @@ export function buildChannelRequest(
   if (original && filing.enabled && !filing.group_id) {
     errors.filingGroupId = "启用虚拟人像库时必须填写素材组 ID";
   }
+  if (filing.enabled && !errors.baseUrl && !isOfficialFilingHost(form.baseUrl)) {
+    errors.baseUrl =
+      "虚拟人像库只支持方舟 / BytePlus 官方地址（ark.cn-beijing.volces.com、ark.ap-southeast.bytepluses.com）";
+  }
 
   if (
     "error" in rps ||
@@ -303,4 +307,29 @@ export function filingSiteOf(baseUrl: string): string {
     // 地址还没填完整，按原文判断
   }
   return host.toLowerCase().includes("byteplus") ? "ap-southeast-1" : "cn-beijing";
+}
+
+/** 虚拟人像库只对方舟官方渠道开放：国内站和 BytePlus 国际站各一个推理域名，与后端 provider.IsOfficialFilingHost 一致。 */
+const OFFICIAL_FILING_HOSTS = ["ark.cn-beijing.volces.com", "ark.ap-southeast.bytepluses.com"];
+
+/**
+ * Base URL 是不是方舟 / BytePlus 官方域名（整个域名相等，忽略大小写和端口）。
+ * @param baseUrl 表单里的 Base URL
+ */
+export function isOfficialFilingHost(baseUrl: string): boolean {
+  try {
+    return OFFICIAL_FILING_HOSTS.includes(new URL(baseUrl.trim()).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 渠道弹窗里要不要显示「虚拟人像库」开关：官方地址才显示；
+ * 已经启用的非官方渠道也留着开关，不然没法关掉。
+ * @param baseUrl 表单里的 Base URL
+ * @param filingEnabled 表单里的开关当前值
+ */
+export function showFilingSwitch(baseUrl: string, filingEnabled: boolean): boolean {
+  return filingEnabled || isOfficialFilingHost(baseUrl);
 }
