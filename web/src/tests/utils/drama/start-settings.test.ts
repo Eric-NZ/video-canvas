@@ -235,6 +235,13 @@ describe("开拍设置：记住上次选择", () => {
     expect(prefs && "rangeEnd" in prefs).toBe(false);
   });
 
+  test("自定义单集时长可存取，超出后端支持范围则回落默认", () => {
+    saveStartPrefs(form({ seconds: 75 }));
+    expect(loadStartPrefs()?.seconds).toBe(75);
+    store.set("drama-start-prefs", JSON.stringify({ seconds: 29 }));
+    expect(loadStartPrefs()?.seconds).toBe(60);
+  });
+
   test("损坏的存储当作没有；非法画幅回落 9:16", () => {
     store.set("drama-start-prefs", "{oops");
     expect(loadStartPrefs()).toBeNull();
