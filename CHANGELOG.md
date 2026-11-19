@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- Agnes 图片、OpenAI 文本和对话生图、豆包图片与视频、Hailuo 首尾帧、Vidu、xAI、百炼图片与视频、Agnes 视频、豆包音频、可灵和 New API 视频插件支持在渠道设置中选择存储 URL、Data URL 或 Base64 传输参考素材。
+
 ## [0.6.18] - 2026-11-18
 
 ### 新增
