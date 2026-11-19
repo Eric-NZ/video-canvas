@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Reorder } from "motion/react";
 import { CircleX, Film, Layers, Loader2, Pause, Play, Plus } from "lucide-react";
 
-import { VideoPoster } from "@/components/canvas/media-preview";
+import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
 import { Button } from "@/components/ui/button";
 import { useStaggeredCount } from "@/hooks/use-staggered-mount";
 import { cn } from "@/lib/utils";
@@ -106,8 +106,10 @@ function Clip({
       {take?.asset ? (
         <VideoPoster src={take.asset.url} />
       ) : boardSrc && !running ? (
-        // 还没视频：缩略图显示故事板（压暗一点，和出了视频的区分开）
-        <img src={boardSrc} alt="" className="size-full object-cover opacity-60" />
+        // 还没视频：缩略图显示故事板（压暗一点，和出了视频的区分开）；小格只要缩略图，缩略图失败才退回原图
+        <div className="size-full opacity-60">
+          <MediaPreview src={boardSrc} mode="thumb" fit="cover" draggable={false} />
+        </div>
       ) : (
         <div className="text-muted-foreground grid size-full place-items-center pb-4">
           {running ? (

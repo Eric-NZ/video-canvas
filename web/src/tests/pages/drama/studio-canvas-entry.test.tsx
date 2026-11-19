@@ -173,7 +173,7 @@ describe("片场进入画布：都不卸载，只切看哪一面", () => {
     await dom.click(toggle(m.container, "画布"));
     await frames(2);
     const before = mounts;
-    await dom.click(toggle(m.container, "列表"));
+    await dom.click(toggle(m.container, "片场"));
     await frames(2);
     const { list, canvas } = faces(m.container);
     expect(list?.getAttribute("data-shown")).toBe("true");

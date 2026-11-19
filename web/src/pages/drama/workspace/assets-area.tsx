@@ -168,19 +168,22 @@ export function DramaCanvas({
   );
 }
 
-/** 「列表 ⇄ 画布」切换：资产管理和故事板共用 */
+/** 「列表 ⇄ 画布」切换：资产管理和片场共用；第一项的名字不同，资产管理叫「列表」，片场叫「片场」 */
 export function ViewToggle({
   view,
   onChange,
+  listLabel = "列表",
 }: {
   view: "list" | "canvas";
   onChange: (view: "list" | "canvas") => void;
+  /** 第一项的名字 */
+  listLabel?: string;
 }) {
   return (
     <div role="group" aria-label="视图" className="bg-muted flex rounded-lg p-0.5">
       {(
         [
-          ["list", "列表", LayoutGrid],
+          ["list", listLabel, LayoutGrid],
           ["canvas", "画布", Frame],
         ] as const
       ).map(([key, label, Icon]) => (

@@ -475,11 +475,11 @@ describe("片场故事板：顶部条「补齐故事板」", () => {
 });
 
 describe("片场：列表 | 画布 切换（和资产管理同款）", () => {
-  test("两个选项，当前视图高亮；点「画布」切到画布面，点「列表」回列表面（都是直接切，不用等）", async () => {
+  test("两个选项「片场 | 画布」，当前视图高亮；点「画布」切到画布面，点「片场」回片场面（都是直接切，不用等）", async () => {
     const { value, calls } = studio({});
     const m = await mount(value, <StudioViewToggle />);
     const buttons = [...m.container.querySelectorAll("button")] as HTMLButtonElement[];
-    expect(buttons.map((b) => b.textContent)).toEqual(["列表", "画布"]);
+    expect(buttons.map((b) => b.textContent)).toEqual(["片场", "画布"]);
     expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
     // 不转圈、不禁用：画布早在后台挂好了
     expect(buttons.every((b) => !b.disabled && !b.querySelector(".animate-spin"))).toBe(true);

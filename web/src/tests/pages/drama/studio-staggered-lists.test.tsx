@@ -195,3 +195,29 @@ function WithPlaybackBar() {
     </PlaybackContext.Provider>
   );
 }
+
+describe("片段条：没视频时缩略图用故事板的缩略图", () => {
+  test("故事板图用 ?v=thumb 的小图，不直接加载原图", async () => {
+    const withBoard = {
+      ...studio,
+      segments: segments.slice(0, 2),
+      boards: {
+        statusOf: () => "ready",
+        nodeOf: () => ({ src: "/files/assets/31.png" }),
+      },
+    } as unknown as Studio;
+    const m = await dom.mount(
+      <StudioContext.Provider value={withBoard}>
+        <WithPlaybackBar />
+      </StudioContext.Provider>,
+    );
+    await frames(4);
+    const srcs = [...m.container.querySelectorAll('[role="button"] img')].map((img) =>
+      img.getAttribute("src"),
+    );
+    expect(srcs.length).toBeGreaterThan(0);
+    // 每一格的故事板图都是缩略图地址
+    expect(srcs.every((src) => src === "/files/assets/31.png?v=thumb")).toBe(true);
+    await m.unmount();
+  });
+});
