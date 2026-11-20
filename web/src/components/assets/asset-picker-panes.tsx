@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { FilingStatus } from "@/components/virtual-human/filing-status";
 import { FilterMenu } from "@/components/assets/filter-menu";
+import { VirtualGrid } from "@/components/assets/virtual-grid";
 import type { AssetFoldersState } from "@/hooks/use-asset-folders";
 import { useAssetLibrary } from "@/hooks/use-asset-library";
 import { useGeneratedAssets } from "@/hooks/use-generated-assets";
@@ -491,19 +492,29 @@ export function OfficialPane({
           hint={filtering ? "换个分类或清空搜索词再试" : undefined}
         />
       ) : (
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-[repeat(auto-fill,minmax(88px,1fr))]">
-          {shown.map((asset) => (
+        <VirtualGrid
+          scroll="parent"
+          items={shown}
+          getKey={(asset) => asset.id}
+          columns={PICK_GRID_SPEC}
+          estimateRowHeight={estimatePickRow}
+          renderItem={(asset) => (
             <OfficialVoicePickCard
-              key={asset.id}
               asset={asset}
               select={selectOf(selected, asset, onToggle, rules)}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   );
 }
+
+/** 弹框里的音色网格：每列最小 104px、间距 8px，窄屏至少 4 列 */
+const PICK_GRID_SPEC = { minCell: 104, gap: 8, minColumns: 4 };
+
+/** 一行的估高：卡片 = 边框 2 + 内边距 12 + 方形头像（比单元格窄 14）+ 头像到名字 4 + 名字一行 14，再加行距。挂载后以量到的为准。 */
+const estimatePickRow = (cellWidth: number) => cellWidth + 18 + PICK_GRID_SPEC.gap;
 
 /** 紧凑的音色选择卡：整张卡都是点击区，点头像或名字都能勾选；方形缩略图 + 名字常显在下方，选中描边并标勾选序号。 */
 export function OfficialVoicePickCard({ asset, select }: { asset: AssetDto; select: CardSelect }) {
@@ -519,7 +530,7 @@ export function OfficialVoicePickCard({ asset, select }: { asset: AssetDto; sele
       onClick={select.onToggle}
       whileTap={select.disabled ? undefined : TAP_CARD}
       className={cn(
-        "bg-card group/card relative flex min-w-0 flex-col gap-1 rounded-lg border p-1.5 text-center transition-opacity",
+        "bg-card group/card relative flex w-full min-w-0 flex-col gap-1 rounded-lg border p-1.5 text-center transition-opacity",
         "focus-visible:ring-ring/60 focus-visible:ring-2",
         select.selected && "outline-foreground outline-2 outline-offset-2",
         select.disabled && "cursor-not-allowed opacity-45",

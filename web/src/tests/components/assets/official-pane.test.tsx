@@ -50,4 +50,33 @@ describe("素材选择器「音色库」面板", () => {
     expect(html).not.toContain('role="group"');
     expect(html).not.toContain("男孩");
   });
+
+  test("音色卡片比之前大一档：每列最小 104px、间距 8px，窄屏至少 4 列", () => {
+    // 服务端渲染量不到宽度，按最少列数出行；列间距写在行上
+    expect(html).toContain("repeat(4, minmax(0, 1fr))");
+    expect(html).toContain("column-gap:8px");
+  });
+
+  test("音色卡片自己撑满单元格宽度，虚拟网格里按钮不会自动拉宽", () => {
+    const tag = html.match(/<button[^>]*data-slot="official-voice-pick"[^>]*>/)?.[0] ?? "";
+    const classes = tag.match(/class="([^"]*)"/)?.[1] ?? "";
+    expect(classes.split(" ")).toContain("w-full");
+  });
+
+  test("音色多达 181 条时只挂载视口附近的卡片，不一次全挂", async () => {
+    const items = Array.from({ length: 181 }, (_, i) => voice(i + 1, `音色${i + 1}`));
+    get.mockResolvedValueOnce({ items: items.slice(0, 100), total: 181 } as never);
+    get.mockResolvedValueOnce({ items: items.slice(100), total: 181 } as never);
+    await listAllOfficialVoices();
+
+    const many = renderToStaticMarkup(
+      <OfficialPane q="" selected={[]} rules={{ limit: 3 } as never} onToggle={() => {}} />,
+    );
+    const cards = many.match(/data-slot="official-voice-pick"/g) ?? [];
+
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.length).toBeLessThan(60);
+    expect(many).toContain('aria-label="音色1"');
+    expect(many).not.toContain('aria-label="音色181"');
+  });
 });
