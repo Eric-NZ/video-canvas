@@ -48,13 +48,28 @@ docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   < seed/official-voices/assets.sql
 ```
 
-导入结束会打印两个计数，都应是 181：
+SQL 自带两道核对：数据包里 362 条记录必须全部在库里，缺一条就整事务回滚并报出缺多少；
+结束时再打印公开音色总数。正常输出：
 
 ```text
+NOTICE:  导入完成：362 条记录（181 条音色 + 181 张缩略图）已就位
  voices | thumbnails
 --------+------------
     181 |        181
 ```
+
+## 发版导入流程
+
+给部署 / 发版的人一条最短路径，四步做完就能验收：
+
+1. **文件到位**：按上面「第一步」解包到存储（本地磁盘一条 `mv`，对象存储一次同步）。
+2. **导记录**：`psql "$APP_DATABASE_DSN" -f seed/official-voices/assets.sql`，看到 `181 | 181` 才继续。
+3. **接口核对**：管理员账号请求 `GET /api/v1/assets/official?kind=audio&limit=1`，`total` 应为 `181`。
+4. **页面验收**：资产页「音色库」应显示 181 条，随便点开一条能试听；生成一个视频节点时能选中音色。
+
+任何一步不对，先看 SQL 的 NOTICE：若报「导入不完整」，说明该环境已有同名 key 或官方 ID 的行，
+先清掉 `source in ('official','official_thumb')` 的旧记录再重导；若第二步就报「没有默认存储配置」，
+先在后台「存储配置」里指定默认存储。重复执行是安全的，不会产生重复音色。
 
 ## 行为
 

@@ -406,7 +406,20 @@ WHERE NOT EXISTS (SELECT 1 FROM assets a WHERE a.storage_key = v.storage_key)
        OR NOT EXISTS (SELECT 1 FROM assets a WHERE a.official_asset_id = v.official_asset_id
                         AND a.source = 'official'));
 
--- 核对：两个数都应为 181
+-- 核对一：数据包里的 362 条记录是否都落到了库里。少一条就整体回滚，避免发版后才发现缺音色。
+DO $$
+DECLARE missing int;
+BEGIN
+  SELECT count(*) INTO missing
+  FROM voice_seed v
+  WHERE NOT EXISTS (SELECT 1 FROM assets a WHERE a.storage_key = v.storage_key);
+  IF missing > 0 THEN
+    RAISE EXCEPTION '导入不完整：还有 % 条记录没写进库（键名或官方 ID 与已有数据冲突）', missing;
+  END IF;
+  RAISE NOTICE '导入完成：362 条记录（181 条音色 + 181 张缩略图）已就位';
+END $$;
+
+-- 核对二：当前库里公开音色的总数，正常是 181 / 181
 SELECT count(*) FILTER (WHERE source = 'official')       AS voices,
        count(*) FILTER (WHERE source = 'official_thumb') AS thumbnails
 FROM assets;
