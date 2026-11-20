@@ -2,13 +2,18 @@ import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { listAllOfficialVoices, type OfficialVoicePageDto } from "@/api/official-voice";
+import {
+  listAllOfficialVoices,
+  peekOfficialVoices,
+  type OfficialVoicePageDto,
+} from "@/api/official-voice";
 import type { AssetDto } from "@/api/asset/type";
 import { AssetCover } from "@/components/assets/asset-card";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
 import { AssetSearch } from "@/components/assets/asset-search";
 import { AssetsToolbar } from "@/components/assets/assets-toolbar";
 import { FilterMenu } from "@/components/assets/filter-menu";
+import { VirtualGrid } from "@/components/assets/virtual-grid";
 import { EmptyMark } from "@/components/home/empty-mark";
 import { TAP_CARD } from "@/lib/motion";
 import {
@@ -22,9 +27,11 @@ import {
   type VoiceLangFilter,
 } from "@/utils/assets/official-voices";
 
-/** 音色缩略图是 144px 头像，用网格一行多列，名字常显在下方；每列最小 116px。 */
-const VOICE_GRID =
-  "grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-[repeat(auto-fill,minmax(116px,1fr))]";
+/** 音色缩略图是 144px 头像，用网格一行多列，名字常显在下方；每列最小 116px、间距 12px，窄屏至少 3 列。 */
+const VOICE_GRID_SPEC = { minCell: 116, gap: 12, minColumns: 3 };
+
+/** 一行的估高：卡片 = 边框 2 + 内边距 12 + 方形头像（比单元格窄 14）+ 头像到名字 6 + 名字一行 15，再加行距。挂载后以量到的为准。 */
+const estimateVoiceRow = (cellWidth: number) => cellWidth + 21 + VOICE_GRID_SPEC.gap;
 
 function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: () => void }) {
   const name = voiceDisplayName(asset);
@@ -37,7 +44,7 @@ function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: (
       aria-label={name}
       whileTap={TAP_CARD}
       onClick={onPreview}
-      className="bg-card hover:bg-accent flex min-w-0 flex-col gap-1.5 rounded-lg border p-1.5 text-left transition-colors"
+      className="bg-card hover:bg-accent flex w-full min-w-0 flex-col gap-1.5 rounded-lg border p-1.5 text-left transition-colors"
     >
       <span className="bg-muted relative block aspect-square w-full overflow-hidden rounded-md">
         <AssetCover asset={asset} />
@@ -60,7 +67,11 @@ function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: (
  * 搜索和个人资产库同款：素材一次取全量，筛选与搜索都在本地做，点选即时生效。
  */
 export function OfficialView() {
-  const [page, setPage] = useState<OfficialVoicePageDto | null>(null);
+  // 有上次的缓存就直接出卡片，后台再刷新一次；首次进入才从空白加载
+  const [page, setPage] = useState<OfficialVoicePageDto | null>(() => {
+    const cached = peekOfficialVoices();
+    return cached && { items: cached, total: cached.length };
+  });
   const [input, setInput] = useState("");
   const [lang, setLang] = useState<VoiceLangFilter>("all");
   const [group, setGroup] = useState<VoiceGroupFilter>("all");
@@ -129,15 +140,16 @@ export function OfficialView() {
           <EmptyMark title="暂无音色" hint="音色由管理员导入，稍后再来看" />
         )
       ) : (
-        <div data-slot="official-voice-grid" className={VOICE_GRID}>
-          {items.map((asset) => (
-            <OfficialVoiceCard
-              key={asset.id}
-              asset={asset}
-              onPreview={() => setPreviewId(asset.id)}
-            />
-          ))}
-        </div>
+        <VirtualGrid
+          data-slot="official-voice-grid"
+          items={items}
+          getKey={(asset) => asset.id}
+          columns={VOICE_GRID_SPEC}
+          estimateRowHeight={estimateVoiceRow}
+          renderItem={(asset) => (
+            <OfficialVoiceCard asset={asset} onPreview={() => setPreviewId(asset.id)} />
+          )}
+        />
       )}
 
       <AssetPreview

@@ -5,13 +5,13 @@ import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
 import type { AssetKind, LibraryItemDto } from "@/api/asset-library/type";
-import { listAllOfficialVoices } from "@/api/official-voice";
+import { listAllOfficialVoices, peekOfficialVoices } from "@/api/official-voice";
 import { EmptyMark } from "@/components/home/empty-mark";
 import { TAP_CARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { FilingStatus } from "@/components/virtual-human/filing-status";
-import { VoiceFilterChips } from "@/components/assets/voice-filter-chips";
+import { FilterMenu } from "@/components/assets/filter-menu";
 import type { AssetFoldersState } from "@/hooks/use-asset-folders";
 import { useAssetLibrary } from "@/hooks/use-asset-library";
 import { useGeneratedAssets } from "@/hooks/use-generated-assets";
@@ -438,7 +438,8 @@ export function OfficialPane({
   rules: PickRules;
   onToggle: (asset: AssetDto) => void;
 }) {
-  const [items, setItems] = useState<AssetDto[] | null>(null);
+  // 有缓存就直接出音色，后台再刷新一次；首次打开才显示加载中
+  const [items, setItems] = useState<AssetDto[] | null>(() => peekOfficialVoices());
   const [error, setError] = useState(false);
   const [lang, setLang] = useState<VoiceLangFilter>("all");
   const [group, setGroup] = useState<VoiceGroupFilter>("all");
@@ -467,30 +468,21 @@ export function OfficialPane({
   const filtering = query !== "" || lang !== "all" || group !== "all";
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-muted-foreground text-xs">
-        中文音色来自方舟国内，English 来自 BytePlus，两套资源各自独立。只有最终视频模型是
-        Seedance、且渠道与音色同属一个资源域时，才会按 asset
-        地址引用；其他模型一律把音色当普通音频文件用。
-      </p>
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground w-10 shrink-0 text-xs">语言</span>
-          <VoiceFilterChips
-            label="语言"
-            options={VOICE_LANG_OPTIONS}
-            value={lang}
-            onChange={setLang}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground w-10 shrink-0 text-xs">人群</span>
-          <VoiceFilterChips
-            label="人群"
-            options={VOICE_GROUP_OPTIONS}
-            value={group}
-            onChange={setGroup}
-          />
-        </div>
+      <div className="-mx-3 flex items-center gap-1">
+        <FilterMenu
+          label="语言"
+          value={lang}
+          defaultValue="all"
+          groups={[{ options: VOICE_LANG_OPTIONS }]}
+          onChange={(value) => setLang(value as VoiceLangFilter)}
+        />
+        <FilterMenu
+          label="人群"
+          value={group}
+          defaultValue="all"
+          groups={[{ options: VOICE_GROUP_OPTIONS }]}
+          onChange={(value) => setGroup(value as VoiceGroupFilter)}
+        />
       </div>
       {shown.length === 0 ? (
         <EmptyMark

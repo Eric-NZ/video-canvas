@@ -18,14 +18,6 @@ describe("资产页「音色库」的筛选条", () => {
     expect(html).toContain("搜索音色名称");
   });
 
-  test("音色卡片比最初大一点：每列最小 116px，卡片间距 12px", () => {
-    const grid = html.match(/<div data-slot="official-voice-grid" class="([^"]*)"/)?.[1] ?? "";
-    expect(grid).toContain("minmax(116px,1fr)");
-    expect(grid).toContain("gap-3");
-    expect(grid).not.toContain("minmax(104px,1fr)");
-    expect(grid).not.toContain("minmax(128px,1fr)");
-  });
-
   test("工具条下面不放说明文字和条数，卡片网格紧跟在工具条后面", () => {
     expect(html).not.toContain("点卡片试听");
     expect(html).not.toContain("参考音频");

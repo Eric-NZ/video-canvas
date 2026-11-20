@@ -33,7 +33,16 @@ export const listOfficialVoices = async (
   };
 };
 
-/** 后端单页上限是 100，音色总数已超过它，这里按页取全量（方舟国内 80 + BytePlus 101）。 */
+/** 最近一次取全量成功的结果；音色由管理员导入，很少变，切回音色库时先拿它顶着 */
+let cachedAll: AssetDto[] | null = null;
+
+/** 上次取全量成功的音色；还没取过返回 null。只读缓存，不发请求。 */
+export const peekOfficialVoices = (): AssetDto[] | null => cachedAll;
+
+/**
+ * 后端单页上限是 100，音色总数已超过它，这里按页取全量（方舟国内 80 + BytePlus 101）。
+ * 成功后刷新 peekOfficialVoices 的缓存；失败不动缓存。
+ */
 export const listAllOfficialVoices = async (): Promise<AssetDto[]> => {
   const pageSize = 100;
   const out: AssetDto[] = [];
@@ -42,5 +51,6 @@ export const listAllOfficialVoices = async (): Promise<AssetDto[]> => {
     out.push(...page.items);
     if (page.items.length === 0 || out.length >= page.total) break;
   }
+  cachedAll = out;
   return out;
 };
