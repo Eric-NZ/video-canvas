@@ -1,6 +1,7 @@
 import { FolderOpen, Upload } from "lucide-react";
 
 import type { FillUploadActions } from "@/hooks/use-fill-upload";
+import { useCanvasReadOnly } from "@/utils/canvas/read-only";
 
 /** 分段胶囊里的一段（同 ChromeSegment）；nodrag 让按下时不带走节点 */
 const SEGMENT_CLASS =
@@ -12,6 +13,9 @@ const SEGMENT_CLASS =
  * @param actions 画布的放素材动作
  */
 export function NodeFillActions({ id, actions }: { id: string; actions: FillUploadActions }) {
+  // 只读预览里不摆：上传和素材库都要写节点
+  const readOnly = useCanvasReadOnly();
+  if (readOnly) return null;
   return (
     <div className="bg-chrome ring-chrome-border flex items-center gap-0.5 rounded-full p-1 shadow-sm ring-1 backdrop-blur-xl backdrop-saturate-150">
       <button type="button" className={SEGMENT_CLASS} onClick={() => actions.pickFile(id)}>
