@@ -20,10 +20,6 @@ export interface AssetDto {
   fileName: string | null;
   /** 缩略图地址；音色库有，普通素材为空串 */
   thumbnailUrl?: string;
-  /** 官方溯源 ID；音色库有，普通素材为空串 */
-  officialAssetId?: string;
-  /** 公开音色所属资源域：ark-cn（方舟国内）/ byteplus（国际站）；普通素材为空串 */
-  scope?: string;
   /** 公开音色的年龄段：child / teen / young / middle / older；普通素材为空串 */
   voiceAge?: string;
   /** 公开音色的性别：male / female；普通素材为空串 */
@@ -54,10 +50,6 @@ export interface BackendAssetDto {
   file_name?: string | null;
   /** 缩略图地址（音色库） */
   thumbnail_url?: string | null;
-  /** 官方溯源 ID（音色库） */
-  official_asset_id?: string | null;
-  /** 公开音色所属资源域（Ark 国内 / BytePlus） */
-  scope?: string | null;
   /** 公开音色的年龄段（child / teen / young / middle / older） */
   voice_age?: string | null;
   /** 公开音色的性别（male / female） */

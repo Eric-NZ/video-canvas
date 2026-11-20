@@ -11,7 +11,6 @@ import {
 
 type VoiceFields = {
   fileName: string | null;
-  scope?: string;
   voiceAge?: string;
   voiceGender?: string;
   voiceLang?: string;
@@ -32,35 +31,30 @@ const voice = (id: string, fields: VoiceFields): AssetDto => ({
 const ALL = [
   voice("1", {
     fileName: "少儿故事",
-    scope: "ark-cn",
     voiceAge: "teen",
     voiceGender: "female",
     voiceLang: "zh",
   }),
   voice("2", {
     fileName: "Big Boogie",
-    scope: "byteplus",
     voiceAge: "young",
     voiceGender: "male",
     voiceLang: "en",
   }),
   voice("3", {
     fileName: "魅力女友",
-    scope: "ark-cn",
     voiceAge: "young",
     voiceGender: "female",
     voiceLang: "zh",
   }),
   voice("4", {
     fileName: "懒音绵宝",
-    scope: "ark-cn",
     voiceAge: "child",
     voiceGender: "male",
     voiceLang: "zh",
   }),
   voice("5", {
     fileName: "Clown Man",
-    scope: "ark-cn",
     voiceAge: "older",
     voiceGender: "male",
     voiceLang: "zh",
@@ -131,22 +125,14 @@ describe("filterOfficialVoices：大类别（语言）+ 子类别（人群）+ �
     expect(filterOfficialVoices(ALL, { query: "不存在的声音" })).toEqual([]);
   });
 
-  test("大类别以每条音色自己的语言为准；语言字段空着时才按来源推：方舟 = 中文，BytePlus = English", () => {
-    const bare = [
-      voice("a", { fileName: "只标了来源的方舟音色", scope: "ark-cn" }),
-      voice("b", { fileName: "source only byteplus", scope: "byteplus" }),
+  test("大类别以每条音色自己的语言为准：方舟国内的音色里也有英文声音（如 Zayne、Noah），写了 en 就归到 English", () => {
+    const items = [
+      voice("c", { fileName: "Zayne", voiceLang: "en" }),
+      voice("d", { fileName: "魅力女友", voiceLang: "zh" }),
     ];
-    expect(ids(filterOfficialVoices(bare, { lang: "zh" }))).toEqual(["a"]);
-    expect(ids(filterOfficialVoices(bare, { lang: "en" }))).toEqual(["b"]);
-
-    // 方舟国内的音色里也有英文声音（如 Zayne、Noah）：语言字段写了 en 就归到 English，不被来源带偏
-    const enInArk = [
-      voice("c", { fileName: "Zayne", scope: "ark-cn", voiceLang: "en" }),
-      voice("d", { fileName: "魅力女友", scope: "ark-cn", voiceLang: "zh" }),
-    ];
-    expect(ids(filterOfficialVoices(enInArk, { lang: "en" }))).toEqual(["c"]);
-    expect(ids(filterOfficialVoices(enInArk, { lang: "zh" }))).toEqual(["d"]);
-    expect(voiceLangOf(enInArk[0])).toBe("en");
+    expect(ids(filterOfficialVoices(items, { lang: "en" }))).toEqual(["c"]);
+    expect(ids(filterOfficialVoices(items, { lang: "zh" }))).toEqual(["d"]);
+    expect(voiceLangOf(items[0])).toBe("en");
   });
 
   test("没有分类字段的老数据只在「全部」里出现，不会被误归到某个人群", () => {

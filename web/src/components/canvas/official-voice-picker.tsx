@@ -57,8 +57,7 @@ export function OfficialVoiceMenuContent({
 
 /**
  * 参考音频里的「音色库」入口：列出 seedance 官方参考音色，选中后把它的素材 ID
- * 交给 RefCard 的 onAdd 写进 params.audios。Seedance 生成时后端换成 asset:// 官方地址，
- * 其他模型用转存后的文件地址（插件没标 filed 就走 URL）。
+ * 交给 RefCard 的 onAdd 写进 params.audios。生成时后端按这条素材的公网地址交给各模型。
  */
 export function OfficialVoicePicker({
   disabled,

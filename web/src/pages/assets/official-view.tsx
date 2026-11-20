@@ -20,7 +20,6 @@ import {
   filterOfficialVoices,
   VOICE_GROUP_OPTIONS,
   VOICE_LANG_OPTIONS,
-  VOICE_SCOPE_LABEL,
   voiceGroupLabel,
   voiceDisplayName,
   type VoiceGroupFilter,
@@ -35,8 +34,8 @@ const estimateVoiceRow = (cellWidth: number) => cellWidth + 21 + VOICE_GRID_SPEC
 
 function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: () => void }) {
   const name = voiceDisplayName(asset);
-  // 角标是子类别（男孩/女生…）；分类还没回填的老数据退回显示来源，至少能分辨方舟与 BytePlus
-  const badge = voiceGroupLabel(asset) || VOICE_SCOPE_LABEL[asset.scope ?? ""] || "";
+  // 角标是子类别（男孩/女生…）；没有性别信息的音色不显示角标
+  const badge = voiceGroupLabel(asset);
   return (
     <motion.button
       type="button"
@@ -62,7 +61,7 @@ function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: (
 /**
  * 资产页「音色库」：seedance 官方参考音色，系统公共素材，所有人可见。
  * 卡片显示缩略图，点开用 <audio> 试听；在画布视频节点里可作为参考音频选中。
- * Seedance 生成时传官方 asset:// 地址，其他模型传转存后的文件地址（由后端按插件分流）。
+ * 音色就是一条带公网地址的素材，所有模型都按这个地址取用。
  * 分类两个层级：大类别是语言（中文 = 方舟国内，English = BytePlus），子类别是人群（男孩/女孩/男生/女生）。
  * 搜索和个人资产库同款：素材一次取全量，筛选与搜索都在本地做，点选即时生效。
  */

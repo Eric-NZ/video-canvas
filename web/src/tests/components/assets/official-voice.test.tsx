@@ -12,20 +12,17 @@ const raw: BackendAssetDto = {
   kind: "audio",
   url: "/files/o0/202611/a.wav",
   thumbnail_url: "/files/o0/202611/a.png",
-  official_asset_id: "asset-20260908172134-jdrd2",
 };
 
 describe("音色库字段映射", () => {
-  test("缩略图地址与官方 ID 从后端 snake_case 映射到前端", () => {
+  test("缩略图地址从后端 snake_case 映射到前端", () => {
     const got = mapAsset(raw);
     expect(got.thumbnailUrl).toBe("/files/o0/202611/a.png");
-    expect(got.officialAssetId).toBe("asset-20260908172134-jdrd2");
   });
 
-  test("普通素材没有这两个字段时为空串，不报错", () => {
+  test("普通素材没有缩略图字段时为空串，不报错", () => {
     const got = mapAsset({ id: 1, kind: "image", url: "/files/u1/a.png" });
     expect(got.thumbnailUrl ?? "").toBe("");
-    expect(got.officialAssetId ?? "").toBe("");
   });
 });
 

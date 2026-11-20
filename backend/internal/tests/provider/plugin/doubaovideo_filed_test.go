@@ -21,9 +21,9 @@ type filedResolver struct {
 	calls   int
 }
 
-func (r *filedResolver) FiledAssetURI(_ context.Context, userID, assetID uint64, channel provider.ChannelSnapshot) (string, bool) {
+func (r *filedResolver) FiledAssetURI(_ context.Context, userID, assetID uint64, channelKey string) (string, bool) {
 	r.calls++
-	if userID != r.userID || channel.Key != r.channel {
+	if userID != r.userID || channelKey != r.channel {
 		return "", false
 	}
 	uri, ok := r.uris[assetID]

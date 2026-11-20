@@ -369,18 +369,6 @@ describe("applyVoiceAudio：绑定音频音色", () => {
       origin: "generated",
     });
   });
-
-  test("公开音色带上资源域，普通音频不带", () => {
-    const official = applyVoiceAudio(
-      character(),
-      { id: "20", url: "/a/20.mp3", kind: "audio", scope: "byteplus" },
-      "library",
-    );
-    expect(official.voice?.scope).toBe("byteplus");
-
-    const plain = applyVoiceAudio(character(), { id: "21", url: "/a/21.mp3" }, "upload");
-    expect(plain.voice).not.toHaveProperty("scope");
-  });
 });
 
 describe("takeCharacterFile：角色卡只收图片（主图 / 补充图）或音频（音色），不合规给一句话", () => {
@@ -566,7 +554,7 @@ describe("applyVoiceAudio：绑定时记下音色名", () => {
   test("公开音色的名字去掉 BytePlus 的年龄性别前缀", () => {
     const out = applyVoiceAudio(
       role,
-      { id: "9", url: "/a/9.mp3", scope: "byteplus", fileName: "Teen - Female - Shiny" },
+      { id: "9", url: "/a/9.mp3", fileName: "Teen - Female - Shiny" },
       "library",
     );
     expect(out.voice).toEqual({
@@ -574,7 +562,6 @@ describe("applyVoiceAudio：绑定时记下音色名", () => {
       assetId: "9",
       src: "/a/9.mp3",
       origin: "library",
-      scope: "byteplus",
       name: "Shiny",
     });
   });

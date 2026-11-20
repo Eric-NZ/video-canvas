@@ -203,13 +203,12 @@ export function applyMainImage(
   };
 }
 
-/** 能拿来当声音的最小素材信息：id + 地址必有，资源域与文件名有就带上（用来记分类和名字）。 */
-export type VoiceAssetRef = Pick<AssetDto, "id" | "url"> &
-  Partial<Pick<AssetDto, "scope" | "fileName">>;
+/** 能拿来当声音的最小素材信息：id + 地址必有，文件名有就带上（用来记名字）。 */
+export type VoiceAssetRef = Pick<AssetDto, "id" | "url"> & Partial<Pick<AssetDto, "fileName">>;
 
 /**
  * 绑定一段音频作为声音（上传、素材库、AI 生成都走这里），会取代之前的声音。
- * 顺手把素材的资源域和名字记下来：资源域给分镜提示用，名字给角色卡和素材条显示用。
+ * 顺手把素材的名字记下来，给角色卡和素材条显示用。
  * @param character 当前角色数据
  * @param asset 音频素材
  * @param origin 来源，只用于展示和排查
@@ -227,7 +226,6 @@ export function applyVoiceAudio(
       assetId: asset.id,
       src: asset.url,
       origin,
-      ...(asset.scope ? { scope: asset.scope } : {}),
       ...(name ? { name } : {}),
     },
   };

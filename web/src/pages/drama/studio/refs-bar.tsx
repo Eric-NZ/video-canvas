@@ -206,9 +206,6 @@ export function RefsBar() {
           );
         })}
       </div>
-      {plan.voiceNotice && (
-        <p className="text-muted-foreground mt-1.5 text-xs">{plan.voiceNotice}</p>
-      )}
     </section>
   );
 }

@@ -199,20 +199,18 @@ func (s *AssetService) signedTTL(h *storage.Handle) time.Duration {
 // assetView 组装对前端的素材视图。
 func assetView(a *model.Asset, url string) *model.AssetView {
 	return &model.AssetView{
-		ID:              a.ID,
-		Kind:            a.Kind,
-		URL:             url,
-		MimeType:        a.MimeType,
-		ByteSize:        a.ByteSize,
-		Width:           a.Width,
-		Height:          a.Height,
-		DurationMs:      a.DurationMs,
-		FileName:        a.FileName,
-		OfficialAssetID: a.OfficialAssetID,
-		Scope:           a.OfficialScope,
-		VoiceAge:        a.VoiceAge,
-		VoiceGender:     a.VoiceGender,
-		VoiceLang:       a.VoiceLang,
+		ID:          a.ID,
+		Kind:        a.Kind,
+		URL:         url,
+		MimeType:    a.MimeType,
+		ByteSize:    a.ByteSize,
+		Width:       a.Width,
+		Height:      a.Height,
+		DurationMs:  a.DurationMs,
+		FileName:    a.FileName,
+		VoiceAge:    a.VoiceAge,
+		VoiceGender: a.VoiceGender,
+		VoiceLang:   a.VoiceLang,
 	}
 }
 

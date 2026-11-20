@@ -20,8 +20,6 @@ export const mapAsset = (raw: BackendAssetDto): AssetDto => ({
   durationMs: positiveOrNull(raw.duration_ms ?? raw.durationMs),
   fileName: raw.file_name ?? raw.fileName ?? null,
   thumbnailUrl: raw.thumbnail_url ?? "",
-  officialAssetId: raw.official_asset_id ?? "",
-  scope: raw.scope ?? "",
   voiceAge: raw.voice_age ?? "",
   voiceGender: raw.voice_gender ?? "",
   voiceLang: raw.voice_lang ?? "",

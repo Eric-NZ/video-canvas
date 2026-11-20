@@ -11,7 +11,6 @@ const voice = (id: number, name: string) => ({
   url: `https://cdn.test/${id}.mp3`,
   file_name: name,
   thumbnail_url: `https://cdn.test/${id}.png`,
-  scope: "ark-cn",
   voice_age: "young",
   voice_gender: "male",
   voice_lang: "zh",

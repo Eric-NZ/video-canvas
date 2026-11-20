@@ -1,12 +1,6 @@
 import type { AssetDto } from "@/api/asset/type";
 
-/** 公开音色的资源域：方舟国内站与 BytePlus 各一套素材库，asset-xxx 只在同域内有效。 */
-export const VOICE_SCOPE_LABEL: Record<string, string> = {
-  "ark-cn": "方舟",
-  byteplus: "BytePlus",
-};
-
-/** 大类别：语言。方舟国内是中文音色，BytePlus 是英文音色。 */
+/** 大类别：语言。中文音色（方舟国内）与英文音色（BytePlus 与方舟里的少数英文声音）。 */
 export type VoiceLang = "zh" | "en";
 export type VoiceLangFilter = VoiceLang | "all";
 
@@ -46,17 +40,12 @@ const AGE_LABEL: Record<string, string> = {
 /** 童声的两个年龄段；其余（青年/中年/老年）都算成人。 */
 const KID_AGES = new Set(["child", "teen"]);
 
-/** 大类别以来源为基准：方舟国内那套是中文音色，BytePlus 那套是英文音色。 */
-const SCOPE_LANG: Record<string, VoiceLang> = { "ark-cn": "zh", byteplus: "en" };
-
 /**
- * 音色的大类别（语言）。以每条音色自己的语言为准（数据里的 voice_lang）：方舟国内的音色里也有英文声音
- * （如 Zayne、Noah），不能一律算中文；语言字段空着（老数据）才按来源推：方舟国内 = 中文，BytePlus = 英文；
- * 两边都没有就是空（只在「全部」里出现）。
+ * 音色的大类别（语言），以每条音色自己的语言为准（数据里的 voice_lang）：方舟国内的音色里也有英文声音
+ * （如 Zayne、Noah），不能一律算中文。没有语言字段（非公开音色）返回空，只在「全部」里出现。
  */
-export function voiceLangOf(asset: Pick<AssetDto, "scope" | "voiceLang">): VoiceLang | "" {
-  if (asset.voiceLang === "zh" || asset.voiceLang === "en") return asset.voiceLang;
-  return SCOPE_LANG[asset.scope ?? ""] ?? "";
+export function voiceLangOf(asset: Pick<AssetDto, "voiceLang">): VoiceLang | "" {
+  return asset.voiceLang === "zh" || asset.voiceLang === "en" ? asset.voiceLang : "";
 }
 
 /**
@@ -93,12 +82,11 @@ export function voiceDisplayName(asset: Pick<AssetDto, "fileName">): string {
   return stripVoicePrefix(asset.fileName) || "音色";
 }
 
-/** 一条音色参与搜索的文本：名字、来源、语言、人群、年龄段，都小写。 */
+/** 一条音色参与搜索的文本：名字、语言、人群、年龄段，都小写。 */
 function searchTextOf(asset: AssetDto): string {
   const lang = voiceLangOf(asset);
   return [
     asset.fileName ?? "",
-    VOICE_SCOPE_LABEL[asset.scope ?? ""] ?? "",
     lang === "zh" ? "中文" : lang === "en" ? "英文 english" : "",
     voiceGroupLabel(asset),
     AGE_LABEL[asset.voiceAge ?? ""] ?? "",
@@ -119,7 +107,7 @@ export interface OfficialVoiceFilter {
 
 /**
  * 过滤公开音色，资产页与素材选择器共用一套规则。
- * 关键词忽略大小写与首尾空白，除名字外也认来源、语言、人群、年龄段这些词
+ * 关键词忽略大小写与首尾空白，除名字外也认语言、人群、年龄段这些词
  * （搜「女孩」「英文」都能直接收窄）；语言与人群各自独立过滤，结果保持原顺序。
  * @param items 全量音色
  * @param filter 关键词与大类别/子类别

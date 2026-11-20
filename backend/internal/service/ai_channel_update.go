@@ -79,11 +79,6 @@ func applyUpdateFields(next *model.AIChannel, in ChannelUpdateInput) ([]string, 
 	if in.Enabled != nil {
 		next.Enabled = *in.Enabled
 	}
-	if in.VoiceScope != nil {
-		scope, msg := checkVoiceScope(*in.VoiceScope)
-		problems = appendIf(problems, msg)
-		next.VoiceScope = scope
-	}
 	return problems, nil
 }
 
@@ -115,9 +110,6 @@ func changedFields(before, after *model.AIChannel) []string {
 	}
 	if !jsonEqual(before.FilingJSON, after.FilingJSON) {
 		changed = append(changed, "filing")
-	}
-	if before.VoiceScope != after.VoiceScope {
-		changed = append(changed, "voice_scope")
 	}
 	return changed
 }

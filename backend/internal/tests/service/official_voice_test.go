@@ -24,8 +24,7 @@ func TestAssetService_GetOfficialVoice(t *testing.T) {
 	store := newFakeAssetStore()
 	// 手动插入一条系统公共音色和一条普通用户素材
 	repo.rows[10] = &model.Asset{ID: 10, UserID: 0, Kind: "audio", Source: model.AssetSourceOfficial,
-		StorageID: 1, StorageKey: "o0/202611/voice.wav", MimeType: "audio/wav", FileName: "Big Boogie",
-		OfficialAssetID: "asset-20260908172134-jdrd2"}
+		StorageID: 1, StorageKey: "o0/202611/voice.wav", MimeType: "audio/wav", FileName: "Big Boogie"}
 	repo.rows[11] = &model.Asset{ID: 11, UserID: 7, Kind: "audio", Source: model.AssetSourceUpload,
 		StorageID: 1, StorageKey: "u7/202611/private.wav", MimeType: "audio/wav"}
 
@@ -37,7 +36,7 @@ func TestAssetService_GetOfficialVoice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("系统公共音色应对所有用户可读，却报错：%v", err)
 	}
-	if got.ID != 10 || got.OfficialAssetID == "" {
+	if got.ID != 10 || got.Source != model.AssetSourceOfficial {
 		t.Fatalf("读到的不是期望的官方音色：%+v", got)
 	}
 
@@ -81,16 +80,13 @@ func TestAssetService_ViewOfOfficialVoice(t *testing.T) {
 	view, err := svc.ViewOf(context.Background(), &model.Asset{
 		ID: 10, Kind: "audio", StorageKey: "o0/202611/voice.wav",
 		PublicURL:    "https://pub.example.r2.dev/o0/202611/voice.wav",
-		ThumbnailURL: "https://pub.example.r2.dev/o0/202611/thumb.png", OfficialAssetID: "asset-20260908172134-jdrd2",
+		ThumbnailURL: "https://pub.example.r2.dev/o0/202611/thumb.png",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if view.ThumbnailURL != "https://pub.example.r2.dev/o0/202611/thumb.png" {
 		t.Fatalf("缩略图 URL 不对：%q", view.ThumbnailURL)
-	}
-	if view.OfficialAssetID != "asset-20260908172134-jdrd2" {
-		t.Fatalf("官方溯源 ID 没透出：%q", view.OfficialAssetID)
 	}
 	if view.URL != "https://pub.example.r2.dev/o0/202611/voice.wav" {
 		t.Fatalf("音频 URL 不对：%q", view.URL)
