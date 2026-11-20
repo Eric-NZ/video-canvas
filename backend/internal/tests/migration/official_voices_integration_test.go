@@ -41,14 +41,33 @@ func TestOfficialVoicesMigration_SeedsVoicesWithPublicURL(t *testing.T) {
 		t.Fatalf("有 %d 条公开音色缺公网地址、溯源 ID 或分类标签", bad)
 	}
 
-	// 语言按资源域推定：方舟国内=中文，BytePlus=英文。
+	// 语言以每条音色自己的为准：方舟国内的音色里有 7 条英文声音（名字就是英文角色），其余国内=中文，BytePlus=英文。
+	englishInArk := []string{
+		"asset-20260224190656-5rq88", // Chucky
+		"asset-20260224190656-ccgx8", // Clown Man
+		"asset-20260224190656-qltvl", // Jigsaw
+		"asset-20260224190656-kl5gf", // Kevin McCallister
+		"asset-20260224190656-dqph5", // Noah
+		"asset-20260224190656-k7px4", // Xavier
+		"asset-20260224190657-j7z55", // Zayne
+	}
 	var wrongLang int64
-	if err := db.Raw(`SELECT count(*) FROM assets WHERE source = 'official' AND
-		((official_scope = 'ark-cn' AND voice_lang <> 'zh') OR (official_scope = 'byteplus' AND voice_lang <> 'en'))`).Scan(&wrongLang).Error; err != nil {
+	if err := db.Raw(`SELECT count(*) FROM assets WHERE source = 'official' AND (
+		(official_scope = 'ark-cn' AND official_asset_id NOT IN ? AND voice_lang <> 'zh')
+		OR (official_scope = 'ark-cn' AND official_asset_id IN ? AND voice_lang <> 'en')
+		OR (official_scope = 'byteplus' AND voice_lang <> 'en'))`, englishInArk, englishInArk).Scan(&wrongLang).Error; err != nil {
 		t.Fatal(err)
 	}
 	if wrongLang != 0 {
-		t.Fatalf("有 %d 条音色语言与资源域对不上", wrongLang)
+		t.Fatalf("有 %d 条音色语言不对（方舟国内的 7 条英文声音应为 en，其余按来源）", wrongLang)
+	}
+	var zh, en int64
+	if err := db.Raw(`SELECT count(*) FILTER (WHERE voice_lang = 'zh'), count(*) FILTER (WHERE voice_lang = 'en')
+		FROM assets WHERE source = 'official'`).Row().Scan(&zh, &en); err != nil {
+		t.Fatal(err)
+	}
+	if zh != 73 || en != 108 {
+		t.Fatalf("语言分布不对：zh=%d en=%d，期望 73 / 108", zh, en)
 	}
 
 	// 不再有缩略图单独成行，也没有废弃的渠道溯源列。

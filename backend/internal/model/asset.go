@@ -33,7 +33,7 @@ type Asset struct {
 	OfficialScope string `gorm:"size:32;not null;default:'';index:idx_assets_official_scope" json:"-"`
 	// 公开音色的分类，取自官方素材库标签（年龄-性别-名字），供资产页与选择器筛选；普通素材为空串。
 	// VoiceAge：child / teen / young / middle / older；VoiceGender：male / female；
-	// VoiceLang：zh / en（没有官方字段，按资源域推定：方舟国内=中文、BytePlus=英文）。
+	// VoiceLang：zh / en（没有官方字段：BytePlus=英文，方舟国内默认中文，个别英文声音人工标成 en）。
 	VoiceAge    string    `gorm:"size:16;not null;default:''" json:"-"`
 	VoiceGender string    `gorm:"size:8;not null;default:''" json:"-"`
 	VoiceLang   string    `gorm:"size:8;not null;default:''" json:"-"`
