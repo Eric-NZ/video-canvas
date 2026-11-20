@@ -1236,6 +1236,7 @@ export const CanvasEditor = memo(function CanvasEditor({
                                 <AssetPickerDialog
                                   open={assetPicker !== null}
                                   onOpenChange={(open) => !open && setAssetPicker(null)}
+                                  withOfficialVoices
                                   onConfirm={(assets) => {
                                     if (assetPicker) addAssetNodes(assets, assetPicker.origin);
                                   }}
@@ -1248,6 +1249,7 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   kind={fillPicker.kind}
                                   limit={1}
                                   withHumans={fillPicker.character && fillPicker.kind === "image"}
+                                  withOfficialVoices={fillPicker.kind === "audio"}
                                   confirmLabel="放进节点"
                                   onConfirm={(assets) => {
                                     if (assets[0]) fill.fillAsset(fillPicker.id, assets[0]);

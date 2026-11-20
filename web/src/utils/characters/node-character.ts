@@ -9,6 +9,7 @@ import type {
 import { takeUploadFile } from "@/utils/canvas/media";
 import { newNodeLabel } from "@/utils/canvas/node-label";
 import { activeOutputIdOf, appendOutput, readOutputs } from "@/utils/canvas/outputs";
+import { stripVoicePrefix } from "@/utils/assets/official-voices";
 import type { CharacterRefs } from "@/utils/tasks/capabilities";
 
 /** 形象（造型）名的默认值 */
@@ -202,18 +203,32 @@ export function applyMainImage(
   };
 }
 
+/** 能拿来当声音的最小素材信息：id + 地址必有，文件名有就带上（用来记名字）。 */
+export type VoiceAssetRef = Pick<AssetDto, "id" | "url"> & Partial<Pick<AssetDto, "fileName">>;
+
 /**
  * 绑定一段音频作为声音（上传、素材库、AI 生成都走这里），会取代之前的声音。
+ * 顺手把素材的名字记下来，给角色卡和素材条显示用。
  * @param character 当前角色数据
  * @param asset 音频素材
  * @param origin 来源，只用于展示和排查
  */
 export function applyVoiceAudio(
   character: NodeCharacter,
-  asset: Pick<AssetDto, "id" | "url">,
+  asset: VoiceAssetRef,
   origin: CharacterVoice["origin"],
 ): NodeCharacter {
-  return { ...character, voice: { mode: "audio", assetId: asset.id, src: asset.url, origin } };
+  const name = stripVoicePrefix(asset.fileName);
+  return {
+    ...character,
+    voice: {
+      mode: "audio",
+      assetId: asset.id,
+      src: asset.url,
+      origin,
+      ...(name ? { name } : {}),
+    },
+  };
 }
 
 /** 角色卡上传的校验结果：通过，或一句摆给用户看的原因 */
@@ -260,7 +275,7 @@ export type PickedResult = { patch: Partial<CanvasNodeData>; warnings: string[] 
  */
 export function applyPickedAssets(
   data: CanvasNodeData,
-  assets: ReadonlyArray<Pick<AssetDto, "id" | "url">>,
+  assets: readonly VoiceAssetRef[],
   purpose: "main" | "extra" | "voice",
   origin: CharacterVoice["origin"] = "library",
 ): PickedResult {
