@@ -12,6 +12,13 @@ import (
 // 本文件测试渠道的虚拟人像库（方舟备案）配置：保存与校验、全平台只允许一个渠道启用、只写的 AK/SK，
 // 以及真人库取备案目标（FilingTarget）时的「配齐才算可用」。
 
+// officialInput 是方舟国内站官方地址的渠道，虚拟人像库只对这类渠道开放。
+func officialInput() ChannelCreateInput {
+	in := createInput()
+	in.BaseURL = "https://ark.cn-beijing.volces.com/api/v3"
+	return in
+}
+
 func filingOn(group string) *model.ChannelFiling {
 	return &model.ChannelFiling{Enabled: true, GroupID: group, ProjectName: " zhongzuo "}
 }
@@ -56,7 +63,7 @@ func TestAIChannelService_UpdateFiling(t *testing.T) {
 
 	t.Run("启用时素材组 ID 必填；关闭时不校验", func(t *testing.T) {
 		e := newAchEnv(t)
-		_, _ = e.svc.Create(ctx, createInput())
+		_, _ = e.svc.Create(ctx, officialInput())
 		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Filing: filingOn("  "), ActorID: 5})
 		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
 		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Filing: &model.ChannelFiling{}, ActorID: 5}); err != nil {
@@ -64,10 +71,28 @@ func TestAIChannelService_UpdateFiling(t *testing.T) {
 		}
 	})
 
+	t.Run("只有方舟 / BytePlus 官方地址的渠道能启用，关闭不受限", func(t *testing.T) {
+		e := newAchEnv(t)
+		_, _ = e.svc.Create(ctx, createInput()) // gw.example.com 是第三方中转
+		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Filing: filingOn("g"), ActorID: 5})
+		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
+		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Filing: &model.ChannelFiling{}, ActorID: 5}); err != nil {
+			t.Fatalf("关闭虚拟人像库不应被拦：%v", err)
+		}
+		// 同一次请求里把地址改成官方域名就能启用；反过来启用后改成非官方地址会被拦
+		official := "https://ark.ap-southeast.bytepluses.com/api/v3"
+		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", BaseURL: &official, Filing: filingOn("g"), ActorID: 5}); err != nil {
+			t.Fatal(err)
+		}
+		third := "https://gw.example.com"
+		_, err = e.svc.Update(ctx, ChannelUpdateInput{Key: "main", BaseURL: &third, Filing: filingOn("g"), ActorID: 5})
+		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
+	})
+
 	t.Run("全平台只允许一个渠道启用", func(t *testing.T) {
 		e := newAchEnv(t)
-		_, _ = e.svc.Create(ctx, createInput())
-		other := createInput()
+		_, _ = e.svc.Create(ctx, officialInput())
+		other := officialInput()
 		other.Key, other.Name = "second", "第二个"
 		_, _ = e.svc.Create(ctx, other)
 		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Filing: filingOn("g"), ActorID: 5}); err != nil {

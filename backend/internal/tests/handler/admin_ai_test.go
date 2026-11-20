@@ -1008,8 +1008,17 @@ func TestAdminChannelHandler_SecretKey(t *testing.T) {
 
 func TestAdminChannelHandler_Filing(t *testing.T) {
 	env := aicNewEnv(t)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("ark-main")), http.StatusOK, 0)
+	// 虚拟人像库只对方舟官方域名开放，所以用官方 Base URL 建渠道；gw.example.com 是第三方中转
+	ark := aicChannelJSON("ark-main")
+	ark["base_url"] = "https://ark.cn-beijing.volces.com/api/v3"
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", ark), http.StatusOK, 0)
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("relay")), http.StatusOK, 0)
 
+	t.Run("第三方中转渠道不能启用虚拟人像库：业务校验 50013", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/relay", map[string]any{
+			"filing": map[string]any{"enabled": true, "group_id": "group-1"},
+		}), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
+	})
 	t.Run("保存虚拟人像库配置：详情带配置与站点", func(t *testing.T) {
 		r := env.super(http.MethodPut, aicBase+"/channels/ark-main", map[string]any{
 			"filing": map[string]any{"enabled": true, "group_id": "group-1", "project_name": "default"},
