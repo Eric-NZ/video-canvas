@@ -2,6 +2,10 @@ package service_test
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -68,7 +72,7 @@ func TestAssetService_OpenOfficialVoice(t *testing.T) {
 	_ = f.Body.Close()
 }
 
-// ViewOf 要把缩略图 key 转成 URL、把官方溯源 ID 透出给前端卡片。
+// ViewOf 要把官方溯源 ID 透出给前端卡片；音频与缩略图都直接给公网地址，不绕 /files。
 func TestAssetService_ViewOfOfficialVoice(t *testing.T) {
 	repo := newFakeAssetRepo()
 	svc := NewAssetService(repo, newFakeRegistry(1, objectHandle(1, newFakeAssetStore(), time.Hour)),
@@ -76,19 +80,79 @@ func TestAssetService_ViewOfOfficialVoice(t *testing.T) {
 
 	view, err := svc.ViewOf(context.Background(), &model.Asset{
 		ID: 10, Kind: "audio", StorageKey: "o0/202611/voice.wav",
-		ThumbnailKey: "o0/202611/thumb.png", OfficialAssetID: "asset-20260908172134-jdrd2",
+		PublicURL:    "https://pub.example.r2.dev/o0/202611/voice.wav",
+		ThumbnailURL: "https://pub.example.r2.dev/o0/202611/thumb.png", OfficialAssetID: "asset-20260908172134-jdrd2",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.ThumbnailURL != "https://api.example.com/files/o0/202611/thumb.png" {
+	if view.ThumbnailURL != "https://pub.example.r2.dev/o0/202611/thumb.png" {
 		t.Fatalf("缩略图 URL 不对：%q", view.ThumbnailURL)
 	}
 	if view.OfficialAssetID != "asset-20260908172134-jdrd2" {
 		t.Fatalf("官方溯源 ID 没透出：%q", view.OfficialAssetID)
 	}
-	if view.URL != "https://api.example.com/files/o0/202611/voice.wav" {
+	if view.URL != "https://pub.example.r2.dev/o0/202611/voice.wav" {
 		t.Fatalf("音频 URL 不对：%q", view.URL)
+	}
+}
+
+// 普通素材（没有公网地址）仍然走 /files 稳定地址，不受官方音色改动影响。
+func TestAssetService_ViewOfPlainAssetStillUsesFilesURL(t *testing.T) {
+	svc := NewAssetService(newFakeAssetRepo(), newFakeRegistry(1, objectHandle(1, newFakeAssetStore(), time.Hour)),
+		config.Storage{Local: config.LocalStorage{BaseURL: "https://api.example.com"}})
+	view, err := svc.ViewOf(context.Background(), &model.Asset{ID: 1, Kind: "audio", StorageKey: "u7/202611/a.wav"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.URL != "https://api.example.com/files/u7/202611/a.wav" || view.ThumbnailURL != "" {
+		t.Fatalf("普通素材视图不对：%+v", view)
+	}
+}
+
+// 官方音色带公网地址：Open 直接按 URL 取内容，不查存储配置（registry 里没有任何存储也能打开），
+// 给上游的 URL 就是这个公网地址。
+func TestAssetService_OpenOfficialVoiceByPublicURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/o0/202611/voice.wav" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write([]byte("wav-bytes"))
+	}))
+	defer srv.Close()
+
+	repo := newFakeAssetRepo()
+	repo.rows[10] = &model.Asset{ID: 10, UserID: 0, Kind: "audio", Source: model.AssetSourceOfficial,
+		StorageKey: "o0/202611/voice.wav", PublicURL: srv.URL + "/o0/202611/voice.wav", MimeType: "audio/wav"}
+	svc := NewAssetService(repo, newFakeRegistry(0), config.Storage{})
+
+	f, err := svc.Open(context.Background(), 42, 10)
+	if err != nil {
+		t.Fatalf("官方音色应能按公网地址打开：%v", err)
+	}
+	defer f.Body.Close()
+	body, _ := io.ReadAll(f.Body)
+	if string(body) != "wav-bytes" {
+		t.Fatalf("内容不对：%q", body)
+	}
+	if f.URL != srv.URL+"/o0/202611/voice.wav" || !f.Remote {
+		t.Fatalf("应直接给上游公网地址并标记远端：%+v", f)
+	}
+}
+
+// 公网地址取不到（对象被删、桶下线）：按“素材不存在”处理，不把上游错误细节透给调用方。
+func TestAssetService_OpenOfficialVoiceByPublicURLMissing(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	repo := newFakeAssetRepo()
+	repo.rows[10] = &model.Asset{ID: 10, UserID: 0, Kind: "audio", Source: model.AssetSourceOfficial,
+		StorageKey: "o0/202611/gone.wav", PublicURL: srv.URL + "/o0/202611/gone.wav"}
+	svc := NewAssetService(repo, newFakeRegistry(0), config.Storage{})
+
+	if _, err := svc.Open(context.Background(), 42, 10); !errors.Is(err, provider.ErrAssetNotFound) {
+		t.Fatalf("期望 ErrAssetNotFound，得到 %v", err)
 	}
 }
 

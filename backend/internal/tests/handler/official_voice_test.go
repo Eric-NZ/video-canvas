@@ -21,8 +21,8 @@ func TestListOfficialVoices(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeAssetHandlerRepo{rows: map[uint64]*model.Asset{}}
 	repo.rows[1] = &model.Asset{ID: 1, UserID: 0, Kind: "audio", Source: model.AssetSourceOfficial,
-		StorageID: 1, StorageKey: "o0/202611/a.wav", ThumbnailKey: "o0/202611/a.png",
-		OfficialAssetID: "asset-a", FileName: "Voice A"}
+		StorageKey: "o0/202611/a.wav", PublicURL: "https://pub.example.r2.dev/o0/202611/a.wav",
+		ThumbnailURL: "https://pub.example.r2.dev/o0/202611/a.png", OfficialAssetID: "asset-a", FileName: "Voice A"}
 	repo.rows[2] = &model.Asset{ID: 2, UserID: 7, Kind: "audio", Source: model.AssetSourceUpload,
 		StorageID: 1, StorageKey: "u7/202611/private.wav"} // 私有素材不能混进官方列表
 	svc := service.NewAssetService(repo, nil, config.Storage{})
@@ -48,8 +48,9 @@ func TestListOfficialVoices(t *testing.T) {
 		t.Fatalf("只应返回 1 条官方音色：%+v", resp.Data)
 	}
 	it := resp.Data.Items[0]
-	if it.OfficialAssetID != "asset-a" || it.ThumbnailURL == "" || it.URL == "" {
-		t.Fatalf("官方音色视图字段不全：%+v", it)
+	if it.OfficialAssetID != "asset-a" || it.ThumbnailURL != "https://pub.example.r2.dev/o0/202611/a.png" ||
+		it.URL != "https://pub.example.r2.dev/o0/202611/a.wav" {
+		t.Fatalf("官方音色应直接给公网地址：%+v", it)
 	}
 }
 

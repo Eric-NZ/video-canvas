@@ -169,12 +169,15 @@ func (s *AssetService) View(ctx context.Context, userID, id uint64) (*model.Asse
 //
 // URL 是稳定地址 {站点前缀}/files/<key>：它会被前端写进画布 payload 持久化，所以必须永不过期、
 // 换存储也不变。签名发生在浏览器真正访问 /files 的那一刻（见 ResolveFile），而不是这里。
+//
+// 官方音色的文件在公网地址上（PublicURL / ThumbnailURL），直接原样给出，不经过 /files。
 func (s *AssetService) ViewOf(ctx context.Context, a *model.Asset) (*model.AssetView, error) {
-	v := assetView(a, s.fileURL(a.StorageKey))
-	if a.ThumbnailKey != "" {
-		v.ThumbnailURL = s.fileURL(a.ThumbnailKey)
+	if a.PublicURL != "" {
+		v := assetView(a, a.PublicURL)
+		v.ThumbnailURL = a.ThumbnailURL
+		return v, nil
 	}
-	return v, nil
+	return assetView(a, s.fileURL(a.StorageKey)), nil
 }
 
 // FileURL 返回素材的稳定访问地址（/files/<key>），给不持有素材记录、只拿到存储 key 的调用方用（如画布列表的封面）。
@@ -241,6 +244,15 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 	a, err := s.Get(ctx, userID, assetID)
 	if err != nil {
 		return nil, err
+	}
+
+	// 1.5 官方音色：文件在公网地址上，按 URL 取内容，不查存储配置
+	if a.PublicURL != "" {
+		body, err := fetchPublicAsset(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		return &provider.AssetFile{Asset: a, Body: body, URL: a.PublicURL, Remote: true}, nil
 	}
 
 	// 2. 找到素材所在的存储（按素材自己记录的 storage_id，而不是当前默认存储）；
@@ -350,7 +362,7 @@ func (s *AssetService) ListOfficial(ctx context.Context, kind string, offset, li
 // assetIngest 是统一入库流程的参数。
 type assetIngest struct {
 	UserID       uint64
-	Source       string  // upload / generated / official / official_thumb
+	Source       string  // upload / generated / official
 	TaskID       *uint64 // 生成产物对应的任务
 	KeyPrefix    string  // 对象 key 首段前缀：u（用户上传）/ g（生成产物）/ o（官方素材）
 	FileName     string  // 已清洗的展示文件名，可为空

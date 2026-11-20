@@ -4,6 +4,3 @@
 # Windows 批处理必须使用 CRLF，否则 cmd 解析多行括号/标签会错乱
 *.bat text eol=crlf
 *.cmd text eol=crlf
-
-# 公开音色数据包是二进制压缩档：不做换行转换、不参与 diff
-seed/official-voices/pack.tar.gz binary

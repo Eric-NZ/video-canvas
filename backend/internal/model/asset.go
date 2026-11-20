@@ -4,10 +4,9 @@ import "time"
 
 // 素材来源。
 const (
-	AssetSourceUpload        = "upload"         // 用户上传
-	AssetSourceGenerated     = "generated"      // 生成任务产物
-	AssetSourceOfficial      = "official"       // 官方参考音色（系统公共，user_id=0）
-	AssetSourceOfficialThumb = "official_thumb" // 官方音色的缩略图（系统公共，只为 /files 反查而建行）
+	AssetSourceUpload    = "upload"    // 用户上传
+	AssetSourceGenerated = "generated" // 生成任务产物
+	AssetSourceOfficial  = "official"  // 官方参考音色（系统公共，user_id=0，文件在公网地址上，不在平台存储里）
 )
 
 // Asset 素材：用户上传或生成任务转存后的产物。只存 StorageKey，URL 由存储实现按策略生成。
@@ -26,10 +25,9 @@ type Asset struct {
 	TaskID          *uint64 `gorm:"index" json:"task_id"`                                                                // 生成产物对应的任务
 	FileName        string  `gorm:"size:255;not null;default:''" json:"file_name"`                                       // 原始文件名
 	Sha256          string  `gorm:"size:64;not null;default:'';index:idx_assets_sha256" json:"-"`                        // 文件内容的 SHA-256（小写十六进制）；空串表示还没算，导入导出按它复用已有文件
-	ThumbnailKey    string  `gorm:"size:512;not null;default:''" json:"-"`                                               // 缩略图对象的存储 key；空串表示没有缩略图，/files/<key> 靠它反查缩略图素材
+	PublicURL       string  `gorm:"size:1024;not null;default:''" json:"-"`                                              // 文件的公网地址；非空表示文件不在平台存储里（官方音色），读取直接用它，不走 storage_id / /files
+	ThumbnailURL    string  `gorm:"size:1024;not null;default:''" json:"-"`                                              // 缩略图的公网地址；空串表示没有缩略图
 	OfficialAssetID string  `gorm:"size:128;not null;default:'';index:idx_assets_official_asset_id" json:"-"`            // 官方 asset-xxx ID；只在官方渠道内拼 asset://，跨渠道无效
-	// OfficialChannelKey 记录这条公开音色是在哪个渠道下导入的，只作溯源；真正决定能不能用 asset:// 的是资源域。
-	OfficialChannelKey string `gorm:"size:64;not null;default:'';index:idx_assets_official_channel" json:"-"`
 	// OfficialScope 是该公开音色所属的资源域（ark-cn / byteplus）。公开素材按域各自一套，
 	// 只有任务渠道落在同一域时才能拼 asset://；跨域一律回退音频文件 URL。
 	OfficialScope string `gorm:"size:32;not null;default:'';index:idx_assets_official_scope" json:"-"`
