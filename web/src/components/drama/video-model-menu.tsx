@@ -1,8 +1,6 @@
-import { Check } from "lucide-react";
-
 import type { ModelInfo } from "@/api/model/type";
 import { ModelLogo } from "@/components/model-logo";
-import { cn } from "@/lib/utils";
+import { OptionRow } from "@/components/option-menu";
 import { modelSummary, videoModelSupport } from "@/utils/drama/video-models";
 
 import { ChipPopover } from "./pickers";
@@ -73,20 +71,15 @@ export function ModelMenu({
       {(close) => (
         <>
           {defaultLabel && (
-            <button
-              type="button"
+            <OptionRow
+              active={!model}
               onClick={() => {
                 close();
                 onPick("");
               }}
-              className={cn(
-                "hover:bg-muted focus-visible:ring-ring/50 flex min-h-10 items-center gap-2 rounded-md px-2 py-1 text-left text-sm outline-none focus-visible:ring-2",
-                !model && "bg-muted font-medium",
-              )}
             >
               <span className="min-w-0 flex-1 truncate">{defaultLabel}</span>
-              {!model && <Check className="size-4 shrink-0" />}
-            </button>
+            </OptionRow>
           )}
           {models.length === 0 && (
             <div className="text-muted-foreground px-2 py-3 text-sm">
@@ -98,20 +91,15 @@ export function ModelMenu({
             const active = model?.key === info.key;
             const note = ability.ok ? summary?.(info) : ability.reason;
             return (
-              <button
+              <OptionRow
                 key={info.key}
-                type="button"
+                active={active}
                 disabled={!ability.ok}
                 title={ability.reason ?? undefined}
                 onClick={() => {
                   close();
                   onPick(info.key);
                 }}
-                className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex min-h-10 items-center gap-2 rounded-md px-2 py-1 text-left text-sm outline-none focus-visible:ring-2",
-                  "disabled:hover:bg-transparent disabled:cursor-not-allowed disabled:opacity-45",
-                  active && "bg-muted font-medium",
-                )}
               >
                 <ModelLogo vendor={info.vendor} name={info.label} className="size-5" />
                 <span className="min-w-0 flex-1">
@@ -122,8 +110,7 @@ export function ModelMenu({
                     </span>
                   )}
                 </span>
-                {active && <Check className="size-4 shrink-0" />}
-              </button>
+              </OptionRow>
             );
           })}
         </>

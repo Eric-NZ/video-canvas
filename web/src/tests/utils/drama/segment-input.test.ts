@@ -105,6 +105,9 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.errors).toEqual({});
     expect(plan.imageCount).toBe(3);
     expect(plan.imageMax).toBe(9);
+    // 角色卡音色也算素材：素材条据此显示「音频 n/上限」，不然音色带没带看不出来
+    expect(plan.audioCount).toBe(1);
+    expect(plan.audioMax).toBe(3);
     const linkedChar = plan.refs.find((ref) => ref.id === "n1");
     expect(linkedChar).toMatchObject({ state: "image", imageCount: 2, voice: "used" });
   });

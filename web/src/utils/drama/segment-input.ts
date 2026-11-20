@@ -43,6 +43,9 @@ export type SegmentPlan = {
   /** input.images 里的张数与模型上限，参考素材条的「n/上限」 */
   imageCount: number;
   imageMax: number;
+  /** input.audios 里的条数与模型上限；角色卡音色就体现在这里 */
+  audioCount: number;
+  audioMax: number;
   /** 引用了已被删除的节点，存下来的名字 */
   deadLabels: string[];
   /** 故事板这次带没带、为什么 */
@@ -281,8 +284,8 @@ export function planSegmentInput(args: {
     built.errors.images = `${built.errors.images}（含故事板 1 张，可以在参考素材里关掉故事板）`;
   }
   // 模型不收参考音频时音频会被静默丢掉，旁白就变成没有音色的普通文字
-  const audios = Array.isArray(built.input.audios) ? built.input.audios : [];
-  const narrator = readyAudio.filter((link) => audios.includes(toAssetNumber(link.assetId)));
+  const sentAudios = Array.isArray(built.input.audios) ? built.input.audios : [];
+  const narrator = readyAudio.filter((link) => sentAudios.includes(toAssetNumber(link.assetId)));
   if (caps && narrator.length < readyAudio.length)
     built.errors.audios ??=
       "当前模型或生成方式不接收参考音频，旁白音色带不进去；请换支持参考音频的模型，或去掉音频引用";
@@ -300,6 +303,7 @@ export function planSegmentInput(args: {
     if (fit.adjusted) notices.push(`片段 ${args.seconds}s 超出模型范围，按 ${fit.value}s 生成`);
   }
   const images = built.input.images;
+  const audios = built.input.audios;
   return {
     op,
     input: built.input,
@@ -308,6 +312,8 @@ export function planSegmentInput(args: {
     refs: refViews(linked, bindings),
     imageCount: Array.isArray(images) ? images.length : 0,
     imageMax: caps?.refs?.image?.max ?? 0,
+    audioCount: Array.isArray(audios) ? audios.length : 0,
+    audioMax: caps?.refs?.audio?.max ?? 0,
     deadLabels: deadLabelsOf(linked),
     board,
   };
