@@ -2,23 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Frame, LayoutGrid, Loader2, type LucideIcon } from "lucide-react";
 
-import { getCanvas } from "@/api/canvas";
 import { listSegments } from "@/api/drama";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
 import { Button } from "@/components/ui/button";
 import { useCanvasLock } from "@/hooks/use-canvas-lock";
+import { useCanvasOpening } from "@/hooks/use-canvas-opening";
 import { cn } from "@/lib/utils";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
 import type { CanvasNode, CanvasNodeData, FlowNode, NodeDrama, NodeKind } from "@/types";
-import { draftStore } from "@/utils/canvas/draft-idb";
-import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { defaultDramaForNew, type AssetType, type EpisodeFilter } from "@/utils/drama/assets";
 import { isBoardNode } from "@/utils/drama/board";
 import { busyReason } from "@/utils/drama/jobs";
 import { dramaAssetTypeOf, referenceWarning } from "@/utils/drama/segment-assets";
-import { getCurrentUserId } from "@/utils/storage/user-id";
 
 import { AssetsUiContext, type AssetsUi } from "./assets-ui";
 import { AssetsOverlay } from "./assets-overlay";
@@ -62,7 +59,10 @@ export function DramaCanvas({
 }) {
   const { drama } = useWorkspace();
   const canvasId = drama.canvasId;
-  const lock = useCanvasLock(canvasId);
+  /** 被要求让位前先存盘：编辑器的 saveNow 经这个 ref 交出来 */
+  const saveRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
+  const lock = useCanvasLock(canvasId, { onYield: () => saveRef.current() });
+  const { opened, error, mountSeq, readOnly, replace } = useCanvasOpening(canvasId, lock.status);
   const dramaRef = useRef(drama);
   useEffect(() => {
     dramaRef.current = drama;
@@ -94,44 +94,15 @@ export function DramaCanvas({
       destructive: true,
     });
   }, []);
-  const [opened, setOpened] = useState<OpenedCanvas | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (lock !== "held") return;
-    let active = true;
-    const userId = getCurrentUserId();
-    void loadCanvasForEditing({
-      canvasId,
-      userId,
-      getCanvas,
-      loadDraft: (user, id) => draftStore.load(user, id),
-      removeDraft: (id) => (userId ? draftStore.remove(userId, id) : Promise.resolve()),
-    })
-      .then((value) => active && setOpened(value))
-      .catch(() => active && setError(true));
-    return () => {
-      active = false;
-    };
-  }, [canvasId, lock]);
-
-  // 没能加载出来就告诉调用方（片场据此卸载画布、回列表）
-  const failure = lock === "waiting" || error;
+  // 只有真的读不出来才告诉调用方放弃（被另一个标签页占着不再是失败：这里会以只读预览打开）
   const onFailRef = useRef(onFail);
   useEffect(() => {
     onFailRef.current = onFail;
   });
   useEffect(() => {
-    if (failure) onFailRef.current?.();
-  }, [failure]);
+    if (error) onFailRef.current?.();
+  }, [error]);
 
-  if (lock === "waiting") {
-    return (
-      <div className="text-muted-foreground grid h-full place-items-center text-sm">
-        这部短剧的资产画布已在另一个标签页打开，关闭那边后会自动接管。
-      </div>
-    );
-  }
   if (error) {
     return (
       <div className="text-muted-foreground grid h-full place-items-center text-sm">
@@ -150,10 +121,14 @@ export function DramaCanvas({
   return (
     <ReactFlowProvider>
       <CanvasEditor
-        key={`${canvasId}:${current.canvas.version}`}
+        key={`${canvasId}:${current.canvas.version}:${mountSeq}`}
         canvas={current.canvas}
         recovery={current.recovery}
-        onConflict={(latest) => setOpened({ canvas: latest, recovery: null })}
+        onConflict={(latest) => replace({ canvas: latest, recovery: null })}
+        readOnly={readOnly}
+        takeoverState={lock.takeoverState}
+        onTakeover={lock.takeover}
+        saveRef={saveRef}
         menuItems={buildMenuItems}
         onNodeCreate={onNodeCreate}
         toolbarExtra={renderToolbarExtra}
