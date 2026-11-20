@@ -8,7 +8,7 @@ import { AssetCover } from "@/components/assets/asset-card";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
 import { AssetSearch } from "@/components/assets/asset-search";
 import { AssetsToolbar } from "@/components/assets/assets-toolbar";
-import { VoiceFilterChips } from "@/components/assets/voice-filter-chips";
+import { FilterMenu } from "@/components/assets/filter-menu";
 import { EmptyMark } from "@/components/home/empty-mark";
 import { TAP_CARD } from "@/lib/motion";
 import {
@@ -97,38 +97,27 @@ export function OfficialView() {
     [items],
   );
 
-  const count =
-    page === null ? "加载中…" : filtering ? `找到 ${items.length} 条` : `共 ${page.total} 条`;
-
   return (
     <div className="pt-2">
-      <AssetsToolbar className="mt-4 mb-4">
-        <span className="text-muted-foreground shrink-0 pl-2.5 text-xs">语言</span>
-        <VoiceFilterChips
+      <AssetsToolbar className="mt-4 mb-7">
+        <FilterMenu
           label="语言"
-          options={VOICE_LANG_OPTIONS}
           value={lang}
-          onChange={setLang}
+          defaultValue="all"
+          groups={[{ options: VOICE_LANG_OPTIONS }]}
+          onChange={(value) => setLang(value as VoiceLangFilter)}
         />
-        <span aria-hidden className="bg-chrome-border mx-1.5 h-4 w-px shrink-0" />
-        <span className="text-muted-foreground shrink-0 text-xs">人群</span>
-        <VoiceFilterChips
+        <FilterMenu
           label="人群"
-          options={VOICE_GROUP_OPTIONS}
           value={group}
-          onChange={setGroup}
+          defaultValue="all"
+          groups={[{ options: VOICE_GROUP_OPTIONS }]}
+          onChange={(value) => setGroup(value as VoiceGroupFilter)}
         />
-        <div className="ml-auto pl-1">
+        <div className="ml-auto">
           <AssetSearch value={input} onChange={setInput} placeholder="搜索音色名称" />
         </div>
       </AssetsToolbar>
-
-      <div className="text-muted-foreground mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[13px]">
-        <p>点卡片试听；在画布和片场里可以把它当参考音频。</p>
-        <span aria-live="polite" className="shrink-0 tabular-nums">
-          {count}
-        </span>
-      </div>
 
       {items.length === 0 && page !== null ? (
         filtering ? (
