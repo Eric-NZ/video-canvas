@@ -50,14 +50,13 @@ const KID_AGES = new Set(["child", "teen"]);
 const SCOPE_LANG: Record<string, VoiceLang> = { "ark-cn": "zh", byteplus: "en" };
 
 /**
- * 音色的大类别（语言）。按来源定：方舟国内 = 中文，BytePlus = 英文；
- * 来源认不出时才退回数据里的 voice_lang，都没有就是空（只在「全部」里出现）。
- * 这样分类的基准就是用户实际看到的两套素材，不依赖分类字段有没有回填。
+ * 音色的大类别（语言）。以每条音色自己的语言为准（数据里的 voice_lang）：方舟国内的音色里也有英文声音
+ * （如 Zayne、Noah），不能一律算中文；语言字段空着（老数据）才按来源推：方舟国内 = 中文，BytePlus = 英文；
+ * 两边都没有就是空（只在「全部」里出现）。
  */
 export function voiceLangOf(asset: Pick<AssetDto, "scope" | "voiceLang">): VoiceLang | "" {
-  const byScope = SCOPE_LANG[asset.scope ?? ""];
-  if (byScope) return byScope;
-  return asset.voiceLang === "zh" || asset.voiceLang === "en" ? asset.voiceLang : "";
+  if (asset.voiceLang === "zh" || asset.voiceLang === "en") return asset.voiceLang;
+  return SCOPE_LANG[asset.scope ?? ""] ?? "";
 }
 
 /**
