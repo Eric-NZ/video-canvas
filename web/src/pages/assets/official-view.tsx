@@ -22,9 +22,9 @@ import {
   type VoiceLangFilter,
 } from "@/utils/assets/official-voices";
 
-/** 音色缩略图是 144px 头像，用紧凑网格一行多列，名字常显在下方。 */
+/** 音色缩略图是 144px 头像，用网格一行多列，名字常显在下方；每列最小 128px。 */
 const VOICE_GRID =
-  "grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-[repeat(auto-fill,minmax(104px,1fr))]";
+  "grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-[repeat(auto-fill,minmax(128px,1fr))]";
 
 function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: () => void }) {
   const name = voiceDisplayName(asset);
@@ -47,7 +47,7 @@ function OfficialVoiceCard({ asset, onPreview }: { asset: AssetDto; onPreview: (
           </span>
         )}
       </span>
-      <span className="block truncate px-0.5 text-center text-[11px] leading-tight">{name}</span>
+      <span className="block truncate px-0.5 text-center text-xs leading-tight">{name}</span>
     </motion.button>
   );
 }
