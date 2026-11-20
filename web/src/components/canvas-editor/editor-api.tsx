@@ -30,6 +30,11 @@ export type CanvasEditorCommands = {
 export type CanvasEditorApi = CanvasEditorCommands & {
   canvasId: string;
   title: string;
+  /**
+   * 只能看、不能改。另一标签页正拿着编辑锁时是这个状态：
+   * 顶栏改名、底栏新建、上传、撤销重做这些入口据此收起来。
+   */
+  readOnly: boolean;
   /** 改名并保存；失败会自己回滚并提示 */
   rename: (next: string) => void;
   saveStatus: SaveStatus;
