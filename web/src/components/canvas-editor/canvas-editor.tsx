@@ -765,21 +765,24 @@ export const CanvasEditor = memo(function CanvasEditor({
   );
   /**
    * 给空节点选素材的素材库弹框：记下放进哪个节点、锁定什么种类；关掉时保留种类，关闭动画里不闪成全部种类。
-   * 放进角色卡时多一个「真人库」来源（短剧资产列表的空角色卡也走这里）。
+   * 放进角色卡时多一个「真人库」来源（短剧资产列表的空角色卡也走这里）；
+   * replace 为真是给已有主图的图片节点换主图（确认后走 replaceAsset，不是往空节点里放）。
    */
   const [fillPicker, setFillPicker] = useState<{
     open: boolean;
     id: string;
     kind: MediaType;
     character: boolean;
-  }>({ open: false, id: "", kind: "image", character: false });
+    replace: boolean;
+  }>({ open: false, id: "", kind: "image", character: false, replace: false });
   const openFillPicker = useCallback(
-    (id: string, kind: MediaType) =>
+    (id: string, kind: MediaType, replace = false) =>
       setFillPicker({
         open: true,
         id,
         kind,
         character: (getNode(id)?.data as CanvasNodeData | undefined)?.kind === "character",
+        replace,
       }),
     [getNode],
   );
@@ -1250,9 +1253,12 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   limit={1}
                                   withHumans={fillPicker.character && fillPicker.kind === "image"}
                                   withOfficialVoices={fillPicker.kind === "audio"}
-                                  confirmLabel="放进节点"
+                                  confirmLabel={fillPicker.replace ? "替换主图" : "放进节点"}
                                   onConfirm={(assets) => {
-                                    if (assets[0]) fill.fillAsset(fillPicker.id, assets[0]);
+                                    if (!assets[0]) return;
+                                    if (fillPicker.replace)
+                                      fill.replaceAsset(fillPicker.id, assets[0]);
+                                    else fill.fillAsset(fillPicker.id, assets[0]);
                                   }}
                                 />
                               </div>
