@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Frame, LayoutGrid, Loader2, type LucideIcon } from "lucide-react";
 
+import type { CanvasGraphDto } from "@/api/canvas/type";
 import { listSegments } from "@/api/drama";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CanvasEditor } from "@/components/canvas-editor/canvas-editor";
@@ -49,6 +50,7 @@ export function DramaCanvas({
   commandsRef,
   onNodeCreate,
   onFail,
+  onSaved,
 }: {
   /** 编辑器 overlay 插槽的内容；要引用稳定（模块顶层常量），否则会牵动编辑器 */
   overlay: React.ReactNode;
@@ -56,6 +58,8 @@ export function DramaCanvas({
   onNodeCreate: (node: CanvasNode) => CanvasNode;
   /** 画布没能加载出来（读取失败、被别的标签页占着编辑锁）：调用方据此放弃，别一直占着 */
   onFail?: () => void;
+  /** 编辑器存盘成功，交出存下的图谱（片场据此同步故事板状态） */
+  onSaved?: (graph: CanvasGraphDto) => void;
 }) {
   const { drama } = useWorkspace();
   const canvasId = drama.canvasId;
@@ -129,6 +133,7 @@ export function DramaCanvas({
         takeoverState={lock.takeoverState}
         onTakeover={lock.takeover}
         saveRef={saveRef}
+        onSaved={onSaved}
         menuItems={buildMenuItems}
         onNodeCreate={onNodeCreate}
         toolbarExtra={renderToolbarExtra}
