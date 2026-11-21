@@ -18,6 +18,7 @@ import {
   updateSegment,
 } from "@/api/drama";
 import { DRAMA_ERR, dramaErrorMessage, isDramaError, isRevisionConflict } from "@/api/drama/errors";
+import type { CanvasGraphDto } from "@/api/canvas/type";
 import type { Drama, EpisodeSummary, Segment, UpdateSegmentInput } from "@/api/drama/type";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { choose as chooseOption } from "@/components/drama/choice-dialog";
@@ -115,6 +116,11 @@ export type Studio = {
   canvasFocused: () => void;
   /** 画布没能加载出来：卸载画布、回列表 */
   canvasFailed: () => void;
+  /**
+   * 片场里的画布编辑器存盘成功：用存下的图谱更新故事板和资产。
+   * 在画布里点生成、隐藏着的画布回填出图都只走编辑器自己的保存（后端不推 canvas.patch），列表那面靠它跟上。
+   */
+  canvasSaved: (graph: CanvasGraphDto) => void;
   /** 进入画布查看某个故事板节点：切到画布面，画布里视口过渡着飞到它；就在片场里，不跳工序 */
   openBoardInCanvas: (nodeId: string) => void;
   /** 中间预览看哪一面：故事板 / 视频；没手动切过时，选中片段有视频看视频，没有看故事板 */
@@ -246,6 +252,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     reload: reloadAssets,
     boards,
     boardsNow,
+    applyGraph,
   } = useDramaAssets(drama.canvasId, settled);
   const video = useDramaVideoModel(dramaId, drama.videoModel);
   const prefs = useStudioPrefs(dramaId);
@@ -837,6 +844,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
   const showList = useCallback(() => dispatchEntry({ type: "show-list" }), []);
   const canvasFocused = useCallback(() => dispatchEntry({ type: "focused" }), []);
   const canvasFailed = useCallback(() => dispatchEntry({ type: "fail" }), []);
+  const canvasSaved = useCallback((graph: CanvasGraphDto) => applyGraph(graph.nodes), [applyGraph]);
   const openBoardInCanvas = useCallback(
     (nodeId: string) => dispatchEntry({ type: "show", target: nodeId }),
     [],
@@ -879,6 +887,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     showList,
     canvasFocused,
     canvasFailed,
+    canvasSaved,
     openBoardInCanvas,
     view,
     setView,

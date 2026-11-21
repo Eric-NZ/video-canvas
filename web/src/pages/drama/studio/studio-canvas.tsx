@@ -21,9 +21,12 @@ const onNodeCreate = (node: CanvasNode) => withNewDrama(node, null);
  *
  * 从故事板点「进入画布查看」时，画布显示出来后视口**过渡着飞到**那个节点（和资产管理里点卡片一样，
  * 能看到从当前位置到节点的过程）。目标只在画布看得见的时候才飞，飞完（或放弃）清掉。
+ *
+ * 在画布里点生成故事板、或画布藏在列表后面时回填出图，都只经编辑器自己存盘，后端不推 canvas.patch；
+ * 所以每次存盘把存下的图谱交给片场（canvasSaved），切回列表时故事板已是「生成中」/ 新图。
  */
 export function StudioCanvas() {
-  const { canvasEntry, canvasFocused, canvasFailed } = useStudio();
+  const { canvasEntry, canvasFocused, canvasFailed, canvasSaved } = useStudio();
   const commands = useRef<CanvasEditorCommands | null>(null);
   const shown = canvasEntry.view === "canvas";
   const done = useCallback(() => canvasFocused(), [canvasFocused]);
@@ -37,6 +40,7 @@ export function StudioCanvas() {
           commandsRef={commands}
           onNodeCreate={onNodeCreate}
           onFail={canvasFailed}
+          onSaved={canvasSaved}
         />
       </div>
     </div>
