@@ -1,7 +1,7 @@
 import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Loader2, Lock } from "lucide-react";
+import { BookOpen, Loader2, Lock, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { getEpisode, updateEpisode } from "@/api/drama";
@@ -11,21 +11,20 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import {
-  episodeEditState,
-  MAX_JOB_EPISODES,
-  nextStep,
-  showEmptyScript,
-} from "@/utils/drama/episodes";
-import { extractScenes, normalizeSceneTitle } from "@/utils/drama/scenes";
+import { MAX_JOB_EPISODES, nextStep, showEmptyScript } from "@/utils/drama/episodes";
 import type { ScriptDoc } from "@/utils/drama/stages";
 
 import { useWorkspace } from "./context";
-import { ScriptsDialog } from "./scripts-dialog";
 import { DocEditor } from "./doc-editor";
+import { ScriptsDialog } from "./scripts-dialog";
 import { EmptyScript, EpisodeMeta, type MetaField } from "./episode-meta";
 import { useAnalyzing } from "./analyzing-view";
-import { PAPER_PROSE, ProjectDoc } from "./project-doc";
+import { PeopleDialog } from "./script-editor/people-dialog";
+import { ScriptEditor } from "./script-editor";
+import { SceneList } from "./script-editor/scene-list";
+import { SourcePane } from "./script-editor/source-pane";
+import { useScriptEditor } from "./script-editor/use-script-editor";
+import { ProjectDoc } from "./project-doc";
 import { useEstimate } from "./use-estimate";
 
 /** 目录里的一项 */
@@ -69,20 +68,27 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
   const scriptStatus = summary?.scriptStatus;
   /** 已经读到（或自己刚存下）的 revision + 状态：目录里的值和它一致就不用再读，免得每次自动保存都多一次请求 */
   const known = useRef<string | null>(null);
-  const paper = useRef<HTMLDivElement>(null);
-  const scriptMd = episode?.scriptMd ?? "";
-  const scenes = useMemo(() => extractScenes(scriptMd), [scriptMd]);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  /** 原著对照分栏是否打开 */
+  const [compare, setCompare] = useState(false);
+  /** 剧本编辑器：读取、编辑、自动保存都在这里；侧栏的场次目录和人物弹窗共用同一份 */
+  const editor = useScriptEditor(
+    drama.id,
+    no,
+    summary?.locked ?? false,
+    (status) => reportSave(`ep${no}`, status),
+    (saved, hasContent) => {
+      // 剧本保存让集级 revision 前进：同步到目录和这里持有的集，改钩子、悬念才不会冲突
+      known.current = `${saved}:${hasContent ? "ready" : "empty"}`;
+      setEpisode((prev) => (prev ? { ...prev, revision: saved } : prev));
+      applyEpisode(no, { revision: saved, scriptStatus: hasContent ? "ready" : "empty" });
+    },
+    !shared,
+  );
 
-  /** 点场次目录：按标题在稿纸里找到对应节点，滚过去（减弱动态时直接跳） */
-  const jumpTo = (title: string) => {
-    const nodes = paper.current?.querySelectorAll<HTMLElement>("h2, h3, h4, strong");
-    const hit = [...(nodes ?? [])].find(
-      (node) => normalizeSceneTitle(node.textContent ?? "") === title,
-    );
-    if (!hit) return;
-    const target = hit.tagName === "STRONG" ? (hit.parentElement ?? hit) : hit;
-    target.style.scrollMarginTop = "24px";
-    target.scrollIntoView({
+  /** 点场次目录：滚到对应的场次（减弱动态时直接跳） */
+  const jumpTo = (sceneKey: string) => {
+    document.querySelector<HTMLElement>(`[data-scene-key="${sceneKey}"]`)?.scrollIntoView({
       block: "start",
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     });
@@ -107,7 +113,6 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
   }, [drama.id, no, revision, scriptStatus, shared]);
 
   if (!summary) return null;
-  const edit = episodeEditState(summary);
   const empty = showEmptyScript(summary, episode?.scriptMd ?? "");
   /** 改开场钩子 / 结尾悬念：带 revision 乐观锁；冲突时载入最新内容并提示，失败让输入框留在编辑态 */
   const saveMeta = async (field: MetaField, value: string) => {
@@ -119,6 +124,7 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
       });
       known.current = `${saved.revision}:${saved.scriptStatus}`;
       setEpisode(saved);
+      editor.syncRevision(saved.revision);
       applyEpisode(no, {
         revision: saved.revision,
         hook: saved.hook,
@@ -166,7 +172,7 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
 
   return (
     <div className="flex justify-center gap-8 px-6 pt-6 pb-28 max-sm:px-3">
-      <div className="w-full max-w-[720px] min-w-0">
+      <div className={cn("w-full min-w-0", compare ? "max-w-[1240px]" : "max-w-[720px]")}>
         <div className="flex items-center gap-2">
           <h2 className="font-display min-w-0 truncate text-[22px] font-black tracking-wide">
             第 {no} 集 · {summary.title}
@@ -182,7 +188,62 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
               待写剧本
             </span>
           )}
+          {!empty && editor.phase === "ready" && (
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <span
+                className="bg-chrome ring-chrome-border text-muted-foreground hidden h-8 items-center gap-3 rounded-full px-3.5 text-xs tabular-nums ring-1 backdrop-blur-xl md:flex"
+                title="预估时长按对白每秒 4 个字、动作 / 空镜 / 字幕每条 2 秒估算"
+              >
+                <span>
+                  <b className="text-foreground">{editor.stats.scenes}</b> 场
+                </span>
+                <span>
+                  <b className="text-foreground">{editor.stats.chars.toLocaleString()}</b> 字
+                </span>
+                <span
+                  className={cn(
+                    drama.episodeSeconds > 0 &&
+                      editor.stats.seconds > drama.episodeSeconds &&
+                      "text-destructive",
+                  )}
+                >
+                  约 <b className="text-foreground">{editor.stats.seconds}</b>
+                  {drama.episodeSeconds > 0 && ` / ${drama.episodeSeconds}`} 秒
+                </span>
+              </span>
+              {summary.unitFrom !== null && summary.unitTo !== null && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={compare}
+                  className={cn(
+                    "bg-chrome-hover border-chrome-border rounded-full",
+                    compare && "ring-chrome-border ring-1",
+                  )}
+                  onClick={() => setCompare((on) => !on)}
+                >
+                  <BookOpen />
+                  原著对照
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-chrome-hover border-chrome-border rounded-full"
+                onClick={() => setPeopleOpen(true)}
+              >
+                <Users />
+                人物与地点
+              </Button>
+            </div>
+          )}
         </div>
+        <PeopleDialog
+          open={peopleOpen}
+          onOpenChange={setPeopleOpen}
+          dramaId={drama.id}
+          editor={editor}
+        />
         {summary.locked && (
           <div className="bg-status-warning/10 mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
             <Lock className="text-status-warning size-4 shrink-0" />
@@ -202,78 +263,56 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
           />
         ) : (
           <div
-            ref={paper}
             className={cn(
-              "bg-paper text-paper-foreground ring-border relative mt-4 rounded-t-md rounded-b-2xl px-[clamp(20px,6vw,72px)] py-12 shadow-[0_24px_60px_-24px_rgb(0_0_0/0.5)] ring-1 transition-[filter] duration-200",
-              "before:absolute before:inset-y-0 before:left-9 before:w-px before:bg-[repeating-linear-gradient(180deg,var(--border)_0_3px,transparent_3px_9px)] max-sm:before:hidden",
-              summary.locked && "saturate-[.7]",
-              PAPER_PROSE,
+              "mt-4 items-start gap-4",
+              compare && summary.unitFrom !== null
+                ? "grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
+                : "block",
             )}
           >
-            <DocEditor
-              key={`ep${no}`}
-              value={episode.scriptMd}
-              revision={episode.revision}
-              editable={!shared && edit.editable}
-              isConflict={isRevisionConflict}
-              onStatus={(status) => reportSave(`ep${no}`, status)}
-              onSave={async (markdown) => {
-                try {
-                  const saved = await updateEpisode(drama.id, no, {
-                    revision: episode.revision,
-                    scriptMd: markdown,
-                  });
-                  known.current = `${saved.revision}:${saved.scriptStatus}`;
-                  setEpisode(saved);
-                  applyEpisode(no, {
-                    revision: saved.revision,
-                    scriptStatus: saved.scriptStatus,
-                    updatedAt: saved.updatedAt,
-                  });
-                  return saved.revision;
-                } catch (e) {
-                  if (isRevisionConflict(e)) {
-                    toast.warning(`第 ${no} 集在别处被修改过，已加载最新内容，你的改动没有保存`);
-                    const latest = await getEpisode(drama.id, no).catch(() => null);
-                    if (latest) {
-                      setEpisode(latest);
-                      applyEpisode(no, { revision: latest.revision });
-                    }
-                  } else {
-                    toast.error(dramaErrorMessage(e, "保存失败，请稍后重试"));
-                  }
-                  throw e;
-                }
-              }}
-            />
+            {shared ? (
+              // 分享链接只读：数据来自快照，不读结构化接口，直接显示快照里的剧本文本
+              <div className="bg-paper text-paper-foreground ring-border relative rounded-t-md rounded-b-2xl px-[clamp(20px,6vw,72px)] py-12 shadow-[0_24px_60px_-24px_rgb(0_0_0/0.5)] ring-1">
+                <DocEditor
+                  key={`ep${no}`}
+                  value={episode.scriptMd}
+                  revision={episode.revision}
+                  editable={false}
+                  isConflict={isRevisionConflict}
+                  onStatus={() => {}}
+                  onSave={async () => episode.revision}
+                />
+              </div>
+            ) : (
+              <>
+                {compare && summary.unitFrom !== null && summary.unitTo !== null && (
+                  <SourcePane dramaId={drama.id} from={summary.unitFrom} to={summary.unitTo} />
+                )}
+                <div
+                  className={cn(
+                    "bg-paper text-paper-foreground ring-border relative rounded-t-md rounded-b-2xl px-[clamp(20px,6vw,72px)] py-12 shadow-[0_24px_60px_-24px_rgb(0_0_0/0.5)] ring-1 transition-[filter] duration-200",
+                    "before:absolute before:inset-y-0 before:left-9 before:w-px before:bg-[repeating-linear-gradient(180deg,var(--border)_0_3px,transparent_3px_9px)] max-sm:before:hidden",
+                    summary.locked && "saturate-[.7]",
+                  )}
+                >
+                  <ScriptEditor editor={editor} no={no} />
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
       {/* 页边：场次目录、梗概 / 钩子 / 悬念和对应原文，宽屏才有 */}
       <aside className="sticky top-6 hidden w-52 shrink-0 self-start pt-12 xl:block">
-        {!empty && (
+        {!empty && !shared && (
           <>
             <div className="text-muted-foreground mb-2 font-mono text-[10.5px] tracking-[0.14em]">
               本集场次
             </div>
-            {scenes.length > 0 ? (
-              <ol className="mb-5 grid gap-0.5">
-                {scenes.map((title, index) => (
-                  <li key={`${index}:${title}`}>
-                    <button
-                      type="button"
-                      onClick={() => jumpTo(title)}
-                      className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 w-full truncate rounded-lg px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
-                    >
-                      {title}
-                    </button>
-                  </li>
-                ))}
-              </ol>
+            {editor.scenes.length > 0 && editor.phase === "ready" ? (
+              <SceneList editor={editor} no={no} onJump={jumpTo} />
             ) : (
-              <p className="text-muted-foreground mb-5 text-xs">
-                剧本里没有识别到场次标题（二到四级标题，或加粗的「1-1 地点」）
-              </p>
+              <p className="text-muted-foreground mb-5 text-xs">这一集还没有场次</p>
             )}
           </>
         )}

@@ -56,6 +56,12 @@ export const DRAMA_ERR = {
   adaptMissing: 67027,
   /** 内容触发了模型的安全过滤（Msg 可点名被过滤的资产） */
   contentFiltered: 67029,
+  /** 剧本结构不合法（Msg 写明第几场第几行和原因） */
+  scriptInvalid: 67031,
+  /** 人物或地点仍被剧本引用，不能删除（Msg 写明引用它的集号） */
+  scriptRefs: 67032,
+  /** 同一短剧内人物或地点名字（含别名）重复 */
+  scriptNameTaken: 67033,
 } as const;
 
 /** 各错误码的兜底文案：后端 Msg 为空时用 */

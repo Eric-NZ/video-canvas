@@ -424,7 +424,6 @@ export interface UpdateEpisodeInput {
   revision: number;
   title?: string;
   synopsis?: string;
-  scriptMd?: string;
   /** 开场钩子 */
   hook?: string;
   /** 结尾悬念 */
@@ -774,4 +773,143 @@ export interface BackendSourcePreflight {
     credits: number;
     minutes: number;
   };
+}
+
+/** 剧本元素类型 */
+export type ScriptElementType =
+  /** 动作与画面 */
+  | "action"
+  /** 说话人（只带人物，不带正文） */
+  | "character"
+  /** 语气或同时发生的动作 */
+  | "parenthetical"
+  /** 台词 */
+  | "dialogue"
+  /** 转场 */
+  | "transition"
+  /** 字幕 */
+  | "subtitle"
+  /** 空镜 */
+  | "shot"
+  /** 闪回开始 */
+  | "flashback_start"
+  /** 闪回结束 */
+  | "flashback_end"
+  /** 作者备注，不进入拍摄，也不渲染进 script_md */
+  | "note";
+
+/** 内外景：空串表示没填 */
+export type ScriptIntExt = "" | "interior" | "exterior" | "interior_exterior";
+
+/** 后端原始的剧本元素 */
+export interface BackendScriptElementDto {
+  /** 元素 ID；新增时为 null */
+  id: string | null;
+  type: ScriptElementType;
+  text: string;
+  /** 仅 character 类型有值 */
+  character_id: string | null;
+  /** 仅 character 类型：空 / OS / VO */
+  extension: string;
+}
+
+/** 后端原始的场次 */
+export interface BackendScriptSceneDto {
+  /** 场次 ID；新增时为 null */
+  id: string | null;
+  int_ext: string;
+  time_label: string;
+  location_id: string | null;
+  title: string;
+  summary: string;
+  emotions: string[] | null;
+  extra_character_ids: string[] | null;
+  props: string[] | null;
+  elements: BackendScriptElementDto[] | null;
+}
+
+/** 后端原始的一集剧本 */
+export interface BackendScriptViewDto {
+  revision: number;
+  locked: boolean;
+  warnings: { line: number; message: string }[] | null;
+  scenes: BackendScriptSceneDto[] | null;
+}
+
+/** 剧本的一行 */
+export interface ScriptElementDto {
+  /** 元素 ID；null 表示还没保存过 */
+  id: string | null;
+  type: ScriptElementType;
+  /** 正文；character 类型恒为空串 */
+  text: string;
+  /** 说话人的人物 ID，仅 character 类型有值 */
+  characterId: string | null;
+  /** 画外音标记：空串 / OS（内心独白）/ VO（画外音、电话） */
+  extension: "" | "OS" | "VO";
+}
+
+/** 一集里的一场；场号由顺序推出 */
+export interface ScriptSceneDto {
+  /** 场次 ID；null 表示还没保存过 */
+  id: string | null;
+  intExt: ScriptIntExt;
+  /** 日 / 夜，或自由文本；空串表示没填 */
+  timeLabel: string;
+  /** 地点 ID，null 表示没选 */
+  locationId: string | null;
+  /** 场次短标题 */
+  title: string;
+  /** 场次梗概 */
+  summary: string;
+  /** 情绪标签 */
+  emotions: string[];
+  /** 出场但不说话的人物 ID */
+  extraCharacterIds: string[];
+  /** 本场道具名 */
+  props: string[];
+  elements: ScriptElementDto[];
+}
+
+/** 一集的结构化剧本 */
+export interface ScriptDto {
+  /** 集级乐观锁版本号，整集保存时带上 */
+  revision: number;
+  /** 已锁定：只读 */
+  locked: boolean;
+  /** 解析时的提示（只有粘贴解析会有） */
+  warnings: { line: number; message: string }[];
+  scenes: ScriptSceneDto[];
+}
+
+/** 人物或地点表里的一项 */
+export interface ScriptEntityDto {
+  id: string;
+  name: string;
+  aliases: string[];
+  /** 备注，只有人物有 */
+  note: string;
+  /** 拆解后关联的画布节点 ID，null 表示还没有 */
+  canvasNodeId: string | null;
+  /** false 表示解析剧本时自动登记、等用户确认 */
+  confirmed: boolean;
+  /** 出现的集号，升序 */
+  episodes: number[];
+  /** 人物的发言次数（角色行条数）；地点恒为 0 */
+  lines: number;
+}
+
+/** 剧本人物表或地点表 */
+export type ScriptEntityKind = "character" | "location";
+
+/** 后端原始的人物或地点 */
+export interface BackendScriptEntityDto {
+  id: string;
+  name: string;
+  aliases: string[] | null;
+  note: string;
+  canvas_node_id: string;
+  confirmed: boolean;
+  episodes: number[] | null;
+  lines: number;
 }
