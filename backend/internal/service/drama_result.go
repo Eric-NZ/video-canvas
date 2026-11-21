@@ -59,7 +59,7 @@ func (s *DramaService) applyDramaOutput(ctx context.Context, tx repository.Drama
 		p.Status = "outlined"
 		fields = map[string]any{"plan_cursor": p.PlanCursor, "status": p.Status}
 	case drama.OutlineOutput:
-		ready, e := saveDramaOutline(ctx, tx, p, result)
+		ready, e := s.saveDramaOutline(ctx, tx, p, result)
 		if e != nil {
 			return e
 		}
@@ -86,7 +86,7 @@ func (s *DramaService) applyDramaOutput(ctx context.Context, tx repository.Drama
 }
 
 // saveDramaOutline 将分集大纲映射到已有集，保留已锁定剧本。
-func saveDramaOutline(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, result drama.OutlineOutput) (bool, error) {
+func (s *DramaService) saveDramaOutline(ctx context.Context, tx repository.DramaTx, p *model.DramaProject, result drama.OutlineOutput) (bool, error) {
 	existing, e := tx.Episodes(ctx, p.UserID, p.ID)
 	if e != nil {
 		return false, e
@@ -115,6 +115,12 @@ func saveDramaOutline(ctx context.Context, tx repository.DramaTx, p *model.Drama
 		}
 		if e := tx.SaveEpisode(ctx, &ep, revision); e != nil {
 			return false, e
+		}
+		// 项目已转成结构时，这份新写进来的剧本文本要同步成结构
+		if want.ScriptMD != "" {
+			if e := s.resyncScript(ctx, tx, p, &ep); e != nil {
+				return false, e
+			}
 		}
 	}
 	return ready, nil

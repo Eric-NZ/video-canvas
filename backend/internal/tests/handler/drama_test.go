@@ -18,17 +18,31 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
+	"video-canvas/internal/tests/dramafake"
 )
 
 // httpDramaRepo 只提供 HTTP 场景需要的读取原语，其他调用会暴露为测试失败。
 type httpDramaRepo struct {
-	repository.DramaTx
+	dramafake.ScriptTx
 	project *model.DramaProject
 	episode *model.DramaEpisode
 	jobs    []model.DramaJob
 	credit  model.UserCredit
 }
 
+// SetEpisodeScriptMD 只改 script_md，不动 revision。
+func (r *httpDramaRepo) SetEpisodeScriptMD(_ context.Context, _, _, _ uint64, md string) error {
+	if r.episode != nil {
+		r.episode.ScriptMD = md
+	}
+	return nil
+}
+
+// MarkScriptStructured 标记整部剧已转成结构。
+func (r *httpDramaRepo) MarkScriptStructured(context.Context, uint64, uint64) error {
+	r.project.ScriptStructured = true
+	return nil
+}
 func (r *httpDramaRepo) WithTx(_ context.Context, fn func(repository.DramaTx) error) error {
 	return fn(r)
 }
@@ -76,6 +90,13 @@ func httpDramaRouter() *gin.Engine {
 	r.GET("/dramas/:id/episodes/:no", h.GetEpisode)
 	r.POST("/dramas/:id/episodes", h.CreateEpisode)
 	r.PATCH("/dramas/:id/episodes/:no", h.UpdateEpisode)
+	r.GET("/dramas/:id/episodes/:no/script", h.GetScript)
+	r.PUT("/dramas/:id/episodes/:no/script", h.PutScript)
+	r.POST("/dramas/:id/script/parse", h.ParseScript)
+	r.GET("/dramas/:id/script-characters", h.ListScriptEntities("character"))
+	r.POST("/dramas/:id/script-characters", h.CreateScriptEntity("character"))
+	r.PATCH("/dramas/:id/script-characters/:eid", h.UpdateScriptEntity("character"))
+	r.DELETE("/dramas/:id/script-characters/:eid", h.DeleteScriptEntity("character"))
 	r.POST("/dramas/:id/estimate", h.Estimate)
 	r.POST("/dramas/:id/jobs", h.CreateJob)
 	r.GET("/dramas/:id/jobs", h.ListJobs)

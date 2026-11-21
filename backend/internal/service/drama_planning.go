@@ -70,6 +70,9 @@ func (s *DramaService) importScriptTx(ctx context.Context, tx repository.DramaTx
 			if err := tx.SaveEpisode(ctx, &ep, 0); err != nil {
 				return err
 			}
+			if err := s.resyncScript(ctx, tx, p, &ep); err != nil {
+				return err
+			}
 		}
 	}
 	fields := map[string]any{"phase": "done", "plan_cursor": p.UnitsTotal, "range_end": p.UnitsTotal, "status": "ready", "pause_code": "", "pause_reason": ""}
