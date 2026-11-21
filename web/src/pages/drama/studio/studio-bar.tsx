@@ -122,7 +122,7 @@ const NO_JOBS: never[] = [];
 export function StudioBar() {
   const { drama, episode, no, save, video, canvasEntry } = useStudio();
   const jobs = useDramaJobsStore((state) => state.byDrama[drama.id]) ?? NO_JOBS;
-  const starter = useStoryboardStart(video.maxSeconds);
+  const starter = useStoryboardStart(video.storyboard);
   const status = SAVE_LABEL[save];
   const blocked = jobConflictReason(jobs, "storyboard", [no]);
   return (
@@ -144,7 +144,7 @@ export function StudioBar() {
       {/* 画布视图里用不上这些按钮，藏起来免得误点；只留左边的切换 */}
       {canvasEntry.view === "list" && (
         <>
-          <StoryboardBatchButton current={no} maxSeconds={video.maxSeconds} />
+          <StoryboardBatchButton current={no} storyboard={video.storyboard} />
           <Button
             variant="ghost"
             size="icon-sm"
