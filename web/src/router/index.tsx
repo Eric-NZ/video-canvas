@@ -40,6 +40,9 @@ import PayReturn from "@/pages/pay/return";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
 import { getToken } from "@/utils/storage/token";
+import CLIPage from "@/pages/cli";
+import CLIDocsPage from "@/pages/cli/docs";
+import CLIAuthorize from "@/pages/cli/authorize";
 
 /**
  * 旧的模型页地址：模型管理已并入渠道与模型主从页，保留 ?channel= / ?model= / ?test= 查询串，
@@ -96,6 +99,11 @@ export const router = createBrowserRouter([
         path: "/pay/return",
         element: <PayReturn />,
       },
+      /** 命令行登录的确认页：命令行打不开浏览器，用户在这页确认一次就把登录态交给它 */
+      {
+        path: "/cli/authorize",
+        element: <CLIAuthorize />,
+      },
       {
         element: <RequireAuth />,
         children: [
@@ -112,6 +120,9 @@ export const router = createBrowserRouter([
               { path: "conversations/new", element: <Navigate to="/" replace /> },
               { path: "conversations/:id", element: <Conversation /> },
               { path: "profile", element: <Profile /> },
+              /** 命令行（CLI）：自己那页，用户与后台共用同一个组件 */
+              { path: "cli", element: <CLIPage /> },
+              { path: "cli/docs", element: <CLIDocsPage /> },
             ],
           },
           {
@@ -169,6 +180,8 @@ export const router = createBrowserRouter([
               { path: "agent/steps", element: <AgentStepsPage /> },
               { path: "agent/runs", element: <AgentRunsPage /> },
               { path: "agent/tokens", element: <AgentTokensPage /> },
+              { path: "cli", element: <CLIPage /> },
+              { path: "cli/docs", element: <CLIDocsPage /> },
               { path: "users", element: <UsersPage /> },
               { path: "payment", element: <PaymentAdminPage /> },
               { path: "usage", element: <UsagePage /> },

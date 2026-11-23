@@ -102,6 +102,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
 
+	// 命令行：设备授权签发的是同一套 JWT（含 token_version，改密码后同样失效）；
+	// 安装包与脚本由站点自己下发，先看 APP_CLI_DIR，没有就回落到镜像里带的目录。
+	cliDeviceSvc := service.NewCLIDeviceService(service.CLIDeviceDeps{
+		Repo: repository.NewCLIDeviceRepository(db), Users: userRepo, Issuer: userSvc, TokenDays: settingsSvc,
+	})
+	cliReleaseSvc := service.NewCLIReleaseService(os.Getenv("APP_CLI_DIR"))
+
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
 	aiChannelRepo := repository.NewAIChannelRepository(db)
@@ -226,6 +233,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 	// 生成任务的关联业务观察者：短剧片段和营销脚本各按节点前缀认领自己的任务；短剧画布上的故事板图片任务由片段服务认领。
 	taskSvc.SetTaskObserver(service.TaskObservers{dramaSegments, marketingSvc})
+	// 产物不依赖浏览器回写：任务落终态时由服务端写进画布节点，命令行与无人值守也看得到。
+	taskSvc.SetCanvasNodeBackfill(service.NewCanvasNodeBackfill(canvasProjectRepo, hub))
 	// 分镜表拆分镜：异步任务，提交、worker 执行和推送都在这个服务里；队列晚于它创建，入队器稍后回填到仓储
 	storyboardSvc := service.NewStoryboardService(service.StoryboardDeps{
 		Repo: storyboardRepo, Models: aiCfgSvc, Caller: stepCaller, Credits: settingsSvc, Broadcaster: hub,
@@ -378,9 +387,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Limits: canvasdoc.DefaultLimits(), // 不能留零值：零值上限会拒绝所有导入文件
 			Now:    time.Now,
 		})),
+		CanvasOps:    handler.NewCanvasOpsHandler(canvasProjectSvc),
 		Storyboard:   handler.NewStoryboardHandler(storyboardSvc),
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
+		CLIDevice:    handler.NewCLIDeviceHandler(cliDeviceSvc),
+		CLIRelease:   handler.NewCLIReleaseHandler(cliReleaseSvc, cfg.Server.PublicURL),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),
 		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
 			who, err := observeSvc.AuthenticateToken(ctx, plain)
