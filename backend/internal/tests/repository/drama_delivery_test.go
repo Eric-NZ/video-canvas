@@ -3,7 +3,9 @@ package repository_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -16,8 +18,12 @@ import (
 
 type deliveryAssets struct {
 	service.DramaShareAssets
+	mu                sync.Mutex
 	fail              bool
 	copies, discarded int
+	// waitPeers 非零时，每次复制都等到有这么多个复制同时在进行（最多等 2 秒），用来验证并发复制
+	waitPeers         int
+	inflight, maxSeen int
 }
 
 func (a *deliveryAssets) Get(_ context.Context, user, id uint64) (*model.Asset, error) {
@@ -30,6 +36,25 @@ func (a *deliveryAssets) EnsureSha256(_ context.Context, _, id uint64) (string, 
 	return fmt.Sprint(id), nil, nil
 }
 func (a *deliveryAssets) CopyBySha256(_ context.Context, user uint64, sha string, _ int64) (*model.Asset, error) {
+	a.mu.Lock()
+	a.inflight++
+	a.maxSeen = max(a.maxSeen, a.inflight)
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.inflight--
+		a.mu.Unlock()
+	}()
+	for deadline := time.Now().Add(2 * time.Second); a.waitPeers > 0 && time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		a.mu.Lock()
+		enough := a.maxSeen >= a.waitPeers
+		a.mu.Unlock()
+		if enough {
+			break
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.fail && a.copies > 0 {
 		return nil, service.ErrAssetUnreadable
 	}
@@ -37,6 +62,8 @@ func (a *deliveryAssets) CopyBySha256(_ context.Context, user uint64, sha string
 	return &model.Asset{UserID: user, StorageKey: fmt.Sprintf("new-%d-%s", a.copies, sha), Kind: "video", MimeType: "video/mp4", Source: "upload"}, nil
 }
 func (a *deliveryAssets) DiscardCopies(_ context.Context, rows []*model.Asset) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.discarded += len(rows)
 }
 func (a *deliveryAssets) FileURL(key string) string { return "/files/" + key }
@@ -119,6 +146,18 @@ func TestDramaSharingDeliveryRollback(t *testing.T) {
 	}
 	if _, err := repository.NewDramaShareRepository(db).Snapshot(ctx, 42, 8, false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 发送副本时多个素材同时复制，而不是一个接一个，素材多时才不会等很久。
+func TestDramaSharingDeliveryCopiesConcurrently(t *testing.T) {
+	_, svc, assets := shareSeed(t)
+	assets.waitPeers = 2
+	if err := svc.Share(context.Background(), 42, 8, model.DramaShareReq{Mode: "copy", Email: "viewer@example.test", RequestKey: "parallel"}); err != nil {
+		t.Fatal(err)
+	}
+	if assets.maxSeen < 2 || assets.copies != 2 {
+		t.Fatalf("两个素材应同时复制：最多同时 %d 个，共复制 %d 个", assets.maxSeen, assets.copies)
 	}
 }
 

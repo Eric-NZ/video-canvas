@@ -5,6 +5,9 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -133,30 +136,55 @@ func (s *DramaShareService) writeDelivery(ctx context.Context, tx *repository.Dr
 	return tx.Complete(ctx, request)
 }
 
+// deliveryCopyConcurrency 是发送副本 / 转移时同时复制的素材数。服务端复制只是一次请求，
+// 退回读出再写入时每个素材要占一路下载和上传，这里取个不至于压垮存储和带宽的数。
+const deliveryCopyConcurrency = 6
+
+// prepare 把剧里引用的素材逐个复制给接收方，最多 deliveryCopyConcurrency 个同时进行。
+// 任何一个失败就取消其余的，并把已经复制好的副本一起返回，由调用方回收。
 func (s *DramaShareService) prepare(ctx context.Context, graph *shareGraph, req model.DramaDelivery) ([]*model.Asset, error) {
-	var copies []*model.Asset
+	var (
+		mu     sync.Mutex
+		copies []*model.Asset
+	)
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(deliveryCopyConcurrency)
 	for _, ref := range graph.assets {
-		source, err := s.assets.Get(ctx, req.UserID, ref.original)
-		if err != nil {
-			return copies, err
-		}
-		if source.Source == model.AssetSourceOfficial {
-			ref.asset, ref.url = source, source.PublicURL
-			continue
-		}
-		sha, _, err := s.assets.EnsureSha256(ctx, req.UserID, ref.original)
-		if err != nil {
-			return copies, err
-		}
-		assetCopy, err := s.assets.CopyBySha256(ctx, req.Recipient, sha, source.ByteSize)
-		if err != nil {
-			return copies, err
-		}
-		assetCopy.FileName = source.FileName
-		ref.asset, ref.url = assetCopy, s.assets.FileURL(assetCopy.StorageKey)
-		copies = append(copies, assetCopy)
+		group.Go(func() error {
+			assetCopy, err := s.copyForRecipient(groupCtx, ref, req)
+			if assetCopy != nil {
+				mu.Lock()
+				copies = append(copies, assetCopy)
+				mu.Unlock()
+			}
+			return err
+		})
 	}
-	return copies, nil
+	err := group.Wait()
+	return copies, err
+}
+
+// copyForRecipient 处理一个素材：官方素材直接沿用，其余复制一份归接收方，返回新复制的素材行（官方素材返回 nil）。
+func (s *DramaShareService) copyForRecipient(ctx context.Context, ref *sharedAsset, req model.DramaDelivery) (*model.Asset, error) {
+	source, err := s.assets.Get(ctx, req.UserID, ref.original)
+	if err != nil {
+		return nil, err
+	}
+	if source.Source == model.AssetSourceOfficial {
+		ref.asset, ref.url = source, source.PublicURL
+		return nil, nil
+	}
+	sha, _, err := s.assets.EnsureSha256(ctx, req.UserID, ref.original)
+	if err != nil {
+		return nil, err
+	}
+	assetCopy, err := s.assets.CopyBySha256(ctx, req.Recipient, sha, source.ByteSize)
+	if err != nil {
+		return nil, err
+	}
+	assetCopy.FileName = source.FileName
+	ref.asset, ref.url = assetCopy, s.assets.FileURL(assetCopy.StorageKey)
+	return assetCopy, nil
 }
 
 // Members lists viewers for an owned drama.
