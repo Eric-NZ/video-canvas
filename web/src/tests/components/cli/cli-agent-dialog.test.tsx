@@ -24,7 +24,7 @@ function mountDialog(copy: () => Promise<boolean>) {
   );
 }
 
-describe("在 Agent 里使用的弹窗", () => {
+describe("连镜 CLI 弹窗", () => {
   test("顶部是一排主流 Agent 的图标，每个都有可读的名字", async () => {
     const { unmount } = await mountDialog(async () => true);
     for (const agent of CLI_AGENTS) {
@@ -35,15 +35,24 @@ describe("在 Agent 里使用的弹窗", () => {
     await unmount();
   });
 
-  test("只有一张 CLI 卡片：标题、复制按钮、能力清单与详细指南", async () => {
+  test("只有一张 CLI 卡片：标题、复制按钮与能力清单，不放详细指南", async () => {
     const { unmount } = await mountDialog(async () => true);
     const text = body().textContent ?? "";
     expect(text).toContain("在你的 Agent 里用连镜创作");
     expect(text).toContain("画布 CLI");
     for (const item of CLI_FEATURE_GROUPS.flat()) expect(text).toContain(item);
     expect(copyButton()).toBeDefined();
-    const guide = body().querySelector('a[href="/cli/docs"]');
-    expect(guide?.textContent).toContain("详细指南");
+    expect(body().querySelector('a[href="/cli/docs"]')).toBeNull();
+    expect(text).not.toContain("详细指南");
+    await unmount();
+  });
+
+  test("用清透弹层外观：半透明面板 + 压暗模糊的遮罩", async () => {
+    const { unmount } = await mountDialog(async () => true);
+    const overlay = body().querySelector('[data-slot="dialog-overlay"]');
+    const popup = body().querySelector('[data-slot="dialog-content"]');
+    expect(overlay?.className).toContain("bg-black/25");
+    expect(popup?.className).toContain("bg-chrome");
     await unmount();
   });
 

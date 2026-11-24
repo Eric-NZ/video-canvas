@@ -6,11 +6,15 @@ import Cursor from "@lobehub/icons/es/Cursor/components/Mono";
 import GeminiCLI from "@lobehub/icons/es/GeminiCLI/components/Color";
 import Kimi from "@lobehub/icons/es/Kimi/components/Color";
 import Trae from "@lobehub/icons/es/Trae/components/Color";
-import { ArrowUpRight, Check, SquareTerminal } from "lucide-react";
-import { Link } from "react-router";
+import { Check, SquareTerminal } from "lucide-react";
 
 import { DialogSession } from "@/components/dialog-session";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/admin-ui/dialog";
 import { cn } from "@/lib/utils";
 import { copyCLIAgentPrompt } from "@/utils/cli/install";
 
@@ -47,7 +51,7 @@ export const CLI_FEATURE_GROUPS: string[][] = [
 ];
 
 /**
- * 「在 Agent 里使用」弹窗：一张画布 CLI 卡片，复制给 Agent 的整段安装提示（见 utils/cli/install.ts）。
+ * 「连镜 CLI」弹窗：一张画布 CLI 卡片，复制给 Agent 的整段安装提示（见 utils/cli/install.ts）。
  * 常驻挂载，用 open 开关，正文由 DialogSession 包住（coding-standards 6.3）。
  * @param copy 复制动作，默认复制本站的安装提示并弹 toast；测试里传假的
  */
@@ -62,17 +66,17 @@ export function CLIAgentDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-chrome ring-chrome-border flex max-h-[min(88svh,720px)] flex-col gap-0 overflow-hidden rounded-2xl p-0 shadow-2xl backdrop-blur-2xl backdrop-saturate-150 [corner-shape:squircle] sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(90svh,760px)] flex-col gap-0 overflow-hidden p-0 [corner-shape:squircle] sm:max-w-2xl">
         <DialogSession open={open}>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-8 pb-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-12 pb-8 sm:px-12 sm:pt-14 sm:pb-12">
             <AgentStack />
-            <DialogTitle className="mt-6 text-center text-2xl font-semibold tracking-tight">
+            <DialogTitle className="mt-8 text-center text-3xl font-semibold tracking-tight">
               在你的 Agent 里用连镜创作
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground mt-2 text-center text-sm">
+            <DialogDescription className="text-muted-foreground mt-3 text-center text-sm">
               支持日常创作、批量生产，适用主流终端 Agent
             </DialogDescription>
-            <CLICard copy={copy} onNavigate={() => onOpenChange(false)} />
+            <CLICard copy={copy} />
           </div>
         </DialogSession>
       </DialogContent>
@@ -103,41 +107,38 @@ function AgentStack() {
   );
 }
 
-/** 画布 CLI 卡片：标题 + 复制按钮、一句定位、两组能力清单、详细指南 */
-function CLICard({ copy, onNavigate }: { copy: () => Promise<boolean>; onNavigate: () => void }) {
+/** 画布 CLI 卡片：上半是标题 + 复制按钮，细线下是两列能力清单（每组一列） */
+function CLICard({ copy }: { copy: () => Promise<boolean> }) {
   return (
-    <section className="ring-chrome-border mt-8 grid gap-4 rounded-xl p-4 ring-1 [corner-shape:squircle]">
-      <header className="flex items-center gap-3">
-        <span className="bg-chrome-hover ring-chrome-border grid size-10 shrink-0 place-items-center rounded-lg ring-1 [corner-shape:squircle]">
+    <section className="ring-chrome-border mt-10 overflow-hidden rounded-2xl ring-1 [corner-shape:squircle]">
+      <header className="flex flex-wrap items-center gap-4 p-6">
+        <span className="bg-chrome-hover ring-chrome-border grid size-11 shrink-0 place-items-center rounded-xl ring-1 [corner-shape:squircle]">
           <SquareTerminal className="size-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-base font-semibold">画布 CLI</h3>
-          <p className="text-muted-foreground text-xs">在终端里读写画布、批量生成</p>
+          <p className="text-muted-foreground mt-0.5 text-sm">在终端里读写画布、批量生成</p>
         </div>
         <CopyForAgentButton copy={copy} />
       </header>
-      {CLI_FEATURE_GROUPS.map((group) => (
-        <ul
-          key={group[0]}
-          className="bg-chrome-hover grid gap-2.5 rounded-lg px-4 py-3 [corner-shape:squircle]"
-        >
-          {group.map((item) => (
-            <li key={item} className="flex items-center gap-2.5 text-sm">
-              <Check className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-              {item}
-            </li>
-          ))}
-        </ul>
-      ))}
-      <Link
-        to="/cli/docs"
-        onClick={onNavigate}
-        className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-sm transition-colors"
-      >
-        详细指南
-        <ArrowUpRight className="size-4" aria-hidden="true" />
-      </Link>
+      <div className="border-chrome-border grid gap-x-8 gap-y-3.5 border-t p-6 sm:grid-cols-2">
+        {CLI_FEATURE_GROUPS.map((group) => (
+          <ul key={group[0]} className="grid content-start gap-3.5">
+            {group.map((item) => (
+              <li
+                key={item}
+                className="text-foreground/85 flex items-start gap-2.5 text-sm leading-5"
+              >
+                <Check
+                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                {item}
+              </li>
+            ))}
+          </ul>
+        ))}
+      </div>
     </section>
   );
 }
@@ -162,7 +163,7 @@ function CopyForAgentButton({ copy }: { copy: () => Promise<boolean> }) {
     <button
       type="button"
       onClick={() => void onClick()}
-      className="bg-foreground text-background inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-medium shadow-sm transition-opacity hover:opacity-90"
+      className="bg-foreground text-background inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-5 text-sm font-medium shadow-sm transition-opacity hover:opacity-90"
     >
       {copied && <Check className="size-4" aria-hidden="true" />}
       {copied ? "已复制" : "复制命令给 Agent"}

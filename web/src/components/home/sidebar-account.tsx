@@ -11,9 +11,9 @@ import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
 
 /**
  * 侧栏底部的账号菜单，首页侧栏和后台侧栏共用，保证两边的头像、名称、菜单项一致：
- * 头像和名称读当前用户资料（资料没拉到时用令牌里的用户名兜底），菜单里固定有「个人中心」和「在 Agent 里使用」。
- * 「在 Agent 里使用」打开 CLI 弹窗；弹窗挂在下拉菜单外面，菜单收起时不会把它一起卸掉。
- * @param children 「个人中心」下面的额外菜单项，比如首页的「管理后台」；「在 Agent 里使用」排在它们后面
+ * 头像和名称读当前用户资料（资料没拉到时用令牌里的用户名兜底），菜单里固定有「个人中心」和「连镜 CLI」。
+ * 「连镜 CLI」打开 CLI 弹窗；弹窗挂在下拉菜单外面，菜单收起时不会把它一起卸掉。
+ * @param children 「个人中心」下面的额外菜单项，比如首页的「管理后台」；「连镜 CLI」排在它们后面
  */
 export function SidebarAccount({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
@@ -40,7 +40,7 @@ export function SidebarAccount({ children }: { children?: ReactNode }) {
         {children}
         <DropdownMenuItem onClick={() => setCLIOpen(true)}>
           <Terminal />
-          在 Agent 里使用
+          连镜 CLI
         </DropdownMenuItem>
       </NavUser>
       <CLIAgentDialog open={cliOpen} onOpenChange={setCLIOpen} />

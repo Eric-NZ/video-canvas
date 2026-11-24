@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import { Loader2, MoreHorizontal, Share2, Trash2 } from "lucide-react";
 import { DramaShareDialog } from "./share-dialog";
+import { openDialog } from "@/store/dialog";
 
 import type { DramaSummary } from "@/api/drama/type";
 import { DramaPoster } from "@/components/drama/poster";
@@ -62,7 +63,6 @@ export function DramaCard({
   onTransferred: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const status = dramaStatusLabel(drama.status, drama.phase);
   return (
     <motion.div
@@ -126,7 +126,15 @@ export function DramaCard({
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={6} className="w-36">
-          <DropdownMenuItem onClick={() => setSharing(true)}>
+          <DropdownMenuItem
+            onClick={() =>
+              openDialog(DramaShareDialog, {
+                id: drama.id,
+                title: drama.title,
+                transferred: onTransferred,
+              })
+            }
+          >
             <Share2 />
             共享
           </DropdownMenuItem>
@@ -136,14 +144,6 @@ export function DramaCard({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {sharing && (
-        <DramaShareDialog
-          id={drama.id}
-          title={drama.title}
-          close={() => setSharing(false)}
-          transferred={onTransferred}
-        />
-      )}
 
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
