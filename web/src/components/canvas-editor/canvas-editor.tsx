@@ -1144,7 +1144,7 @@ export const CanvasEditor = memo(function CanvasEditor({
                                   />
                                 )}
                                 {overlay}
-                                {readOnly && (
+                                {readOnly && onTakeover && (
                                   <ReadOnlyBanner
                                     takeoverState={takeoverState}
                                     onTakeover={onTakeover}

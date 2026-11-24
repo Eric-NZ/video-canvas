@@ -1,3 +1,4 @@
+import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Frame, LayoutGrid, Loader2, type LucideIcon } from "lucide-react";
@@ -62,11 +63,15 @@ export function DramaCanvas({
   onSaved?: (graph: CanvasGraphDto) => void;
 }) {
   const { drama } = useWorkspace();
+  const shared = useSharedWorkspace();
   const canvasId = drama.canvasId;
   /** 被要求让位前先存盘：编辑器的 saveNow 经这个 ref 交出来 */
   const saveRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
-  const lock = useCanvasLock(canvasId, { onYield: () => saveRef.current() });
-  const { opened, error, mountSeq, readOnly, replace } = useCanvasOpening(canvasId, lock.status);
+  const lock = useCanvasLock(shared ? undefined : canvasId, { onYield: () => saveRef.current() });
+  const { opened, error, mountSeq, readOnly, replace } = useCanvasOpening(
+    shared ? undefined : canvasId,
+    lock.status,
+  );
   const dramaRef = useRef(drama);
   useEffect(() => {
     dramaRef.current = drama;
@@ -114,7 +119,11 @@ export function DramaCanvas({
       </div>
     );
   }
-  const current = opened && opened.canvas.id === canvasId ? opened : null;
+  const current = shared
+    ? { canvas: shared.canvas, recovery: null }
+    : opened && opened.canvas.id === canvasId
+      ? opened
+      : null;
   if (!current) {
     return (
       <div className="text-muted-foreground grid h-full place-items-center text-sm">
@@ -129,9 +138,9 @@ export function DramaCanvas({
         canvas={current.canvas}
         recovery={current.recovery}
         onConflict={(latest) => replace({ canvas: latest, recovery: null })}
-        readOnly={readOnly}
+        readOnly={!!shared || readOnly}
         takeoverState={lock.takeoverState}
-        onTakeover={lock.takeover}
+        onTakeover={shared ? undefined : lock.takeover}
         saveRef={saveRef}
         onSaved={onSaved}
         menuItems={buildMenuItems}
@@ -215,6 +224,7 @@ export function AssetsArea({
   /** 打开资产拆解对话框：从剧本里拆出角色、场景、道具 */
   onBreakdownOpen: () => void;
 }) {
+  const shared = useSharedWorkspace();
   const { drama, jobs } = useWorkspace();
   const breakdownBlocked =
     busyReason(jobs) ??
@@ -277,7 +287,8 @@ export function AssetsArea({
         <Button
           variant="outline"
           size="sm"
-          disabled={!!breakdownBlocked}
+          hidden={!!shared}
+          disabled={!!shared || !!breakdownBlocked}
           title={breakdownBlocked ?? "从已写好的剧本里拆出角色、场景和道具"}
           onClick={onBreakdownOpen}
         >

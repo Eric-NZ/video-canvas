@@ -1,3 +1,4 @@
+import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
 import { useCallback, useRef } from "react";
 
 import type { CanvasEditorCommands } from "@/components/canvas-editor/editor-api";
@@ -26,6 +27,7 @@ const onNodeCreate = (node: CanvasNode) => withNewDrama(node, null);
  * 所以每次存盘把存下的图谱交给片场（canvasSaved），切回列表时故事板已是「生成中」/ 新图。
  */
 export function StudioCanvas() {
+  const shared = useSharedWorkspace();
   const { canvasEntry, canvasFocused, canvasFailed, canvasSaved } = useStudio();
   const commands = useRef<CanvasEditorCommands | null>(null);
   const shown = canvasEntry.view === "canvas";
@@ -36,7 +38,7 @@ export function StudioCanvas() {
       {/* 绝对定位铺满：编辑器的 h-full 才有确定的高度可依 */}
       <div className="absolute inset-0">
         <DramaCanvas
-          overlay={overlay}
+          overlay={shared ? null : overlay}
           commandsRef={commands}
           onNodeCreate={onNodeCreate}
           onFail={canvasFailed}

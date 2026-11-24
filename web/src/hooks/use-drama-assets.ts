@@ -1,3 +1,4 @@
+import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getCanvas } from "@/api/canvas";
@@ -42,6 +43,7 @@ const withVoiceTasks = (assets: RefAsset[], tasks: TaskMap): RefAsset[] =>
  * 片场里挂着的画布编辑器自己存盘（在画布里点生成、隐藏着的画布回填出图）不推 canvas.patch，由调用方用 applyGraph 交过来。
  */
 export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsState {
+  const shared = useSharedWorkspace();
   const [assets, setAssets] = useState<RefAsset[]>(NONE);
   const [status, setStatus] = useState<DramaAssetsState["status"]>("loading");
   const [boards, setBoards] = useState<ReadonlyMap<string, BoardNode>>(NO_BOARDS);
@@ -57,7 +59,7 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
       const voiceIds = [
         ...new Set(next.flatMap((asset) => (asset.voiceTaskId ? [asset.voiceTaskId] : []))),
       ];
-      if (voiceIds.length) await reconcileTaskIds(voiceIds);
+      if (!shared && voiceIds.length) await reconcileTaskIds(voiceIds);
       if (mine !== seq.current) return null;
       setAssets(next);
       const nextBoards = boardsFromGraph(nodes);
@@ -66,7 +68,7 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
       setStatus("ready");
       return withVoiceTasks(next, useTasksStore.getState().tasks);
     },
-    [],
+    [shared],
   );
 
   const load = useCallback(async (): Promise<RefAsset[] | null> => {
@@ -75,14 +77,14 @@ export function useDramaAssets(canvasId: string, reloadKey = 0): DramaAssetsStat
       // 刚卸载的画布编辑器（资产管理里改完马上切到片场）还在补存：等它落地再读，不读到旧图谱
       await waitPendingSave(canvasId);
       if (mine !== seq.current) return null;
-      const canvas = await getCanvas(canvasId);
+      const canvas = shared?.canvas ?? (await getCanvas(canvasId));
       if (mine !== seq.current) return null;
       return await ingest(canvas.graph.nodes, mine);
     } catch {
       if (mine === seq.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
       return null;
     }
-  }, [canvasId, ingest]);
+  }, [canvasId, ingest, shared]);
   const applyGraph = useCallback(
     (nodes: CanvasGraphDto["nodes"]) => {
       // 故事板状态同步先换上，声音任务对账在后面慢慢补

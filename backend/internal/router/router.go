@@ -30,12 +30,13 @@ type Handlers struct {
 	AnalysisToken middleware.TokenAuthenticator     // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
 
 	// 长任务生成相关
-	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
-	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
-	Asset          *handler.AssetHandler               // 素材上传与查询
-	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
-	VirtualHuman   *handler.VirtualHumanHandler        // 真人库：方舟虚拟人像库备案
-	Drama          *handler.DramaHandler               // 短剧项目、分集剧本、资产流水线
+	GenerationTask *handler.GenerationTaskHandler // 任务提交 / 对账 / 取消 / 积分 / webhook
+	WS             *handler.WSHandler             // 用户级 WebSocket 推送
+	Asset          *handler.AssetHandler          // 素材上传与查询
+	AssetLibrary   *handler.AssetLibraryHandler   // 资产库：文件夹、库归属、生成历史
+	VirtualHuman   *handler.VirtualHumanHandler   // 真人库：方舟虚拟人像库备案
+	Drama          *handler.DramaHandler          // 短剧项目、分集剧本、资产流水线
+	DramaShare     *handler.DramaShareHandler
 	DramaSegment   *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
@@ -98,6 +99,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.Any("/admin/river/*path", h.RiverUI.Serve)
 		// 需要登录：JWT 校验之后再查用户状态（停用 → 403，token_version 不符 → 401），封禁与重置密码立即生效
 		auth := v1.Group("", middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState))
+		mediaSecret := jwtSecret + ":drama-media"
+		v1.GET("/drama-media/:id/:asset", func(c *gin.Context) {
+			ticket, _ := c.Cookie("drama_media")
+			c.Request.Header.Set("Authorization", "Bearer "+ticket)
+			middleware.JWTAuth(mediaSecret + ":" + c.Param("id"))(c)
+		}, middleware.RequireActive(h.UserState), h.DramaShare.Media)
 
 		// 首页公告：生效中的公告，最多 5 条，全站共享；只在登录后的首页外壳展示，所以要登录
 		auth.GET("/announcements", h.Announcement.Public)
@@ -245,6 +252,13 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.DELETE("/drama-prompts/:id", h.Drama.DeletePrompt)
 		auth.GET("/drama-skills", h.Drama.Skills)
 		dramas := auth.Group("/dramas")
+		dramas.GET("/shared", h.DramaShare.Shared)
+		dramas.POST("/:id/shares", h.DramaShare.Share)
+		dramas.GET("/:id/shares", h.DramaShare.Members)
+		dramas.DELETE("/:id/shares/:member", h.DramaShare.Remove)
+		dramas.GET("/:id/reader", h.DramaShare.Read)
+		dramas.GET("/:id/reader/workspace", h.DramaShare.Workspace(mediaSecret))
+		dramas.GET("/:id/reader/media/:asset", h.DramaShare.Media)
 		dramas.GET("", h.Drama.List)
 		dramas.POST("", h.Drama.Create)
 		dramas.GET("/:id", h.Drama.Get)
