@@ -40,8 +40,9 @@ type DramaShareReq struct {
 	Mode string `json:"mode" binding:"required,oneof=view copy transfer"`
 	// Email identifies the recipient account.
 	Email string `json:"email" binding:"required,email,max=128"`
-	// RequestKey makes retried copy and transfer requests idempotent.
-	RequestKey string `json:"request_key" binding:"required,uuid"`
+	// RequestKey makes retried copy and transfer requests idempotent; view grants omit it.
+	// The web client sends 32 hex chars; the column holds up to 64.
+	RequestKey string `json:"request_key" binding:"required_unless=Mode view,max=64"`
 }
 
 // DramaSharedItem is one drama visible to the current user.
