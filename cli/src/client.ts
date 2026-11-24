@@ -153,6 +153,8 @@ export interface UploadOptions {
   field?: string;
   /** 原始文件名；不含路径，避免把本机目录结构带上去。 */
   fileName?: string;
+  /** 文件的真实类型，写进 multipart 的 part 头；缺省按二进制流。 */
+  contentType?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -169,12 +171,13 @@ export async function uploadFile<T = unknown>({
   file,
   field = "file",
   fileName,
+  contentType,
   fetchImpl = fetch,
 }: UploadOptions): Promise<T> {
   const form = new FormData();
   form.append(
     field,
-    new Blob([await readFile(file)], { type: "application/octet-stream" }),
+    new Blob([await readFile(file)], { type: contentType || "application/octet-stream" }),
     fileName || basename(file),
   );
 
@@ -209,6 +212,11 @@ export async function sendDirect(options: {
   fields?: Record<string, string>;
   file: string;
   fileName?: string;
+  /**
+   * 文件的真实类型。POST 策略若钉了 $Content-Type（后端 s3.go 就是这么签的），
+   * file part 的类型必须与申请时的 mime_type 完全一致，否则对象存储直接 403。
+   */
+  contentType?: string;
   fetchImpl?: typeof fetch;
 }): Promise<boolean> {
   const {
@@ -218,12 +226,14 @@ export async function sendDirect(options: {
     fields = {},
     file,
     fileName,
+    contentType,
     fetchImpl = fetch,
   } = options;
   const forbidden = new Set(["content-length"]);
   const headers: Record<string, string> = Object.fromEntries(
     Object.entries(signed).filter(([key]) => !forbidden.has(key.toLowerCase())),
   );
+  const blobType = contentType || "application/octet-stream";
   let body: FormData | Blob;
   if (method === "POST") {
     const form = new FormData();
@@ -232,12 +242,12 @@ export async function sendDirect(options: {
     }
     form.append(
       "file",
-      new Blob([await readFile(file)], { type: "application/octet-stream" }),
+      new Blob([await readFile(file)], { type: blobType }),
       fileName || basename(file),
     );
     body = form;
   } else {
-    body = new Blob([await readFile(file)], { type: "application/octet-stream" });
+    body = new Blob([await readFile(file)], { type: blobType });
   }
   try {
     const res = await fetchImpl(url, { method, headers, body });

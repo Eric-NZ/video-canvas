@@ -95,21 +95,25 @@ export async function assetUpload(ctx: Ctx, args: Args): Promise<void> {
   const base = baseOf(ctx);
   const filePath = path.resolve(file);
   const fileName = path.basename(file);
-  const mimeType = MIME_BY_EXT[path.extname(file).toLowerCase()] || "application/octet-stream";
+  // 按扩展名推断类型。认不出来（或不在后端白名单）就不申请直传——后端会按白名单拒掉，
+  // 直接走中转让服务端按内容嗅探判定。网页端也是 file.type 为空就不申请。
+  const mimeType = MIME_BY_EXT[path.extname(file).toLowerCase()];
 
   // 1. 申请上传方式：申请失败不算上传失败（旧版本后端 / 存储暂不可用），按中转处理
   let intent: UploadIntent | null = null;
-  try {
-    intent = await request<UploadIntent>({
-      base,
-      token,
-      method: "POST",
-      path: "/assets/upload-intents",
-      body: { file_name: fileName, size: stat.size, mime_type: mimeType },
-      fetchImpl: ctx.fetchImpl,
-    });
-  } catch {
-    intent = null;
+  if (mimeType) {
+    try {
+      intent = await request<UploadIntent>({
+        base,
+        token,
+        method: "POST",
+        path: "/assets/upload-intents",
+        body: { file_name: fileName, size: stat.size, mime_type: mimeType },
+        fetchImpl: ctx.fetchImpl,
+      });
+    } catch {
+      intent = null;
+    }
   }
 
   // 2. 能直传就直传；失败降级中转（与网页一致，降级只提示一次到 stderr）
@@ -121,6 +125,7 @@ export async function assetUpload(ctx: Ctx, args: Args): Promise<void> {
       fields: intent.fields,
       file: filePath,
       fileName,
+      contentType: mimeType,
       fetchImpl: ctx.fetchImpl,
     });
     if (ok) {
@@ -145,6 +150,7 @@ export async function assetUpload(ctx: Ctx, args: Args): Promise<void> {
     path: "/assets",
     file: filePath,
     fileName,
+    contentType: mimeType,
     fetchImpl: ctx.fetchImpl,
   });
   emit(ctx, view, humanSummary(view, fileName, stat.size));

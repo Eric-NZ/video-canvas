@@ -121,6 +121,11 @@ test("asset upload：mode=proxy 直接走后端中转，multipart 带 Bearer，�
   assert.equal(upload.authorization, "Bearer test-token");
   assert.match(upload.contentType || "", /^multipart\/form-data; boundary=/);
   assert.match(upload.body.toString("latin1"), /name="file"; filename="shot\.png"/);
+  assert.match(
+    upload.body.toString("latin1"),
+    /Content-Type: image\/png/,
+    "file part 必须带真实类型，不能退化成 octet-stream",
+  );
   assert.deepEqual(JSON.parse(lines[0] || ""), {
     ok: true,
     data: { id: 12345, kind: "image" },
@@ -170,6 +175,11 @@ test("asset upload：mode=direct 直传后登记；直传不带登录头，登�
     "fields 必须在 file 之前",
   );
   assert.match(directBody, /fake-mp4/);
+  assert.match(
+    directBody,
+    /Content-Type: video\/mp4/,
+    "POST 策略钉了 $Content-Type，part 类型必须与申请的 mime_type 一致",
+  );
   const complete = site.requests[2]!;
   assert.equal(complete.url, "/api/v1/assets/upload-intents/77/complete");
   assert.equal(complete.authorization, "Bearer test-token");
@@ -271,6 +281,24 @@ test("asset upload：申请接口报错时按中转处理", async () => {
   }
   assert.equal(site.requests[1]!.url, "/api/v1/assets");
   assert.deepEqual(JSON.parse(lines[0] || ""), { ok: true, data: { id: 11, kind: "image" } });
+});
+
+test("asset upload：扩展名不在白名单时不去申请直传，直接中转", async () => {
+  const { dir, file } = tempFile("unknown-bytes", "photo.heic");
+  const site = await fakeSite(() => {
+    return { status: 200, body: { code: 0, data: { id: 42, kind: "image" } } };
+  });
+  const lines: string[] = [];
+  try {
+    await assetUpload(ctxFor(site.base, lines), { positional: [file], flags: {} });
+  } finally {
+    await site.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  assert.equal(site.requests.length, 1, "认不出类型就不该申请直传");
+  assert.equal(site.requests[0]!.url, "/api/v1/assets");
+  assert.deepEqual(JSON.parse(lines[0] || ""), { ok: true, data: { id: 42, kind: "image" } });
 });
 
 test("asset upload：没给文件路径是用法错误（status=2），不发请求", async () => {
