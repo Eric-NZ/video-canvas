@@ -6,7 +6,8 @@ import type { Credentials } from "./types.ts";
 
 /**
  * 凭据目录。遵循 XDG：Linux/macOS 默认 ~/.config/video-canvas。
- * 令牌等同账号密码，目录 0700、文件 0600，写入时用 wx 之外的保守权限。
+ * 令牌等同账号密码，目录 0700、文件 0600。
+ * Windows 不支持 POSIX 权限位，这两个 mode 在那里不生效，靠用户目录本身的 ACL 隔离。
  */
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
   const base = env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
@@ -26,10 +27,12 @@ export function loadCredentials(env: NodeJS.ProcessEnv = process.env): Credentia
   }
 }
 
-/** 保存凭据：目录 0700、文件 0600，避免同机其他用户读到令牌。 */
+/** 保存凭据：目录 0700、文件 0600，避免同机其他用户读到令牌（Windows 上无效，见 configDir）。 */
 export function saveCredentials(creds: Credentials, env: NodeJS.ProcessEnv = process.env): string {
   const dir = configDir(env);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // 目录是更早建的（或被别的工具建成 0755）时 mkdir 的 mode 不生效，显式收紧
+  fs.chmodSync(dir, 0o700);
   const file = credentialsPath(env);
   fs.writeFileSync(file, `${JSON.stringify(creds, null, 2)}\n`, { mode: 0o600 });
   // 文件已存在时 mode 不生效，显式再改一次

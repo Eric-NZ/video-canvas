@@ -20,6 +20,14 @@ const (
 	cliDeviceDefaultTTL      = 10 * time.Minute
 	cliDeviceDefaultInterval = 5 * time.Second
 	cliUserCodeLen           = 8
+
+	// 申请设备码免登录，必须按来源 IP 限频：否则任何人都能无限往表里灌记录。
+	// 正常使用一小时内顶多登录几次，20 次留足余量（同一出口 IP 下多人共用也够）。
+	cliDeviceStartIPLimit  = 20
+	cliDeviceStartIPWindow = time.Hour
+
+	// cliDeviceRetention 是过期记录的保留时长：过期后多留一天供排查（consumed / denied 的状态），再物理删除。
+	cliDeviceRetention = 24 * time.Hour
 )
 
 // DefaultCLITokenTTL 是命令行登录态的默认有效期（30 天）。
@@ -43,6 +51,12 @@ type CLIDeviceRepo interface {
 	Deny(ctx context.Context, userCode string, now time.Time) (bool, error)
 	MarkPolled(ctx context.Context, id uint64, now time.Time) error
 	Consume(ctx context.Context, id uint64, now time.Time) (bool, error)
+}
+
+// CLIDeviceLimiter 是申请设备码的限频原语（真实实现是 cache.RegisterCodeStore，Redis 关闭时降级为进程内存）。
+type CLIDeviceLimiter interface {
+	// Allow 固定窗口限频：window 内超过 limit 次返回 false。
+	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
 
 // CLIDeviceUserReader 查询授权时的用户，用于确认账号仍然存在且未被停用。
@@ -73,6 +87,8 @@ type CLIDeviceDeps struct {
 	Interval time.Duration
 	// TokenDays 读命令行登录态的有效期；为空或读取失败时按 DefaultCLITokenTTL（30 天）。
 	TokenDays CLITokenPolicy
+	// Limiter 给 Start 按来源 IP 限频；为空表示不限（只用于测试，生产必须注入）。
+	Limiter CLIDeviceLimiter
 }
 
 // CLIDeviceService 负责命令行设备授权的申请、轮询换令牌与网页确认。
@@ -95,7 +111,12 @@ func NewCLIDeviceService(deps CLIDeviceDeps) *CLIDeviceService {
 }
 
 // Start 生成一对码：device_code 给 CLI 轮询，user_code 给用户抄到网页上。
-func (s *CLIDeviceService) Start(ctx context.Context, clientName string) (*model.CLIDeviceStartView, error) {
+// clientIP 是发起方的来源 IP：既用来限频，也存下来给授权页展示，让用户能核对「这次登录是不是我自己发起的」。
+func (s *CLIDeviceService) Start(ctx context.Context, clientName, clientIP string) (*model.CLIDeviceStartView, error) {
+	clientIP = strings.TrimSpace(clientIP)
+	if err := s.allowStart(ctx, clientIP); err != nil {
+		return nil, err
+	}
 	deviceCode, err := randomURLToken(32)
 	if err != nil {
 		return nil, err
@@ -109,6 +130,7 @@ func (s *CLIDeviceService) Start(ctx context.Context, clientName string) (*model
 		DeviceCodeHash:  hashDeviceCode(deviceCode),
 		UserCode:        userCode,
 		ClientName:      strings.TrimSpace(clientName),
+		CreatedIP:       clientIP,
 		Status:          model.CLIDevicePending,
 		IntervalSeconds: int(s.Interval.Seconds()),
 		ExpiresAt:       now.Add(s.TTL),
@@ -126,6 +148,24 @@ func (s *CLIDeviceService) Start(ctx context.Context, clientName string) (*model
 		ExpiresIn:               int(s.TTL.Seconds()),
 		Interval:                int(s.Interval.Seconds()),
 	}, nil
+}
+
+// allowStart 按来源 IP 限频。取不到 IP 时归到同一个 "unknown" 桶：宁可误伤也不放开口子。
+func (s *CLIDeviceService) allowStart(ctx context.Context, clientIP string) error {
+	if s.Limiter == nil {
+		return nil
+	}
+	if clientIP == "" {
+		clientIP = "unknown"
+	}
+	ok, err := s.Limiter.Allow(ctx, "cli_device:ip:"+clientIP, cliDeviceStartIPLimit, cliDeviceStartIPWindow)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errcode.ErrTooManyReqs
+	}
+	return nil
 }
 
 // Poll 是 CLI 的轮询入口。除「设备码本身无效」外都返回 200 + status，让调用方只看一个字段。
@@ -169,16 +209,12 @@ func (s *CLIDeviceService) Poll(ctx context.Context, deviceCode string) (*model.
 }
 
 // consume 把已批准的申请换成 JWT。并发轮询只有一个能成功，其余按 consumed 回。
+//
+// 账号检查必须在 Consume 之前：先取走设备码再发现账号被停用，这个码就白白烧掉了，
+// 账号恢复后用户还得重新走一遍授权。
 func (s *CLIDeviceService) consume(ctx context.Context, rec *model.CLIDeviceCode, now time.Time) (*model.CLIDevicePollView, error) {
 	if rec.UserID == nil {
 		return nil, errcode.ErrCLIDeviceState
-	}
-	ok, err := s.Repo.Consume(ctx, rec.ID, now)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return &model.CLIDevicePollView{Status: "consumed"}, nil
 	}
 	user, err := s.Users.GetByID(ctx, *rec.UserID)
 	if err != nil {
@@ -189,6 +225,13 @@ func (s *CLIDeviceService) consume(ctx context.Context, rec *model.CLIDeviceCode
 	}
 	if user.Status != model.UserStatusActive {
 		return nil, errcode.ErrCLIDeviceDisabled
+	}
+	ok, err := s.Repo.Consume(ctx, rec.ID, now)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return &model.CLIDevicePollView{Status: "consumed"}, nil
 	}
 	view, err := s.Issuer.IssueTokenWithTTL(user, s.tokenTTL(ctx))
 	if err != nil {
@@ -215,7 +258,8 @@ func (s *CLIDeviceService) tokenTTL(ctx context.Context) time.Duration {
 	return time.Duration(days) * 24 * time.Hour
 }
 
-// Describe 给授权页展示设备信息。只认未过期的用户码，不泄露发起方 IP 等环境信息。
+// Describe 给授权页展示设备信息。只认未过期的用户码。
+// 返回发起方 IP：设备码钓鱼的核心是「受害者点了别人发起的授权」，让授权人看到发起地址才有机会发现不对。
 func (s *CLIDeviceService) Describe(ctx context.Context, userCode string) (*model.CLIDeviceDescribeView, error) {
 	rec, err := s.byUserCode(ctx, userCode)
 	if err != nil {
@@ -228,6 +272,7 @@ func (s *CLIDeviceService) Describe(ctx context.Context, userCode string) (*mode
 	return &model.CLIDeviceDescribeView{
 		UserCode:   formatUserCode(rec.UserCode),
 		ClientName: rec.ClientName,
+		ClientIP:   rec.CreatedIP,
 		Status:     status,
 		CreatedAt:  rec.CreatedAt,
 		ExpiresAt:  rec.ExpiresAt,
@@ -261,6 +306,13 @@ func (s *CLIDeviceService) Approve(ctx context.Context, userID uint64, userCode 
 }
 
 // Deny 让当前登录用户拒绝授权。
+//
+// 威胁模型：这里不校验拒绝者是谁，任何登录用户只要知道用户码就能拒绝它。这是有意的取舍：
+//   - 拒绝只会让这次申请作废，CLI 重新申请即可，攻击者拿不到任何令牌，只能捣乱；
+//   - 用户码是 28^8 的随机空间，10 分钟过期，猜中一个在途的码不现实；
+//   - 授权前码没有绑定账号，没有「谁有权拒绝」的依据，强行加规则只会让真正的授权人拒绝不了。
+//
+// 与之对应，Approve 才是要防的方向（钓鱼），见 Describe 展示的发起 IP。
 func (s *CLIDeviceService) Deny(ctx context.Context, userCode string) error {
 	code, err := s.byUserCode(ctx, userCode)
 	if err != nil {
@@ -358,4 +410,29 @@ func normalizeUserCode(code string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// CLIDevicePurger 是清理过期设备码的数据访问接口，由 repository.CLIDeviceRepository 实现。
+type CLIDevicePurger interface {
+	// DeleteExpired 物理删除 expires_at 早于 before 的记录，返回删除行数。
+	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
+}
+
+// CLIDeviceCleaner 清理过期的设备授权记录。设备码免登录申请，不清理表会无限增长。
+type CLIDeviceCleaner struct {
+	repo CLIDevicePurger
+	now  func() time.Time
+}
+
+// NewCLIDeviceCleaner 创建清理器；now 为空时用 time.Now。过期后保留 cliDeviceRetention 再删。
+func NewCLIDeviceCleaner(repo CLIDevicePurger, now func() time.Time) *CLIDeviceCleaner {
+	if now == nil {
+		now = time.Now
+	}
+	return &CLIDeviceCleaner{repo: repo, now: now}
+}
+
+// Cleanup 删除过期超过保留时长的记录，返回删除行数。多实例同时跑也安全：DELETE 幂等。
+func (c *CLIDeviceCleaner) Cleanup(ctx context.Context) (int64, error) {
+	return c.repo.DeleteExpired(ctx, c.now().Add(-cliDeviceRetention))
 }

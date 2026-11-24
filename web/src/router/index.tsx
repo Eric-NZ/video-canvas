@@ -99,14 +99,14 @@ export const router = createBrowserRouter([
         path: "/pay/return",
         element: <PayReturn />,
       },
-      /** 命令行登录的确认页：命令行打不开浏览器，用户在这页确认一次就把登录态交给它 */
-      {
-        path: "/cli/authorize",
-        element: <CLIAuthorize />,
-      },
       {
         element: <RequireAuth />,
         children: [
+          /** 命令行登录的确认页：授权的就是当前账号，所以要登录；未登录会带着 ?code= 跳去登录再回来 */
+          {
+            path: "/cli/authorize",
+            element: <CLIAuthorize />,
+          },
           {
             /** 首页和所有画布共用侧栏 + 顶栏 */
             element: <HomeLayout />,

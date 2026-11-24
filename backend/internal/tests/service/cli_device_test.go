@@ -62,6 +62,17 @@ func (r *fakeCLIDeviceRepo) Approve(_ context.Context, userCode string, userID u
 	return true, nil
 }
 
+func (r *fakeCLIDeviceRepo) DeleteExpired(_ context.Context, before time.Time) (int64, error) {
+	var n int64
+	for id, row := range r.rows {
+		if row.ExpiresAt.Before(before) {
+			delete(r.rows, id)
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (r *fakeCLIDeviceRepo) Deny(_ context.Context, userCode string, _ time.Time) (bool, error) {
 	row := r.byCode(userCode)
 	if row == nil || (row.Status != model.CLIDevicePending && row.Status != model.CLIDeviceApproved) {
@@ -138,11 +149,23 @@ type fakeTokenDays struct {
 
 func (f fakeTokenDays) CLITokenDays(context.Context) (int, error) { return f.days, f.err }
 
+// fakeCLILimiter 记住被问到的 key，allow=false 时模拟该 IP 已超限。
+type fakeCLILimiter struct {
+	allow bool
+	keys  []string
+}
+
+func (f *fakeCLILimiter) Allow(_ context.Context, key string, _ int, _ time.Duration) (bool, error) {
+	f.keys = append(f.keys, key)
+	return f.allow, nil
+}
+
 type cliEnv struct {
-	svc    *CLIDeviceService
-	repo   *fakeCLIDeviceRepo
-	now    time.Time
-	issuer *fakeIssuer
+	svc     *CLIDeviceService
+	repo    *fakeCLIDeviceRepo
+	now     time.Time
+	issuer  *fakeIssuer
+	limiter *fakeCLILimiter
 }
 
 func newCLIEnv(t *testing.T) *cliEnv { return newCLIEnvWithPolicy(t, nil) }
@@ -157,16 +180,17 @@ func newCLIEnvWithPolicy(t *testing.T, policy CLITokenPolicy) *cliEnv {
 	}}
 	clock := now
 	issuer := &fakeIssuer{}
+	limiter := &fakeCLILimiter{allow: true}
 	svc := NewCLIDeviceService(CLIDeviceDeps{
-		Repo: repo, Users: users, Issuer: issuer, TokenDays: policy,
+		Repo: repo, Users: users, Issuer: issuer, TokenDays: policy, Limiter: limiter,
 		Now: func() time.Time { return clock },
 	})
-	return &cliEnv{svc: svc, repo: repo, now: now, issuer: issuer}
+	return &cliEnv{svc: svc, repo: repo, now: now, issuer: issuer, limiter: limiter}
 }
 
 func TestCLIDeviceStart(t *testing.T) {
 	env := newCLIEnv(t)
-	view, err := env.svc.Start(context.Background(), "video-canvas-cli")
+	view, err := env.svc.Start(context.Background(), "video-canvas-cli", "203.0.113.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +217,7 @@ func TestCLIDeviceStart(t *testing.T) {
 func TestCLIDevicePollPendingAndSlowDown(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, err := env.svc.Start(ctx, "")
+	start, err := env.svc.Start(ctx, "", "203.0.113.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +234,7 @@ func TestCLIDevicePollPendingAndSlowDown(t *testing.T) {
 func TestCLIDeviceApproveThenConsume(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, err := env.svc.Start(ctx, "laptop")
+	start, err := env.svc.Start(ctx, "laptop", "203.0.113.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +263,7 @@ func TestCLIDeviceApproveThenConsume(t *testing.T) {
 func TestCLIDeviceTokenTTLDefaultsTo30Days(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, err := env.svc.Start(ctx, "laptop")
+	start, err := env.svc.Start(ctx, "laptop", "203.0.113.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +298,7 @@ func TestCLIDeviceTokenTTLUsesSetting(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newCLIEnvWithPolicy(t, tc.policy)
 			ctx := context.Background()
-			start, err := env.svc.Start(ctx, "laptop")
+			start, err := env.svc.Start(ctx, "laptop", "203.0.113.9")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -294,7 +318,7 @@ func TestCLIDeviceTokenTTLUsesSetting(t *testing.T) {
 func TestCLIDeviceDenied(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, _ := env.svc.Start(ctx, "")
+	start, _ := env.svc.Start(ctx, "", "203.0.113.9")
 	if err := env.svc.Deny(ctx, start.UserCode); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +334,7 @@ func TestCLIDeviceDenied(t *testing.T) {
 func TestCLIDeviceExpired(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, _ := env.svc.Start(ctx, "")
+	start, _ := env.svc.Start(ctx, "", "203.0.113.9")
 	// 直接改动记录模拟时间流逝，避免依赖真实时钟
 	for _, row := range env.repo.rows {
 		row.ExpiresAt = env.now.Add(-time.Second)
@@ -337,19 +361,90 @@ func TestCLIDeviceInvalidCode(t *testing.T) {
 func TestCLIDeviceDisabledUser(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, _ := env.svc.Start(ctx, "")
+	start, _ := env.svc.Start(ctx, "", "203.0.113.9")
 	if err := env.svc.Approve(ctx, 8, start.UserCode); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := env.svc.Poll(ctx, start.DeviceCode); !isCLIDisabledErr(err) {
 		t.Fatalf("停用账号不应拿到令牌，得到 %v", err)
 	}
+	// 停用检查在取走设备码之前：码不能被白白烧掉，账号恢复后同一个码仍可换令牌
+	for _, row := range env.repo.rows {
+		if row.Status != model.CLIDeviceApproved {
+			t.Fatalf("停用账号被拒后设备码应保持 approved，实际 %s", row.Status)
+		}
+	}
+}
+
+func TestCLIDeviceStartRecordsClientIP(t *testing.T) {
+	env := newCLIEnv(t)
+	ctx := context.Background()
+	start, err := env.svc.Start(ctx, "macbook", "198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range env.repo.rows {
+		if row.CreatedIP != "198.51.100.7" {
+			t.Fatalf("应记录发起方 IP，实际 %q", row.CreatedIP)
+		}
+	}
+	view, err := env.svc.Describe(ctx, start.UserCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.ClientIP != "198.51.100.7" {
+		t.Fatalf("授权页应拿到发起方 IP，实际 %q", view.ClientIP)
+	}
+}
+
+func TestCLIDeviceStartRateLimitedByIP(t *testing.T) {
+	env := newCLIEnv(t)
+	env.limiter.allow = false
+	_, err := env.svc.Start(context.Background(), "spam", "198.51.100.7")
+	if err == nil || err.Error() != errcode.ErrTooManyReqs.Error() {
+		t.Fatalf("超限应报 ErrTooManyReqs，得到 %v", err)
+	}
+	if len(env.repo.rows) != 0 {
+		t.Fatalf("被限流时不能落库，实际 %d 行", len(env.repo.rows))
+	}
+	if len(env.limiter.keys) != 1 || !strings.Contains(env.limiter.keys[0], "198.51.100.7") {
+		t.Fatalf("限流 key 应按 IP 区分：%v", env.limiter.keys)
+	}
+}
+
+func TestCLIDeviceStartWithoutIPStillLimited(t *testing.T) {
+	env := newCLIEnv(t)
+	if _, err := env.svc.Start(context.Background(), "x", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.limiter.keys) != 1 || env.limiter.keys[0] == "" {
+		t.Fatalf("取不到 IP 也要计数：%v", env.limiter.keys)
+	}
+}
+
+func TestCLIDeviceCleanerDeletesExpiredBeyondGrace(t *testing.T) {
+	repo := newFakeCLIDeviceRepo()
+	now := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+	// 过期很久（应删）、刚过期（保留排查）、未过期（保留）
+	for _, exp := range []time.Time{now.Add(-48 * time.Hour), now.Add(-time.Minute), now.Add(time.Minute)} {
+		if err := repo.Create(ctx, &model.CLIDeviceCode{ExpiresAt: exp}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := NewCLIDeviceCleaner(repo, func() time.Time { return now }).Cleanup(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("应只删 1 条过期记录：n=%d err=%v", n, err)
+	}
+	if len(repo.rows) != 2 {
+		t.Fatalf("应剩 2 条，实际 %d", len(repo.rows))
+	}
 }
 
 func TestCLIDeviceDescribe(t *testing.T) {
 	env := newCLIEnv(t)
 	ctx := context.Background()
-	start, _ := env.svc.Start(ctx, "macbook")
+	start, _ := env.svc.Start(ctx, "macbook", "203.0.113.9")
 	view, err := env.svc.Describe(ctx, strings.ToLower(start.UserCode))
 	if err != nil {
 		t.Fatal(err)

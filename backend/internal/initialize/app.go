@@ -52,16 +52,17 @@ type App struct {
 	rdb    *redis.Client
 	server *http.Server
 
-	hub        *ws.Hub                  // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskQueue  *queue.Runtime           // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
-	queueConn  *pgxpool.Pool            // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
-	skills     *agentsvc.SkillService   // Agent 技能库；后台周期清理过期暂存和待删除的版本
-	agent      *agentRuntime            // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
-	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
-	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
-	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
-	observe    *agentsvc.ObserveService // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
-	payment    *service.PaymentService  // 积分充值；后台每 30 秒补单、处理超时订单
+	hub        *ws.Hub                   // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
+	taskQueue  *queue.Runtime            // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
+	queueConn  *pgxpool.Pool             // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
+	skills     *agentsvc.SkillService    // Agent 技能库；后台周期清理过期暂存和待删除的版本
+	agent      *agentRuntime             // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
+	runnerStop func()                    // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	assets     *service.AssetService     // 素材服务；后台定期用它清理过期未登记的直传对象
+	loginLogs  *service.LoginLogCleaner  // 登录记录清理器；后台每天清理超过保留天数的记录
+	cliDevices *service.CLIDeviceCleaner // 命令行设备授权清理器；后台每天清理过期的设备码
+	observe    *agentsvc.ObserveService  // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
+	payment    *service.PaymentService   // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -99,15 +100,18 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 	idcodec.Init(idKey)
 
+	// 实时推送的连接中心：画布节点级编辑等业务写库后经它推给浏览器（ticket 存储在下面按 Redis 是否开启创建）
+	hub := ws.NewHub()
+
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
 
-	// 命令行：设备授权签发的是同一套 JWT（含 token_version，改密码后同样失效）；
-	// 安装包与脚本由站点自己下发，先看 APP_CLI_DIR，没有就回落到镜像里带的目录。
+	// 命令行：设备授权签发的是同一套 JWT（含 token_version，改密码后同样失效）。
+	cliDeviceRepo := repository.NewCLIDeviceRepository(db)
 	cliDeviceSvc := service.NewCLIDeviceService(service.CLIDeviceDeps{
-		Repo: repository.NewCLIDeviceRepository(db), Users: userRepo, Issuer: userSvc, TokenDays: settingsSvc,
+		Repo: cliDeviceRepo, Users: userRepo, Issuer: userSvc, TokenDays: settingsSvc,
+		Limiter: cache.NewRegisterCodeStore(rdb), // 申请设备码免登录，按 IP 限频；Redis 关闭时降级为进程内存
 	})
-	cliReleaseSvc := service.NewCLIReleaseService(os.Getenv("APP_CLI_DIR"))
 
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
@@ -134,7 +138,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
 	// 画布列表的封面：素材 key 换成稳定的 /files 地址并带 v=thumb 取缩略图（没有处理服务时服务端回退到原图）
 	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo,
-		service.WithCoverURL(func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" }))
+		service.WithCoverURL(func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" }),
+		service.WithCanvasBroadcaster(hub),                             // 节点级编辑写库后推 canvas.patch
+		service.WithCanvasModelOps(service.RegistryModelOps(aiCfgSvc))) // 按模型能力校验 mode，与 Agent 一致
 	// 图片处理服务：给素材所在存储配置的云厂商缩略图 / 视频封面；素材服务通过它解析 /files?v=thumb|poster
 	processorSvc := service.NewImageProcessorService(repository.NewImageProcessorRepository(db), storageRepo, storeRegistry, service.NewHTTPProcessorFetcher())
 	assetSvc.SetVariantResolver(processorSvc)
@@ -154,7 +160,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
-	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
 
 	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
@@ -392,7 +397,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
 		CLIDevice:    handler.NewCLIDeviceHandler(cliDeviceSvc),
-		CLIRelease:   handler.NewCLIReleaseHandler(cliReleaseSvc, cfg.Server.PublicURL),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),
 		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
 			who, err := observeSvc.AuthenticateToken(ctx, plain)
@@ -457,6 +461,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		runnerStop: runnerStop,
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
+		cliDevices: service.NewCLIDeviceCleaner(cliDeviceRepo, nil),
 		observe:    observeSvc,
 		payment:    pay.svc,
 		server: &http.Server{
@@ -616,6 +621,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-loginDone
 	}()
 
+	// 命令行设备码清理：同样先于关库停止
+	cliCtx, cliCancel := context.WithCancel(context.Background())
+	cliDone := make(chan struct{})
+	go func() {
+		defer close(cliDone)
+		a.cleanupCLIDevices(cliCtx)
+	}()
+	defer func() {
+		cliCancel()
+		<-cliDone
+	}()
+
 	// Agent 观测大字段清理：先于关库停止
 	observeCtx, observeCancel := context.WithCancel(context.Background())
 	observeDone := make(chan struct{})
@@ -755,6 +772,31 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 	}
 	if n > 0 {
 		logger.Info("已清理过期登录记录", zap.Int64("count", n))
+	}
+}
+
+// cliDeviceCleanupInterval 是清理过期设备授权记录的间隔：记录只活 10 分钟，每天扫一次足够。
+const cliDeviceCleanupInterval = 24 * time.Hour
+
+// cleanupCLIDevices 启动后延迟随机一小段时间清理一次，之后每天一次，直到 ctx 取消。
+// 失败只记日志，下一轮会继续清；不影响服务。
+func (a *App) cleanupCLIDevices(ctx context.Context) {
+	delay := time.Minute + time.Duration(rand.Int64N(int64(loginLogCleanupMaxDelay-time.Minute))) //nolint:gosec // 只是错峰用的随机延迟，不需要密码学随机
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			n, err := a.cliDevices.Cleanup(ctx)
+			if err != nil {
+				logger.Error("清理过期命令行设备码失败", zap.Error(err))
+			} else if n > 0 {
+				logger.Info("已清理过期命令行设备码", zap.Int64("count", n))
+			}
+			timer.Reset(cliDeviceCleanupInterval)
+		}
 	}
 }
 

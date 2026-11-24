@@ -17,8 +17,7 @@
 /web/node_modules/
 /web/dist/
 
-# 命令行（TypeScript）：依赖与 tsc 产物都不入库，部署前在 cli/ 里 build；
-# 安装包由 backend 从 cli/dist 现场打包，所以镜像构建前必须已经 build 过。
+# 命令行（TypeScript）：依赖与 tsc 产物都不入库；发布到 npm 前在 cli/ 里 build。
 /cli/node_modules/
 /cli/dist/
 

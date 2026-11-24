@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parseArgs } from "../src/commands.ts";
+import { deriveComposeAssets, parseArgs } from "../src/commands/index.ts";
 import type { Graph } from "../src/types.ts";
 
 // 生成 / 合成 / 短剧三类命令的请求体与输出：用真实 HTTP 的假站点，
@@ -536,96 +536,40 @@ test("generate --wait：任务失败时 ok:false 且退出码 1", async () => {
   }
 });
 
-test("canvas compose：不给 --assets 时按 composeOrder + 位置推导，并把顺序打出来", async () => {
+test("canvas compose*：后端还没有成片合成接口，三条命令一律明确拒绝且不发请求", async () => {
   const site = await fakeSite();
   try {
     const env = { XDG_CONFIG_HOME: tempConfig(site.base) };
-    const { code, stdout } = await run(["canvas", "compose", "c1", "--node", "c_node"], env);
-    assert.equal(code, 0, stdout);
-    const body = site.posts.find((item) => Array.isArray(item.asset_ids));
-    assert.ok(body, "必须发出合成请求");
-    assert.deepEqual(
-      body.asset_ids,
-      ["202", "111"],
-      "composeOrder 先，其余按位置；v1 取 activeOutputId 那一版",
-    );
-    assert.equal(body.node_id, "c_node");
-    assert.match(stdout, /SEQ\tASSET\tNODE\tLABEL/);
-    assert.match(stdout, /job1/);
+    const calls = [
+      ["canvas", "compose", "c1", "--node", "c_node", "--assets", "7,8"],
+      ["canvas", "compose-status", "c1", "--job", "job1"],
+      ["canvas", "compose-cancel", "c1", "--job", "job1"],
+    ];
+    for (const argv of calls) {
+      const { code, stderr } = await run(argv, env);
+      assert.equal(code, 1, argv.join(" "));
+      assert.match(stderr, /当前服务端暂不支持成片合成/);
+    }
+    assert.equal(site.posts.length, 0, "不能发出任何合成请求");
   } finally {
     await site.close();
   }
 });
 
-test("canvas compose：显式 --assets 优先，不再读画布", async () => {
-  const site = await fakeSite();
-  try {
-    const env = { XDG_CONFIG_HOME: tempConfig(site.base) };
-    const { code } = await run(
-      [
-        "canvas",
-        "compose",
-        "c1",
-        "--node",
-        "c_node",
-        "--assets",
-        "7,8",
-        "--seqs",
-        "0,1",
-        "--mode",
-        "storyboard",
-      ],
-      env,
-    );
-    assert.equal(code, 0);
-    const body = site.posts.find((item) => Array.isArray(item.asset_ids));
-    assert.ok(body, "必须发出合成请求");
-    assert.deepEqual(body.asset_ids, ["7", "8"]);
-    assert.deepEqual(body.seqs, [0, 1]);
-    assert.equal(body.mode, "storyboard");
-  } finally {
-    await site.close();
-  }
+test("deriveComposeAssets：按 composeOrder 先、其余按位置，v1 取 activeOutputId 那一版", () => {
+  // 命令入口暂时关闭，推导规则仍要有测试守着，后端就绪后直接恢复
+  const { rows, missing } = deriveComposeAssets(GRAPH, "c_node");
+  assert.deepEqual(
+    rows.map((row) => row.assetId),
+    ["202", "111"],
+  );
+  assert.deepEqual(missing, []);
+  assert.throws(() => deriveComposeAssets(GRAPH, "v1"), /不是成片节点/);
 });
 
-test("canvas compose --wait：合成成功后打印成片地址", async () => {
-  const site = await fakeSite();
-  try {
-    site.compose = {
-      id: "job1",
-      canvas_id: "c1",
-      node_id: "c_node",
-      status: "succeeded",
-      fingerprint: "f",
-      result_asset_id: "927",
-      result_asset_url: "https://cdn.test/final.mp4",
-      duration_ms: 60000,
-      segment_count: 2,
-    };
-    const env = { XDG_CONFIG_HOME: tempConfig(site.base) };
-    const { code, stdout } = await runAsync(
-      ["canvas", "compose", "c1", "--node", "c_node", "--assets", "7", "--wait", "--interval", "1"],
-      env,
-    );
-    assert.equal(code, 0, stdout);
-    assert.match(stdout, /成片地址：https:\/\/cdn\.test\/final\.mp4/);
-    assert.match(stdout, /时长：60\.0 秒/);
-  } finally {
-    await site.close();
-  }
-});
-
-test("canvas compose：节点不是成片节点时直接说清楚", async () => {
-  const site = await fakeSite();
-  try {
-    const env = { XDG_CONFIG_HOME: tempConfig(site.base) };
-    const { code, stderr } = await run(["canvas", "compose", "c1", "--node", "v1"], env);
-    assert.equal(code, 2);
-    assert.match(stderr, /不是成片节点/);
-    assert.equal(site.posts.length, 0);
-  } finally {
-    await site.close();
-  }
+test("--help 不再列出成片合成命令", async () => {
+  const { stdout } = await run(["--help"], { XDG_CONFIG_HOME: tempConfig("http://127.0.0.1:1") });
+  assert.doesNotMatch(stdout, /compose/);
 });
 
 test("drama：列表、详情、单元、任务四条都是只读", async () => {

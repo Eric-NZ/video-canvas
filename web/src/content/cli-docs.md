@@ -1,6 +1,6 @@
 # 连镜命令行（video-canvas-cli）beta
 
-给人和脚本用的命令行：设备码登录，不用把密码或长期令牌交给脚本；画布、模型与积分、生成任务、成片合成、短剧只读、
+给人和脚本用的命令行：设备码登录，不用把密码或长期令牌交给脚本；画布、模型与积分、生成任务、短剧只读、
 运行记录都走已有的 HTTP 接口。
 
 用 TypeScript 写、运行时零第三方依赖，需要 Node 22.18+（随包的技能脚本直接跑 .ts，低于这个版本要带实验开关）。装好后有两个等价的命令名：`vc` 与 `video-canvas-cli`。
@@ -10,12 +10,12 @@
 > （`--json` 与非交互终端不打扰脚本，`VC_NO_UPDATE_CHECK=1` 或 `--no-update-check` 可彻底关掉）。
 
 ```text
-一条主线的顺序：接入 → 项目 → 素材 → 画布 → 成片 → 短剧
+一条主线的顺序：接入 → 项目 → 素材 → 画布 → 短剧
 
 1 接入
   login [--base URL] [--name 名称] [--no-open]    设备授权登录（在浏览器里确认）
   whoami                                           校验令牌并打印当前身份
-  logout                                           删除本地凭据（不动服务端令牌）
+  logout                                           删除本地凭据（服务端登录态到期或改密码才失效）
   version [--json]                                 打印 CLI 版本（与站点版本独立）
 
 2 项目
@@ -46,13 +46,7 @@
   canvas node rm <code> <节点id>...                删除节点，连带清理连线与引用（需终端确认）
   canvas save <code> --payload 文件 [--revision N] 整图保存（乐观锁）
 
-5 成片
-  canvas compose <code> --node <成片节点id> [--assets 素材id,...] [--seqs 1,2,3]
-                        [--mode storyboard|compose|selection] [--wait] [--timeout 900]
-  canvas compose-status <code> [--job 任务id | --node 节点id]
-  canvas compose-cancel <code> --job 任务id
-
-6 短剧（另一条业务线：只读 + 任务控制）
+5 短剧（另一条业务线：只读 + 任务控制）
   drama list [--keyword 关键词] [--page N] [--page-size N]
   drama get <短剧编号> [--episodes 10]             默认只列前 10 集，0 表示全部
   drama units <短剧编号> [--from 1] [--to 20]
@@ -67,7 +61,7 @@
 
 全局选项
   --json               输出一行 JSON（{ok,data} / {ok:false,error}），供脚本与 Agent 解析
-  --base URL           覆盖 API 地址（也可用环境变量 VC_API_BASE）
+  --base URL           覆盖 API 地址（也可用环境变量 VC_API_BASE）；与登录站点不一致会被拒绝
   --no-update-check    本次不检查新版本（也可用 VC_NO_UPDATE_CHECK=1）
   -o, --output 文件     仅 canvas graph / export：写文件；`-o -` 表示写 stdout
 ```
@@ -77,7 +71,7 @@
 
 ## 业务主线
 
-这个命令行只干一件事：**把一个项目从「没有」推到「出片」**。所以下面按这条线的六步排，
+这个命令行只干一件事：**把一个项目从「没有」推到「出片」**。所以下面按这条线的阶段排，
 命令跟业务阶段对齐，不按「读 / 写」切开：
 
 | 阶段   | 你要做的事                     | 命令                                                      | 门槛                         |
@@ -86,66 +80,64 @@
 | 2 项目 | 找画布、看结构、新建、备份迁移 | `canvas list/get/graph/create/export/import`              | 新建与导入**要人确认**       |
 | 3 素材 | 看模型与积分、提交生成、等结果 | `model list/show`、`credits`、`generate`、`task get/wait` | 花钱；默认提交后不等         |
 | 4 画布 | 改节点、整图写回               | `canvas node add/set/rm`、`canvas save`                   | 要人确认 + `revision` 乐观锁 |
-| 5 成片 | 拼片、看进度、取消             | `canvas compose/compose-status/compose-cancel`            | 占合成队列，不花积分         |
-| 6 短剧 | 看项目 / 单元 / 任务、取消任务 | `drama list/get/units/unit/jobs/job-cancel`               | 只读 + 任务控制              |
-| 7 助手 | 要它判断、要它改、替人收审批   | `agent run/events/approve/cancel`                         | 按模型计费；审批要人决策     |
+| 5 短剧 | 看项目 / 单元 / 任务、取消任务 | `drama list/get/units/unit/jobs/job-cancel`               | 只读 + 任务控制              |
+| 6 助手 | 要它判断、要它改、替人收审批   | `agent run/events/approve/cancel`                         | 按模型计费；审批要人决策     |
 
 每一步只依赖前一步的产物：**接入拿令牌 → 项目拿画布编号与节点 id → 素材把产物回填到节点 →
-画布决定哪些片段连进成片 → 成片按连线顺序拼**。所以顺序本身就是参数来源，跳过一步就得自己填 id。
+画布决定哪些节点连在一起**。所以顺序本身就是参数来源，跳过一步就得自己填 id。
 
 三条贯穿全线的规矩：
 
 - **读的随便跑**：`canvas list/get/graph`、`model list/show`、`credits`、`drama *`、`task get` 都是只读。
 - **写的分三档**：`canvas create`（新建）< `canvas save`（整图覆盖，有乐观锁）<
   `canvas node rm`（删数据，有交互确认 + 乐观锁）。新建项目与节点级修改**必须在终端确认**，没有 `--yes`。
-- **花钱的要显式等**：`generate`（按次或按秒冻结积分）与 `canvas compose` 默认只提交、不等结果；
+- **花钱的要显式等**：`generate`（按次或按秒冻结积分）默认只提交、不等结果；
   要看结果得加 `--wait`，本机等超时是退出码 3（任务仍在跑），不是失败。
 
 ## 安装、升级与配套技能
 
-CLI 单独发版，版本号与站点版本**无关**。它没有发布到 npm，安装包由你自己的站点提供，
-需要 Node 22.18 及以上（脚本会先检查）。安装包内是编译后的 JavaScript（`dist/`）与配套技能；源码用 TypeScript 写，仓库内开发时执行 `npm install && npm run build`。
+CLI 的版本号与站点版本**无关**，安装包随每次站点发版挂在 GitHub Release 上（不发布到 npm 仓库），需要 Node 22.18 及以上。
+包内是编译后的 JavaScript（`dist/`）与配套技能；源码用 TypeScript 写，仓库内开发时执行 `npm install && npm run build`。
 
-### macOS / Linux
-
-```bash
-curl -fsSL https://你的站点/api/v1/cli/install.sh | sh
-```
-
-装到 `~/.local/share/video-canvas-cli/<版本>`，并链接到 `~/.local/bin/{vc,video-canvas-cli}`。
-`~/.local/bin` 不在 PATH 里时，脚本会打印一行加 PATH 的命令。
-
-### Windows
-
-```powershell
-irm https://你的站点/api/v1/cli/install.ps1 | iex
-```
-
-装到 `%LOCALAPPDATA%\video-canvas-cli\<版本>`：写入 `vc.cmd` / `video-canvas-cli.cmd` 转发到
-`node`（入口是 `lib\dist\cli.js`），并把 bin 目录加进用户 PATH（重开终端生效）。
-
-### 手动下载 / 离线
+一键安装（装好 CLI，并把配套技能装进终端助手）：
 
 ```bash
-curl -fsSL https://你的站点/api/v1/cli/download?os=unix -o video-canvas-cli.tgz     # macOS / Linux
-curl -fsSL https://你的站点/api/v1/cli/download?os=windows -o video-canvas-cli.zip  # Windows
+# macOS / Linux
+curl -fsSL <网页站点>/cli/install.sh | sh
+
+# Windows PowerShell
+irm <网页站点>/cli/install.ps1 | iex
+
+# Windows CMD
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <网页站点>/cli/install.ps1 | iex"
 ```
 
-包内就是 `package.json` 与 `dist/`（编译后的 JS），解压后 `node <目录>/dist/cli.js` 直接能跑。
+脚本是网页静态目录下的固定文件，不含任何站点地址。它从 GitHub 最新 Release 下载 `video-canvas-cli.tgz`
+和同名的 `.sha256`，**校验通过才**交给 `npm i -g` 本地安装，最后执行 `vc skill install`。
+全局目录没有写权限时（macOS / Linux），脚本改装到 `~/.local` 并提示把 `~/.local/bin` 加进 PATH，不会调用 sudo。
 
-### 可覆盖的参数
+可选环境变量（PowerShell 里写成 `$env:名字 = "值"`）：
 
-| 变量         | 作用                                                   |
-| ------------ | ------------------------------------------------------ |
-| `VC_BASE`    | 站点地址；脚本默认已经填好当前站点                     |
-| `VC_VERSION` | 指定版本，默认取服务端最新                             |
-| `VC_PREFIX`  | Unix 安装前缀（默认 `~/.local`）；Windows 下是安装目录 |
+| 变量               | 作用                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| `VC_CLI_VERSION`   | 装指定版本：填 Release 的 tag，如 `v0.7.3`；默认最新                    |
+| `VC_DOWNLOAD_BASE` | GitHub 访问不畅时换成镜像目录，目录下要有同名的 `.tgz` 与 `.tgz.sha256` |
 
-### 升级与卸载
+也可以手动装：
 
-- 升级：重跑同一条安装命令。脚本每次都向 `/api/v1/cli/release` 要最新版本，不用记版本号。
-- 卸载：Unix 删 `~/.local/share/video-canvas-cli` 与 `~/.local/bin/{vc,video-canvas-cli}`；
-  Windows 删 `%LOCALAPPDATA%\video-canvas-cli`，并从用户 PATH 里去掉那条。
+```bash
+npm i -g https://github.com/zaylora/video-canvas/releases/latest/download/video-canvas-cli.tgz
+vc skill install
+```
+
+手动安装不会校验 sha256；在意这一点就用上面的一键脚本。
+
+装好后有 `vc` 与 `video-canvas-cli` 两个命令。侧栏头像菜单和 `/cli` 页的「复制命令给 Agent」复制的是一段完整提示
+（按系统挑的三条安装命令 + 本站登录命令），粘给终端里的 AI 助手，它会装好并带你完成登录授权。
+
+- 升级：重跑一键脚本，或执行上面的手动安装命令（升级后再 `vc skill install` 一次）。
+- 卸载：`npm uninstall -g video-canvas-cli`。
+- 固定版本：一键脚本加 `VC_CLI_VERSION=v0.7.3`，或手动装 `https://github.com/zaylora/video-canvas/releases/download/v0.7.3/video-canvas-cli.tgz`。
 
 ### 自检
 
@@ -154,26 +146,22 @@ vc --version          # video-canvas-cli 0.5.0
 vc --version --json   # {"ok":true,"data":{...,"node":"v22.22.2","os":"darwin","arch":"x64"}}
 ```
 
-`cli/package.json` 的 `version` 是唯一来源：安装包名、`vc --version`、站点 `/cli` 页显示的版本
-都读它，不存在三处各写一个数。源码是 TypeScript：仓库里 `cd cli && npm install && npm run build` 之后
+`cli/package.json` 的 `version` 是唯一来源：Release 附带的清单与 `vc --version` 都读它，不存在两处各写一个数。源码是 TypeScript：仓库里 `cd cli && npm install && npm run build` 之后
 `node dist/cli.js --help` 就能跑；Node 22.18+ 也可以直接 `node src/cli.ts --help`（靠类型擦除，不产出文件）。
 
 ### 配套技能（给终端里的 AI 助手）
 
 安装包里还带一份 `skill/`：给终端 Agent（Claude Code、Codex、WorkBuddy 之类）看的操作手册——
 什么时候该用 vc、模型与参数怎么查、节点 id 怎么挑、哪些操作要人确认。它不参与 `vc` 运行，
-装完就放在安装目录下：
+一键脚本已经装好；手动装 npm 包时执行一次：
 
 ```bash
-# 看它装在哪（版本号按实际来）
-ls -d ~/.local/share/video-canvas-cli/*/skill
-
-# 放进你用的助手的技能目录，放一处即可
-cp -R ~/.local/share/video-canvas-cli/*/skill ~/.claude/skills/video-canvas-cli
-cp -R ~/.local/share/video-canvas-cli/*/skill ~/.workbuddy/skills/video-canvas-cli
+vc skill install                  # 装进 Claude Code；已装 Codex（~/.codex）的也一并装
+vc skill install --to <技能目录>  # 其它助手，例如 ~/.workbuddy/skills
+vc skill path                     # 只看随包技能在哪
 ```
 
-Windows 在 `%LOCALAPPDATA%\video-canvas-cli\<版本>\lib\skill`，目标目录同理。
+每次升级 CLI 之后再执行一次 `vc skill install`：它会整个替换旧版本，不留过时文件。
 
 技能是给助手看的说明文档；命令由本机的 `vc` 执行。
 画布里的 Agent 跑在服务端、没有命令行，所以这份东西不在那边的技能库里。
@@ -203,10 +191,7 @@ vc canvas node add <画布编号> --kind script --label "旁白" --text "第一�
 #    要整图改，就走 graph → 编辑 → save；带 --revision 才是乐观锁
 vc canvas save <画布编号> --payload 画布.json --revision 3
 
-# ⑤ 成片：把连进成片节点的视频拼起来（顺序会先打印，再提交）
-vc canvas compose <画布编号> --node <成片节点id> --wait
-
-# ⑥ 备份 / 迁移（主线之外的常用操作）：export → import（save 只接受 graph）
+# ⑤ 备份 / 迁移（主线之外的常用操作）：export → import（save 只接受 graph）
 vc canvas export <画布编号> -o 备份.json
 vc canvas import 备份.json
 
@@ -226,20 +211,22 @@ vc logout
 
 一切从一枚本机令牌开始：`login` 走设备码，在浏览器点「允许」，之后所有命令都靠这份凭据。
 
-| 命令      | 参数          | 默认                         | 说明                                           |
-| --------- | ------------- | ---------------------------- | ---------------------------------------------- |
-| `login`   | `--base URL`  | 已保存的地址或 `VC_API_BASE` | 站点根或完整的 `/api/v1` 都可以                |
-|           | `--name 名称` | `video-canvas-cli@主机名`    | 授权页上显示是谁在登录，最长 64 字             |
-|           | `--no-open`   | 自动开浏览器                 | 只打印授权地址，不拉起浏览器                   |
-| `logout`  | 无            | ——                           | **只删本地凭据**；服务端 JWT 是自包含的        |
-| `whoami`  | 无            | ——                           | 实时调 `/me`，令牌失效会立刻报错，可当健康检查 |
-| `version` | `--json`      | ——                           | 也可写 `--version` / `-v`                      |
+| 命令      | 参数          | 默认                         | 说明                                                                           |
+| --------- | ------------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `login`   | `--base URL`  | 已保存的地址或 `VC_API_BASE` | 站点根或完整的 `/api/v1` 都可以                                                |
+|           | `--name 名称` | `video-canvas-cli@主机名`    | 授权页上标注为「自报」的设备名，最长 64 字，仅供参考，不能凭它判断是不是你自己 |
+|           | `--no-open`   | 自动开浏览器                 | 只打印授权地址，不拉起浏览器                                                   |
+| `logout`  | 无            | ——                           | **只删本地凭据**；服务端令牌到期或改密码才失效                                 |
+| `whoami`  | 无            | ——                           | 实时调 `/me`，令牌失效会立刻报错，可当健康检查                                 |
+| `version` | `--json`      | ——                           | 也可写 `--version` / `-v`                                                      |
 
 - `login` 的授权地址与用户码**始终写 stderr**，`--json` 时也一样；stdout 只留最后一行结果。
+- 网页授权页要求先登录，并且**必须手动输入终端里显示的用户码**才能点「同意」：带 `code` 的链接能被别人转发给你，
+  但只有发起命令的人看得到终端里的码。页面还会列出授权账号、发起时间、发起 IP 与自报设备名，不是你刚发起的就点「拒绝」。
 - `login` 会轮询到用户确认或 10 分钟过期。`denied` / `expired` / `consumed` / 超时都是退出码 1。
 - 登录态**默认 30 天**（后台「注册设置 → 命令行登录有效期」可改，1–365 天），与网页登录的 72 小时分开算。
   命令行是「装一次、长期用」，按网页会话的时长会每天都要重登。
-- `logout` 不会让服务端令牌失效：真吊销靠网页改密码（改完所有设备一起失效）。
+- `logout` 只清本地凭据，不会让服务端令牌失效：要等登录态到期，或在网页改密码（改完所有设备一起失效）。
 - `version --json` 的 `data` 是 `{name, version, channel, node, os, arch}`，版本号只读 `package.json`。
 
 **几个「有效期 / 超时」是独立设置**：各自管一件事，改一个不影响另一个。
@@ -263,13 +250,17 @@ vc logout
 | 想做什么       | 怎么做                                                    |
 | -------------- | --------------------------------------------------------- |
 | 换到另一个站点 | `vc login --base https://另一站点`，覆盖旧凭据            |
-| 临时指定地址   | `--base` 或环境变量 `VC_API_BASE`，优先级高于已保存的地址 |
+| 临时指定地址   | `--base` 或环境变量 `VC_API_BASE`；必须与登录时的站点一致 |
 | 看登录的是谁   | `vc whoami`                                               |
 | 清掉本地凭据   | `vc logout`                                               |
 
 `--base` 给站点根（`https://host`）或完整的 `https://host/api/v1` 都可以，两种写法等价。
 **必须带 `http://` 或 `https://`**：只写 `example.com` 会直接报「API 地址必须以 http:// 或 https:// 开头」，
 不做猜测补全。
+
+令牌**绑定登录时的站点**：`--base` 或 `VC_API_BASE` 指向另一个站点会被拒绝，不会把令牌发过去；
+想用另一个站点就重新 `vc login --base 新地址`。地址不是 `https://` 且不是本机（`localhost`、`127.0.0.1`）时会给出警告，
+因为令牌会明文传输。
 
 ## 二、项目：找到、新建、备份与迁移
 
@@ -466,50 +457,7 @@ vc canvas node rm <画布编号> n_ab12cd34
 - 按 `assetId` 建节点：素材归属不在这里校验，需要参考素材请用连线。
 - 操作不合法（例如给导演台节点写提示词、给文本节点设模型）——与 Agent 的规则完全一致。
 
-## 五、成片：合成、对账与取消
-
-把已经出好视频的段按顺序拼成一条成片。顺序不靠猜：不给 `--assets` 就按画布连线推导，并先打印出来给你看。
-
-| 参数         | 默认       | 说明                                       |
-| ------------ | ---------- | ------------------------------------------ |
-| `<code>`     | 必填       | 画布编号                                   |
-| `--node`     | 必填       | **成片节点**（`data.kind = compose`）的 id |
-| `--assets`   | 按画布推导 | 素材 id 列表，**顺序就是成片顺序**         |
-| `--seqs`     | 推导       | 每段对应的镜号（只用于展示「第几镜」）     |
-| `--mode`     | 服务端默认 | `storyboard` / `compose` / `selection`     |
-| `--wait`     | 不加       | 阻塞到合成结束；不加就只提交               |
-| `--timeout`  | `900`      | 合成比生成慢，默认给得更长                 |
-| `--interval` | `5`        | 轮询间隔（秒）                             |
-
-不给 `--assets` 时，CLI 读一次画布，按**与画布相同的规则**推导顺序并打印出来：
-
-1. 只收连进成片节点的**视频节点**（图片、文本、其他种类的连线不算，成片节点自己也不能当素材）。
-2. 节点 `data.composeOrder` 里有的按它的先后排；没有的按画布位置（先上下、再左右）。
-3. 每段取该节点**当前生效的那一版**（`activeOutputId` 指向的 `outputs[].assetId`，
-   老节点没有 outputs 时才退回 `assetId`）。
-4. 还没出视频的段会被跳过，并在打印里标成「还没有视频」；一段都没有时直接报错，不会提交一个空合成。
-
-```bash
-# 先看顺序和任务，再决定要不要等
-vc canvas compose <画布编号> --node <成片节点id>
-vc canvas compose <画布编号> --node <成片节点id> --wait
-
-# 手写顺序（比如只想拼其中两段，且要倒过来）
-vc canvas compose <画布编号> --node <成片节点id> --assets 923,920 --wait
-
-# 断线对账：按任务 id 查，或按节点查它最新的任务（并告知成片是否已过期）
-vc canvas compose-status <画布编号> --job <任务id>
-vc canvas compose-status <画布编号> --node <成片节点id>
-
-# 取消还没落终态的任务
-vc canvas compose-cancel <画布编号> --job <任务id>
-```
-
-- 成片状态下 `succeeded` 时输出 `result_asset_url`，可直接播放/下载；`duration_ms` 给时长。
-- 任务成功后**成片会写回成片节点**（与网页按钮一致），不需要再手动改节点。
-- 同一节点同时只能有一个进行中的合成任务；重复提交会撞上服务端的唯一约束。
-
-## 六、助手：交给画布里的 Agent
+## 五、助手：交给画布里的 Agent
 
 命令行擅长「参数已知、要确定性」的动作。需要**判断**的时候——挑哪个模型、把哪张关键帧接成参考图、
 一句话改三四个节点、这版画面到底能不能用——交给画布里的助手（小镜）。它在服务端跑，
@@ -532,7 +480,7 @@ vc agent cancel <运行编号>
 **该用哪个**：明确的批量（6 张图、6 段视频）用 `generate`，参数确定、可复现、便宜；
 要它想、要它改、要它判断，用 `agent`，按模型 token 计费，再叠加它提交的生成积分。
 
-## 七、短剧：另一条业务线
+## 六、短剧：另一条业务线
 
 短剧在 CLI 里是**只读 + 任务控制**：看项目、看原文单元、看/取消任务。建项目、改写剧本、跑规划与分集任务
 仍然在网页的短剧工作室里做——那些操作要读长上下文、逐步确认，命令行做不合适。
@@ -604,21 +552,20 @@ vc drama job-cancel <短剧编号> --job <任务id>
 
 ### 退出码
 
-| 退出码 | 含义                                                                      | 脚本里的处置                                                |
-| ------ | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| 0      | 成功                                                                      | 继续                                                        |
-| 1      | 业务错误、网络错误，或 `task wait` 等到了失败终态                         | 读 stderr / `--json` 的 `error`，不要盲目重试               |
-| 2      | 用法错误：参数缺失或非法、文件名写错、命令不存在、`--base` 写法错         | 修命令行本身                                                |
-| 3      | 等待超时：`--wait` / `task wait` 到点还没结束，**任务仍在跑，不代表失败** | 用 `task get` / `compose-status` 继续查，或加大 `--timeout` |
-| 4      | 新建项目 / 节点级修改被取消（没输入 `yes`，或非交互终端被拒绝）           | 想要就重跑并在终端里确认                                    |
+| 退出码 | 含义                                                                      | 脚本里的处置                                  |
+| ------ | ------------------------------------------------------------------------- | --------------------------------------------- |
+| 0      | 成功                                                                      | 继续                                          |
+| 1      | 业务错误、网络错误，或 `task wait` 等到了失败终态                         | 读 stderr / `--json` 的 `error`，不要盲目重试 |
+| 2      | 用法错误：参数缺失或非法、文件名写错、命令不存在、`--base` 写法错         | 修命令行本身                                  |
+| 3      | 等待超时：`--wait` / `task wait` 到点还没结束，**任务仍在跑，不代表失败** | 用 `task get` 继续查，或加大 `--timeout`      |
+| 4      | 新建项目 / 节点级修改被取消（没输入 `yes`，或非交互终端被拒绝）           | 想要就重跑并在终端里确认                      |
 
 **超时与失败必须分开**：把超时当失败会导致「任务其实成功了，脚本却重跑一遍，白烧积分」。
 这是实测踩过的坑，所以单独给了退出码 3。
 
 ### 等待与轮询
 
-`task wait` 默认每 3 秒查一次、600 秒超时；`generate --wait` 同样的默认值；`canvas compose --wait`
-默认每 5 秒查一次、900 秒超时（合成比生成慢）。都可用 `--interval`（1–3600 秒）、`--timeout`（1–86400 秒）调。
+`task wait` 默认每 3 秒查一次、600 秒超时；`generate --wait` 同样的默认值。都可用 `--interval`（1–3600 秒）、`--timeout`（1–86400 秒）调。
 数值写错（如 `--timeout abc`）会直接报用法错误，不会静默退回默认值。
 登录轮询按服务端给的 `interval` 走；服务端返回 `slow_down` 时轮询间隔自动加 5 秒（限频信号）。
 
@@ -636,14 +583,6 @@ vc drama job-cancel <短剧编号> --job <任务id>
 | `VC_AGENT_TRACE`     | `agent-trace.mjs` 的路径，等价于 `--script`     |
 | `XDG_CONFIG_HOME`    | 改凭据目录（默认 `~/.config`）                  |
 
-安装时（只影响安装脚本）：
-
-| 变量         | 作用                                                   |
-| ------------ | ------------------------------------------------------ |
-| `VC_BASE`    | 站点地址，脚本默认已填当前站点                         |
-| `VC_VERSION` | 指定版本，默认取服务端最新                             |
-| `VC_PREFIX`  | Unix 安装前缀（默认 `~/.local`）；Windows 下是安装目录 |
-
 ### 运行记录
 
 | 命令            | 说明                                                       |
@@ -655,14 +594,14 @@ vc drama job-cancel <短剧编号> --job <任务id>
 `trace` 把参数原样转发给 `scripts/agent-trace/agent-trace.mjs`，所以它与那份脚本的能力完全一致；
 `--json`、`--base`、`--script` 是 CLI 自己的选项，不会透传。
 
-- 独立安装包不带 `scripts/`，需要用 `--script <仓库>/scripts/agent-trace/agent-trace.mjs`
+- 安装包不带 `scripts/`，需要用 `--script <仓库>/scripts/agent-trace/agent-trace.mjs`
   或设置 `VC_AGENT_TRACE`；都没给会得到一条可操作的提示（退出码 2），而不是一句「请在仓库内运行」。
 - `vc trace --help` 会被 CLI 拦下来打印 CLI 自己的用法；要看 agent-trace 的帮助，
   直接 `node <仓库>/scripts/agent-trace/agent-trace.mjs --help`。
 
 ## 边界与限制
 
-本版覆盖「画布读写 + 生成提交 + 成片合成 + 短剧只读」。范围之外的能力与原因：
+本版覆盖「画布读写 + 生成提交 + 短剧只读」。范围之外的能力与原因：
 
 - **不写节点的产物字段**。`src`、`assetId`、`outputs` 由服务端与画布统一写回，CLI 不参与，以免与画布的版本归并不一致。
 - **不删除画布**。没有 `canvas delete`。建错了的画布只能在前端删除，CLI 不会替你做不可逆操作。
@@ -670,13 +609,11 @@ vc drama job-cancel <短剧编号> --job <任务id>
   程序化批量改写走 `canvas graph` + `canvas save` 整图写回（同样有 `revision` 乐观锁）。
 - **不做节点级扩展字段**。角色卡、分镜表、成片、导演台要填内嵌结构（人物设定、镜头行、段落顺序），
   CLI 不支持创建它们；能建的只有文本 / 图片 / 视频 / 音频四类普通节点，改的也只有标题、正文/提示词、模型。
-  成片节点不新建，但可以对已有的成片节点发起合成。
 - **不跑短剧重活**。短剧的建项目、规划、生成剧本、分集出片都留在网页和 MCP：它们要长上下文、要逐步核对、
   要花大额积分，一条命令直接触发不合适。CLI 只读 + 取消任务。
 - **不封装管理端接口**。渠道、模型、用户管理这些管理员操作没有做进 CLI——脚本令牌不应该顺手改平台配置。
-- **不经公共包仓库分发**。安装包由站点通过 `/api/v1/cli/download` 提供，可离线拷贝运行。
 - **令牌等同网页登录态**。它和你浏览器里的登录是同一套 JWT：改密码会一起失效，服务端没有单独的吊销列表。
-  区别只有有效期：命令行默认 30 天（后台可调），网页会话按 `jwt.expire_hours`。
+  区别只有有效期：命令行默认 30 天（后台可调），网页会话按 `jwt.expire_hours`。令牌只绑定登录时的站点，不会发给别的站点。
 
 ## 排障
 
@@ -688,6 +625,7 @@ vc drama job-cancel <短剧编号> --job <任务id>
 | `画布已在别处修改`（409）                 | 保存时 `revision` 落后              | 重新 `canvas graph` 取最新内容，合并后用新版本号再 save                        |
 | `缺少 API 地址`                           | 既没 `--base`，也没登录过           | 首次使用就带 `--base`                                                          |
 | `API 地址必须以 http:// 或 https:// 开头` | `--base` 只写了域名                 | 补上协议；不做猜测补全                                                         |
+| `--base` 与登录站点不一致被拒绝           | 令牌绑定登录时的站点                | 用登录时的站点，或重新 `vc login --base 新地址`                                |
 | `收到的是 canvas export 的导出文档`       | 把 `export` 的输出喂给了 `save`     | 写回用 `canvas graph`；迁移用 `canvas import`                                  |
 | `--timeout 需要 1–86400 的整数`           | 数值参数写了非数字或越界            | 改成整数；不再静默退回默认值                                                   |
 | `找不到 agent-trace`                      | 独立安装包不带运行记录脚本          | 用 `--script <仓库>/scripts/agent-trace/agent-trace.mjs` 或设 `VC_AGENT_TRACE` |
@@ -699,9 +637,6 @@ vc drama job-cancel <短剧编号> --job <任务id>
 | 生成提交返回 402                          | 可用积分不够冻结                    | `vc credits` 看余额，充值或减少 `--count`                                      |
 | `provider_balance` / 上游 429             | 渠道 Key 余额不足或并发满           | 换模型 / 等队列；这是上游问题，CLI 与画布都改不了                              |
 | `--canvas 与 --node 要一起给`             | 只给了一个                          | 两个都给（产物落回节点），或都不给（临时任务）                                 |
-| `不是成片节点`（compose）                 | `--node` 给成了视频节点             | 用 `data.kind = compose` 的那个节点 id                                         |
-| `上游还没有可用的视频素材`（compose）     | 成片节点连进来的视频还没出片        | 先 `generate video`，或用 `--assets` 显式给素材 id                             |
-| 合成分支退出码 3                          | 合成还在跑（默认等 900 秒）         | `canvas compose-status --job <id>` 继续查                                      |
 
 ## 与 MCP 接入的区别
 

@@ -31,7 +31,7 @@ func (h *CLIDeviceHandler) Start(c *gin.Context) {
 		response.Fail(c, errcode.ErrInvalidParams)
 		return
 	}
-	view, err := h.svc.Start(c.Request.Context(), req.ClientName)
+	view, err := h.svc.Start(c.Request.Context(), req.ClientName, c.ClientIP())
 	if err != nil {
 		response.Fail(c, err)
 		return

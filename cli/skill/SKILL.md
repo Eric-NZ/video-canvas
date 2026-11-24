@@ -1,25 +1,27 @@
 ---
 name: video-canvas-cli
-description: 用命令行 vc（video-canvas-cli）把连镜画布上的一个项目从登录推进到出片：接入、找/建项目、生成图片视频音频文本、改节点与整图写回、合成成片，另含短剧只读与任务取消。适用于批量生成素材、脚本化出片、把画布接进自动化流程，以及在不开浏览器时核对任务与素材。触发词：vc 命令、命令行生成、批量出图、批量视频、合成成片、查生成任务、短剧任务、canvas cli。
+description: 用命令行 vc（video-canvas-cli）操作连镜画布上的一个项目：接入、找/建项目、生成图片视频音频文本、改节点与整图写回、交给画布 Agent，另含短剧只读与任务取消。适用于批量生成素材、脚本化出片、把画布接进自动化流程，以及在不开浏览器时核对任务与素材。触发词：vc 命令、命令行生成、批量出图、批量视频、查生成任务、短剧任务、canvas cli。
 agent_created: true
 ---
 
 # 连镜命令行（vc）操作手册
 
-用 `vc` 把一个项目从「没有」推到「出片」。按业务主线走，每步只依赖上一步的产物：
+用 `vc` 把一个项目从「没有」推到「有素材」。按业务主线走，每步只依赖上一步的产物：
 
-**接入（拿令牌）→ 项目（拿画布编号与节点 id）→ 素材（产物回填到节点）→ 画布（决定片子长什么样）→ 成片（按连线拼）**
+**接入（拿令牌）→ 项目（拿画布编号与节点 id）→ 素材（产物回填到节点）→ 画布（决定片子长什么样）**
+
+成片合成命令暂时不可用（服务端合成接口还没就绪），成片请在网页里做。
 
 短剧是另一条线，放在最后一节。所有能力都在已有命令里：**不自己拼 HTTP 请求，不绕过命令的确认环节**。
 
-需要判断的事（挑模型、接参考图、按语义改多个节点、看画面能不能用）交给画布里的 Agent，见「六、复杂操作：交给小镜」。
+需要判断的事（挑模型、接参考图、按语义改多个节点、看画面能不能用）交给画布里的 Agent，见「五、复杂操作：交给小镜」。
 
 ## 什么时候用、什么时候不用
 
-用：批量提交生成并等结果、把成片节点上游的视频拼成成片、按节点改动画布、整图导出导入备份、
+用：批量提交生成并等结果、按节点改动画布、整图导出导入备份、
 在不开浏览器时核对任务与积分、把拿不准的改动交给画布 Agent 并替人收审批。
 
-不用：画布里的创意编辑与拖拽排版、分镜表与角色卡的结构化编辑（回网页）；
+不用：画布里的创意编辑与拖拽排版、分镜表与角色卡的结构化编辑、合成成片（回网页）；
 短剧的建项目、规划、生成剧本、分集出片（回网页或 MCP 的短剧能力族）；删除画布（CLI 没有 `canvas delete`）。
 
 ---
@@ -34,16 +36,22 @@ vc whoami             # 令牌是否有效，失效会立刻报错
 vc credits            # 余额 / 冻结 / 可用：花钱之前先看
 ```
 
-没装时（安装包由站点自己分发，不在 npm）：
+没装时从 GitHub Release 装（需要 Node 22.18+），再把这份技能装进助手：
 
 ```bash
-curl -fsSL <站点>/api/v1/cli/install.sh | sh        # macOS / Linux
-irm <站点>/api/v1/cli/install.ps1 | iex              # Windows PowerShell
-vc login --base <站点>                                # 浏览器里确认一次用户码
+npm i -g https://github.com/zaylora/video-canvas/releases/latest/download/video-canvas-cli.tgz
+vc skill install
+vc login --base <站点>        # 浏览器里确认一次；确认前核对页面上的用户码与终端一致
 ```
 
-站点地址从用户给的信息里取，**没给就问，不要猜域名**。换站点用 `vc login --base <新站点>` 覆盖旧凭据；
-凭据在 `$XDG_CONFIG_HOME/video-canvas/credentials.json`（没设 XDG 就是 `~/.config/video-canvas/`）。
+站点地址从用户给的信息里取，**没给就问，不要猜域名**。登录要**人**在浏览器里点同意，
+**不要替用户点，也不要把别人发来的授权链接交给用户去点**——点同意的人会把自己账号的完整权限交给发起登录的那一方。
+凭据在 `$XDG_CONFIG_HOME/video-canvas/credentials.json`（没设 XDG 就是 `~/.config/video-canvas/`），
+**令牌只属于登录时的站点**：`--base` 指向别处会被直接拒绝，要换站点用 `vc login --base <新站点>`。
+`vc logout` 只清本机凭据，服务端登录态要到期或改密码后才失效，不要对用户说「已经退出/已吊销」。
+API 与网页不在同一个域名时，登录打印的授权地址可能打不开，加 `--web <网页地址>`。
+
+这份技能自己的位置用 `vc skill path` 查；升级 CLI 后执行 `vc skill install` 更新它。
 
 ## 二、项目：拿到画布编号与节点 id
 
@@ -58,9 +66,11 @@ vc canvas graph <画布编号> -o /tmp/graph.json   # 只要 nodes/edges：这�
 **新建与导入要人确认**：`canvas create`、`canvas import` 会在账号下新增画布，而 CLI 不能删画布。
 命令会先打印要建什么，再等终端输入 `yes`；`--json` 与非交互终端一律拒绝（退出码 2），取消是退出码 4。
 **不要伪造 pty 去骗过确认，也不要把这两条写进无人值守脚本**——那等于替用户做不可逆的事。
+这道确认是约定性的软闸门，不是安全边界（持令牌的人仍可直接调接口），它靠的是你守约。
 
 `graph` 与 `export` 别混：`graph` 是 `{nodes, edges, viewport}`，给 `save` / `create --payload` 用；
 `export` 是带 `format` / `canvas` / `assets` 的导出文档，给 `import` 用。把导出文档喂给 `save` 会被拒绝。
+`canvas export` 不覆盖已有文件，要覆盖才加 `--force`。
 
 ## 三、素材：唯一花钱、也唯一产出东西的一步
 
@@ -83,7 +93,7 @@ vc generate image --model <模型key> --prompt "<提示词>" \
 ```
 
 - `--param` 只能填 `model show` 列出的名字；值先按 JSON 解释（`5` → 数字，`true` → 布尔），解不出按字符串。
-- `--count N` 一次多个结果，都绑同一个节点（需要 `--node`）。
+- `--count N` 一次多个结果，都绑同一个节点（需要 `--node`）；`--wait` 时这些任务共用一个总超时。
 - `--ref-image` / `--ref-video` / `--ref-audio` 给素材 id（纯数字），可给多次。
 
 **首帧 / 尾帧用专用参数**：只给 `--ref-image` 时走的是「参考生成」——图片影响风格与内容，但不锁首帧。
@@ -106,6 +116,7 @@ vc generate video --model <模型> --prompt "..." --canvas <画布> --node <节�
 做连续多镜（含首尾循环的短片）时，让相邻两段共用一张图：上段的尾帧就是下段的头帧，
 接缝才是同一帧而不是「看起来像」；最后一段的尾帧回到第一段的首帧，循环点才闭得死。
 能否真的复刻取决于模型能力：`agnes-*-flash` 只做到构图一致，人物会被重绘，要严格锁帧得换更强的模型。
+
 - 复杂参数用 `--input '<json>'`、`--input @file.json` 或 `--input -`（读标准输入）。
 
 **产物由服务端写回节点**：任务进入终态后，服务端把产物写进节点并推 `canvas.patch`，
@@ -114,7 +125,10 @@ vc generate video --model <模型> --prompt "..." --canvas <画布> --node <节�
 用 `task get` 看状态，**不要重投**——重投会再冻结一次积分。
 
 **超时不等于失败**：`--wait` / `task wait` 到点返回退出码 3，任务在服务端照跑。遇到 3 用
-`task get <id|task_ref>` 继续查，**不要重投**——重投会再冻结一次积分。
+`task get <id|task_ref>` 继续查，**不要重投**——重投会再冻结一次积分。`--json` 的 `data.tasks` 里有所有已提交任务的 id。
+
+**幂等键**：每次提交都会带 `Idempotency-Key`，并在发请求**之前**打印到 stderr、写进结果的 `idempotency_key`。
+响应丢了、进程被杀、不确定有没有提交成功时，**用同一个键重跑同一条命令**：`--idempotency-key <键>`，不会重复扣费。
 
 ## 四、画布：决定片子长什么样
 
@@ -131,14 +145,19 @@ vc canvas node rm <画布编号> <节点id>          # 连带清理连线、分�
 同样**必须由人在终端确认**，没有 `--yes`、不能与 `--json` 同用。能建的种类只有 `script` / `image` /
 `video` / `audio`；角色卡、分镜表、成片、导演台要填内嵌结构，回网页建。
 
-要整图重排（批量换模型、程序化布局），走 `graph` → 本地改 → `save`：
+要整图重排（批量换模型、程序化布局），走 `graph` → 本地改 → `save`。**`--revision` 必填**，
+它就是 `canvas graph` 输出里的版本——「我这份图取自哪一版」：
 
 ```bash
-vc canvas save <画布编号> --payload /tmp/graph.json --revision <读到的版本>
+vc canvas graph <画布编号> -o /tmp/graph.json     # 输出里有「版本 N」；--json 时在 data.revision
+# 本地改 /tmp/graph.json
+vc canvas save <画布编号> --payload /tmp/graph.json --revision N
 ```
 
-带 `--revision` 才是严格乐观锁：期间画布被别人改过会返回 409（`30002`），**不覆盖别人的修改**。
+乐观锁保证：期间画布被别人改过会返回 409（`30002`），**不覆盖别人的修改**。
 看到 409 就重新 `canvas graph` 取最新版，合并后用新 revision 再存。
+只增改、不删节点时脚本可以直接跑；**新图会让现有节点消失时，`save` 同样要人在终端确认**（规则同 `node rm`）。
+也就是说，「批量改」可以脚本化，「批量删」不行：这是约定性的软闸门，别想办法绕过它。
 
 节点 id 不用手抄——`scripts/node-pick.ts` 从 graph 里挑：
 
@@ -148,22 +167,7 @@ node scripts/node-pick.ts /tmp/graph.json --kind video --has-asset   # 只要已
 node scripts/node-pick.ts /tmp/graph.json --label "旁白"          # 按标题
 ```
 
-## 五、成片：按连线拼
-
-```bash
-vc canvas compose <画布编号> --node <成片节点id>          # 只提交，先读它推导的顺序
-vc canvas compose <画布编号> --node <成片节点id> --wait   # 等到出片
-vc canvas compose-status <画布编号> --node <成片节点id>    # 断线对账；--job <任务id> 也行
-vc canvas compose-cancel <画布编号> --job <任务id>
-```
-
-不给 `--assets` 时按与画布相同的规则推导：只收连进成片节点的视频、`composeOrder` 优先、其余按画布位置、
-每段取当前生效的那一版。**先把打印出来的顺序读一遍再决定要不要等**——顺序错了成片就错了。
-要指定顺序用 `--assets id,id,...`，顺序即成片顺序。
-
-`--node` 必须是 `data.kind = compose` 的成片节点；给成视频节点会报「不是成片节点」。
-
-## 六、复杂操作：交给小镜
+## 五、复杂操作：交给小镜
 
 命令行只擅长「参数已知、要确定性」的动作。一旦需要**判断**——挑哪个模型、把哪张关键帧接成参考图、
 一句话描述改三四个节点、看看这版画面能不能用——交给画布里的 Agent（小镜）。它在服务端跑，
@@ -172,22 +176,27 @@ vc canvas compose-cancel <画布编号> --job <任务id>
 ```bash
 vc agent run <画布编号> --message "把 S03 这一镜重做成 10 秒视频，参考现有 S03 关键帧" --watch
 vc agent events <会话编号> [--after 序号]      # 单独回看，含审批条目
-vc agent approve <审批编号> [--items 0,1]      # 按编号批准；--reject 整体驳回
+vc agent approve <审批编号> --session <会话编号> [--items 0,1]   # 按编号批准；--reject 整体驳回
 vc agent cancel <运行编号>                     # 停这一轮，已提交的生成任务照常跑完
 ```
 
 - `--selection 节点id,节点id` 圈定范围，不说就由它自己读画布找。
 - `--budget 积分` 是这一轮的花费上限，不给就用默认。
-- 不加 `--watch` 只提交并打印运行编号；加了就跟到**它有回复**或**停下来要你确认**为止，不会干等到超时。
+- 不加 `--watch` 只提交并打印运行编号；加了就跟到**运行结束**或**停下来要你确认**为止，不会干等到超时。
+  回了一段话不等于结束，它后面常常还有工具调用，所以会继续等；`approval.decided` 是已处理完的审批，不算在等人。
 - 一轮可能有好几个 `message.done`（工具调用之间的过渡），最后一句话才是结论。
 - **需要花钱或不可逆的动作它会停下来等审批**，此时事件里会列出编号。人看编号决定，
   命令行不替你猜含义：批准 `--items 0,1`，驳回 `--reject`。
-- 同一画布复用同一条会话，网页里能看到同样的上下文；`--session` 可以指定看哪一条。
+  批准前 `agent approve` 会把将批准的条目内容列出来——后端没有按审批编号查详情的接口，
+  所以要带 `--session`（`agent run --watch` 打印的命令里已经带上）。**把这些条目念给用户，由用户决定**，
+  不要自己替用户批准花钱的动作。在终端里它还会再要一次 `yes`；脚本下只展示不拦，这同样是软闸门。
+- 同一画布复用同一条会话，网页里能看到同样的上下文；`--session` 可以指定用哪一条，
+  先校验它属于这张画布，不存在就报错，不会新建。
 
 代价要说清：小镜一轮按模型 token 计费，再叠加它提交的生成积分，比直接 `generate` 贵。
 **明确的批量（6 张图、6 段视频）用 `generate`；要它想、要它改、要它判断，用 `agent`。**
 
-## 七、短剧（另一条业务线：只读 + 任务控制）
+## 六、短剧（另一条业务线：只读 + 任务控制）
 
 ```bash
 vc drama list [--keyword <词>]
@@ -207,35 +216,36 @@ vc drama job-cancel <短剧编号> --job <任务id>   # 取消不退已花积分
 
 **脚本化**：一律加 `--json` 拿一行 `{ok,data}` / `{ok:false,error}`，进度写 stderr，stdout 只有结果。
 按退出码分支：0 成功、1 业务或任务失败、2 用法错误、3 等待超时（任务还在跑）、4 人取消了写操作。
+布尔开关（`--json`、`--wait`、`--watch`、`--active`、`--reject`、`--force`）不会吞掉后面的参数，放前放后都行。
+等待类命令遇到网络抖动或服务端 5xx 会自己退避重试，4xx 才直接失败。
 
-**重试要带幂等键**：提交是幂等的（自动带 `Idempotency-Key`）；自己的重试要复用
+**重试要带幂等键**：提交是幂等的（自动带 `Idempotency-Key`，并在 stderr 与结果里给出）；自己的重试要复用
 `--idempotency-key <同一个值>`，否则会建出两个任务、冻结两次积分。
 
 **花钱纪律**：不要放进无上限循环；先 `credits`，再按 `model show` 的计价 × 次数/秒数估成本。
 
 **排障**：
 
-| 现象                          | 含义                       | 处置                                                |
-| ----------------------------- | -------------------------- | --------------------------------------------------- |
-| 退出码 3                      | 等待超时，任务仍在跑       | `task get` / `canvas compose-status` 继续查，别重投 |
-| `402` / 积分不足              | 可用积分不够冻结           | `credits` 核对，减少 `--count` 或充值               |
-| `provider_balance` / 上游 429 | 渠道余额不足或并发满       | 上游账号问题，换模型或等；如实告诉用户              |
-| `画布已在别处修改`（409）     | 整图保存时 revision 落后   | 重新 `canvas graph`，合并后用新 revision 存         |
-| `需要交互确认`                | 非交互终端跑了要确认的命令 | 交给人在终端执行；不要伪造 pty                      |
-| `不是成片节点`                | `--node` 给成了视频节点    | 选 `data.kind = compose` 的节点                     |
-| `上游还没有可用的视频素材`    | 成片节点上游还没视频       | 先生成视频，或 `--assets` 显式给素材 id             |
-| 找不到模型                    | key 写错或站点没上架       | `model list` 重新取                                 |
+| 现象                          | 含义                        | 处置                                            |
+| ----------------------------- | --------------------------- | ----------------------------------------------- |
+| 退出码 3                      | 等待超时，任务仍在跑        | `task get` 继续查，别重投                       |
+| `402` / 积分不足              | 可用积分不够冻结            | `credits` 核对，减少 `--count` 或充值           |
+| `provider_balance` / 上游 429 | 渠道余额不足或并发满        | 上游账号问题，换模型或等；如实告诉用户          |
+| `画布已在别处修改`（409）     | 整图保存时 revision 落后    | 重新 `canvas graph`，合并后用新 revision 存     |
+| `需要交互确认`                | 非交互终端跑了要确认的命令  | 交给人在终端执行；不要伪造 pty                  |
+| `必须显式给 --revision`       | `canvas save` 没给基准版本  | 先 `canvas graph` 取图和版本，再带 `--revision` |
+| `不属于…的登录态`             | `--base` 与登录时的站点不同 | `vc login --base <站点>` 重新登录               |
+| 找不到模型                    | key 写错或站点没上架        | `model list` 重新取                             |
 
 全量参数、默认值、返回结构见 `references/commands.md`。
 
 ## 本仓库内的落点（改 CLI 时用）
 
-- 源码是 **TypeScript**：命令实现 `cli/src/commands.ts`，入口与用法 `cli/src/cli.ts`，版本唯一来源
-  `cli/package.json`；用户拿到的是 `cli/dist/*.js`（`tsc` 产物，不入库）。
-- 改完必须 `cd cli && npm install && npm run build`（`npm run typecheck` / `npm test` 连类型一起查）。
-  `dist/cli.js` 缺失时后端镜像构建会直接失败——这是刻意的，避免下发没有代码的安装包。
-- 本体就是这份技能：`cli/skill/` 随安装包下发；站点文档正文 `web/src/content/cli-docs.md`（线上 `/cli/docs`）。
-- CLI 随后端镜像发布：`backend/Dockerfile` 拷 `cli/{package.json,README.md,dist,skill}` 进 `/app/cli`，
-  安装包请求时现场打包。所以改了 CLI 必须重建 backend 镜像才生效，只换前端没用。
+- 源码是 **TypeScript**：命令实现在 `cli/src/commands/`（按领域分文件），入口与用法 `cli/src/cli.ts`，
+  版本唯一来源 `cli/package.json`；发布的是 `cli/dist/*.js`（`tsc` 产物，不入库）。
+- 改完 `cd cli && npm ci && npm run build`，再 `npm run typecheck && npm run lint && npm run format:check && npm test`。
+- 本体就是这份技能：`cli/skill/` 随 npm 包发布（`vc skill path` 查位置）；站点文档正文
+  `web/src/content/cli-docs.md`（线上 `/cli/docs`）。
+- CLI 通过 npm 发布（包名 `video-canvas-cli`），发版时由流水线按版本号发布，不在本地手动 `npm publish`。
 
 不在本文档里写具体站点、具体模型、具体画布编号：这些每次都不一样，一律现场查。

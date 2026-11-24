@@ -179,19 +179,22 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 	if req.QueueMaxWaitMinutes < minQueueMaxWaitMinutes || req.QueueMaxWaitMinutes > maxQueueMaxWaitMinutes {
 		return nil, errcode.ErrInvalidParams.WithMsg("排队超时必须在 " + strconv.Itoa(minQueueMaxWaitMinutes) + " 到 " + strconv.Itoa(maxQueueMaxWaitMinutes) + " 分钟之间")
 	}
-	// 老客户端不带这个字段（0）：按默认值处理，不能让保存整体失败
+
+	// 2. 记下改前的值：用于审计，也给没带的字段兜底
+	before, err := s.RegisterSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 不带这个字段（0）的客户端（如后台表单）：沿用库里当前值，没改过就是默认值。
+	// 不能直接写默认值：那会在管理员保存其他设置时，把已经改过的有效期悄悄重置掉。
 	if req.CLITokenDays == 0 {
-		req.CLITokenDays = DefaultCLITokenDays
+		req.CLITokenDays = before.CLITokenDays
 	}
 	if req.CLITokenDays < minCLITokenDays || req.CLITokenDays > maxCLITokenDays {
 		return nil, errcode.ErrInvalidParams.WithMsg("命令行登录有效期必须在 " + strconv.Itoa(minCLITokenDays) + " 到 " + strconv.Itoa(maxCLITokenDays) + " 天之间")
 	}
 
-	// 2. 记下改前的值用于审计，再一次性写库
-	before, err := s.RegisterSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// 3. 一次性写库
 	err = s.repo.SetMany(ctx, map[string]string{
 		model.SettingRegisterEnabled:       strconv.FormatBool(req.RegisterEnabled),
 		model.SettingInitialCredits:        strconv.Itoa(req.InitialCredits),

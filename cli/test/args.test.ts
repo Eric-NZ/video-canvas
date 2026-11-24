@@ -8,7 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { APIError } from "../src/client.ts";
-import { parseArgs, stringFlag, toInt } from "../src/commands.ts";
+import { parseArgs, stringFlag, toInt } from "../src/commands/index.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // 测的是构建产物：用户装到的就是 dist/cli.js
@@ -64,13 +64,13 @@ async function startTaskServer(task: Record<string, unknown>): Promise<{
 }
 
 /** 隔离的凭据目录，base 指向必然连不上的本地端口——只测参数与本地校验，不发真请求。 */
-function tempConfig(): string {
+function tempConfig(base = "http://127.0.0.1:1"): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vc-cli-test-"));
   const dir = path.join(root, "video-canvas");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, "credentials.json"),
-    JSON.stringify({ base: "http://127.0.0.1:1/api/v1", token: "test-token" }),
+    JSON.stringify({ base: `${base}/api/v1`, token: "test-token" }),
   );
   return root;
 }
@@ -179,7 +179,7 @@ test("task wait 等待超时：退出码 3，JSON 为 ok:false，且不冒充任
   try {
     const { code, stdout } = await runAsync(
       ["task", "wait", "1", "--timeout", "1", "--interval", "1", "--json"],
-      { XDG_CONFIG_HOME: tempConfig(), VC_API_BASE: base },
+      { XDG_CONFIG_HOME: tempConfig(base), VC_API_BASE: base },
     );
     assert.equal(code, 3);
     assert.match(stdout, /"ok":false/);
@@ -198,7 +198,7 @@ test("task wait 到失败终态：JSON 为 ok:false 且退出码 1", async () =>
   });
   try {
     const { code, stdout } = await runAsync(["task", "wait", "2", "--json"], {
-      XDG_CONFIG_HOME: tempConfig(),
+      XDG_CONFIG_HOME: tempConfig(base),
       VC_API_BASE: base,
     });
     assert.equal(code, 1);
@@ -219,7 +219,7 @@ test("task wait 到成功终态：JSON 为 ok:true 且退出码 0", async () => 
   const { server, base } = await startTaskServer({ id: 3, status: "succeeded", progress: 100 });
   try {
     const { code, stdout } = await runAsync(["task", "wait", "3", "--json"], {
-      XDG_CONFIG_HOME: tempConfig(),
+      XDG_CONFIG_HOME: tempConfig(base),
       VC_API_BASE: base,
     });
     assert.equal(code, 0);
@@ -227,4 +227,41 @@ test("task wait 到成功终态：JSON 为 ok:true 且退出码 0", async () => 
   } finally {
     server.close();
   }
+});
+
+test("parseArgs：已知布尔开关不吞后面的位置参数", () => {
+  const a = parseArgs(["get", "--json", "CODE"]);
+  assert.equal(a.flags.json, true);
+  assert.deepEqual(a.positional, ["get", "CODE"]);
+  const b = parseArgs(["approve", "--reject", "ID9"]);
+  assert.equal(b.flags.reject, true);
+  assert.deepEqual(b.positional, ["approve", "ID9"]);
+  for (const name of ["wait", "watch", "active", "force", "no-open"]) {
+    const c = parseArgs([`--${name}`, "X"]);
+    assert.equal(c.flags[name], true, name);
+    assert.deepEqual(c.positional, ["X"], name);
+  }
+});
+
+test("parseArgs：布尔开关仍认 =值，以及紧跟的 true/false 字面量", () => {
+  assert.equal(parseArgs(["--json=true"]).flags.json, "true");
+  assert.equal(parseArgs(["--wait=false"]).flags.wait, "false");
+  assert.equal(parseArgs(["--json", "false"]).flags.json, "false");
+});
+
+test("parseArgs：已知文本参数的值可以以 - 开头", () => {
+  assert.equal(parseArgs(["--text", "- 列表项"]).flags.text, "- 列表项");
+  assert.equal(parseArgs(["--prompt", "-foo"]).flags.prompt, "-foo");
+  assert.equal(parseArgs(["--message", "--xx 开头"]).flags.message, "--xx 开头");
+  assert.equal(parseArgs(["--label", "-"]).flags.label, "-");
+  // 没登记的 flag 行为不变：后面是选项就当开关
+  assert.equal(parseArgs(["--other", "--next"]).flags.other, true);
+});
+
+test("boolFlag：true / 'true' 为真，'false' 与缺省为假", async () => {
+  const { boolFlag } = await import("../src/commands/index.ts");
+  assert.equal(boolFlag({ wait: true }, "wait"), true);
+  assert.equal(boolFlag({ wait: "true" }, "wait"), true);
+  assert.equal(boolFlag({ wait: "false" }, "wait"), false);
+  assert.equal(boolFlag({}, "wait"), false);
 });

@@ -8,10 +8,54 @@ import (
 
 	"gorm.io/datatypes"
 
+	"go.uber.org/zap"
+
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
+
+// canvasOpsPatchKind 是节点级编辑推送 canvas.patch 时的来源标记。
+const canvasOpsPatchKind = "cli_ops"
+
+// CanvasModelOpsSource 返回已上架、可用的图片和视频模型各自支持的生成方式（模型 key → ops）。
+type CanvasModelOpsSource func(ctx context.Context) (map[string][]string, error)
+
+// RegistryModelOps 用模型注册表做生成方式来源；注册表缓存了编译结果，每次调用不查库。
+// 画布 Agent 与节点级编辑共用这一份，避免两边对「模型支持哪些 mode」各有各的答案。
+func RegistryModelOps(reg provider.Registry) CanvasModelOpsSource {
+	return func(ctx context.Context) (map[string][]string, error) {
+		list, err := reg.ListModels(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string][]string, len(list))
+		for _, m := range list {
+			if (m.Kind == "video" || m.Kind == "image") && len(m.Capabilities.Ops) > 0 {
+				out[m.Key] = m.Capabilities.Ops
+			}
+		}
+		return out, nil
+	}
+}
+
+// modelOpsLookup 取一次模型的生成方式并包成查询函数；没有来源或取失败时返回 nil（不校验，生成时再兜底）。
+func (s *CanvasProjectService) modelOpsLookup(ctx context.Context) canvasgraph.ModelOpsFunc {
+	if s.modelOps == nil {
+		return nil
+	}
+	ops, err := s.modelOps(ctx)
+	if err != nil {
+		logger.Warn("读取模型生成方式失败，本次不校验 mode", zap.Error(err))
+		return nil
+	}
+	return func(model string) ([]string, bool) {
+		v, ok := ops[model]
+		return v, ok
+	}
+}
 
 // CanvasOpsReq 是一次节点级编辑：一批 canvasgraph 操作，外加可选的删除节点 id。
 //
@@ -55,6 +99,10 @@ func (s *CanvasProjectService) ApplyOps(ctx context.Context, userID, id uint64, 
 	if err != nil {
 		return nil, err
 	}
+	// 短剧画布的节点由短剧服务按剧本结构维护（回填也不写它），命令行按差异改会破坏结构，一律拒绝。
+	if cv.DramaID != nil {
+		return nil, errcode.ErrInvalidParams.WithMsg("短剧画布的节点由短剧项目维护，请在网页里编辑")
+	}
 	g, err := canvasgraph.Parse(cv.PayloadJSON)
 	if err != nil {
 		return nil, errcode.ErrCanvasPayload
@@ -73,7 +121,7 @@ func (s *CanvasProjectService) ApplyOps(ctx context.Context, userID, id uint64, 
 				return nil, errcode.ErrInvalidParams.WithMsg("不支持按 assetId 建节点：素材归属不在这里校验，请改用连线引用已有节点")
 			}
 		}
-		res, err := canvasgraph.Apply(g, ops, canvasgraph.Options{})
+		res, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: s.modelOpsLookup(ctx)})
 		if err != nil {
 			return nil, errcode.ErrInvalidParams.WithMsg(err.Error())
 		}
@@ -118,5 +166,10 @@ func (s *CanvasProjectService) ApplyOps(ctx context.Context, userID, id uint64, 
 		return nil, err
 	}
 	out.Revision = saved.Revision
+	// 写库成功后再推：浏览器据此把 revision 追上，不会在下次自动保存时撞 409。推送可丢，客户端会对账。
+	PublishCanvasPatch(ctx, s.bc, userID, CanvasPatch{
+		CanvasID: id, Kind: canvasOpsPatchKind,
+		RevisionBefore: req.Revision, RevisionAfter: saved.Revision, Changes: out.Changes,
+	})
 	return out, nil
 }

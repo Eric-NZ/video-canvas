@@ -33,6 +33,11 @@ export interface Ctx {
   /** 已规范化的 API 根地址；地址不合法时为 null，原因在 baseError。 */
   base: string | null;
   baseError: unknown;
+  /**
+   * 已保存的令牌不属于当前要访问的站点：令牌只在登录时的 base 上有效，换了 --base / VC_API_BASE 就不能带过去。
+   * 有值时 token 一定是 undefined，requireToken 会据此给出「重新登录」的提示。
+   */
+  baseMismatch: { saved: string | null; requested: string } | null;
   token?: string;
   json: boolean;
   stdout(line: string): void;

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // video-canvas-cli：连镜的命令行入口。
-// 运行时只依赖 Node 22.18+ 内置能力（技能脚本是 .ts，需要默认的类型擦除）；源码是 TypeScript，构建产物是 dist/cli.js。
+// 运行时只依赖 Node 22.18+ 内置能力（技能脚本是 .ts，需要默认的类型擦除）；源码是 TypeScript，构建产物是 dist/cli.js，
+// 经 GitHub Release 分发：npm i -g <Release 上的 video-canvas-cli.tgz>，或站点的一键安装脚本。
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { APIError, normalizeBase, siteRootOf } from "./client.ts";
+import { insecureBaseWarning, isInsecureRemoteBase, sameBase } from "./base.ts";
+import { APIError, normalizeBase } from "./client.ts";
 import {
   agentApprove,
   agentCancel,
@@ -38,13 +40,15 @@ import {
   modelList,
   modelShow,
   parseArgs,
+  skill,
   taskGet,
   taskWait,
   trace,
   whoami,
-} from "./commands.ts";
+} from "./commands/index.ts";
 import { credentialsPath, loadCredentials } from "./config.ts";
 import type { Args, Ctx, Flags } from "./types.ts";
+import { fetchLatestVersion, isNewer, upgradeHint } from "./update.ts";
 
 const USAGE = `video-canvas-cli（beta）— 连镜命令行
 
@@ -52,22 +56,27 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
   video-canvas-cli <命令> [参数]
 
 身份与会话
-  login [--base URL] [--name 名称] [--no-open]   设备授权登录（在浏览器里确认一次，默认 30 天免登录）
-  logout                                          删除本地凭据
+  login [--base URL] [--web URL] [--name 名称] [--no-open]
+                                                  设备授权登录（在浏览器里确认一次，默认 30 天免登录）
+                                                  授权页与 API 不在同一个域名时，用 --web（或 VC_WEB_URL）指定网页地址
+  logout                                          只清本机凭据；服务端登录态到期或改密码后才失效
   whoami                                          查看当前身份
   version                                         打印 CLI 版本（与站点版本独立）
+  skill path                                      打印随包技能目录
+  skill install [--to <技能目录>]                 把技能装进终端助手（默认 Claude Code，已装 Codex 的也一并装）
 
 画布（读写）
   canvas list [--page N] [--page-size N]
   canvas get <code>
   canvas create --title <标题> [--payload 文件]
   canvas import <导出文件.json>
-  canvas export <code> [-o 文件]        -o 与 --output 等价；- 表示输出到 stdout
-  canvas graph <code> [-o 文件]
-  canvas save <code> --payload 文件 [--revision N]
-                                        要 canvas graph 的输出，不是 canvas export 的导出文档
+  canvas export <code> [-o 文件] [--force]   -o 与 --output 等价；- 表示输出到 stdout；已有同名文件不覆盖，--force 才覆盖
+  canvas graph <code> [-o 文件]               输出图与 revision（revision 是 canvas save 必填的基准版本）
+  canvas save <code> --payload 文件 --revision N
+                                        --revision 必填，取自 canvas graph；要 canvas graph 的输出，不是 canvas export 的导出文档；
+                                        新图会让现有节点消失时，需要在终端里确认
 
-画布节点级编辑（每次都要在终端确认）
+画布节点级编辑（每次都要在终端确认；这是约定性的软闸门，不是安全边界）
   canvas node add <code> --kind <script|image|video|audio> [--label 标题] [--text 正文] [--prompt 提示词]
                         [--model 模型] [--at x,y]
   canvas node set <code> <节点id> [--label 标题] [--text 正文] [--prompt 提示词] [--model 模型]
@@ -84,14 +93,8 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
             [--prompt 提示词] [--param 名=值]... [--input '<json>'|@文件|-]
             [--ref-image 素材id]... [--ref-video 素材id]... [--ref-audio 素材id]...
             [--first-frame 素材id [--last-frame 素材id]]   锁首帧 / 首尾帧（视频）
-            [--count 1] [--wait] [--timeout 600] [--interval 3]
-
-合成成片
-  canvas compose <code> --node <成片节点id> [--assets 素材id,素材id...] [--seqs 1,2,3]
-                          [--mode storyboard|compose|selection] [--wait] [--timeout 900]
-                                        不给 --assets 时按成片节点的上游顺序推导并打印出来
-  canvas compose-status <code> [--job 任务id | --node 节点id]
-  canvas compose-cancel <code> --job 任务id
+            [--count 1] [--wait] [--timeout 600] [--interval 3] [--idempotency-key 键]
+                                        幂等键提交前就打印；请求结果不确定时带同一个键重跑，不会重复扣费
 
 生成任务
   task get <id|task_ref>
@@ -101,7 +104,8 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
   agent run <画布编号> --message "把 S03 重新生成成 10 秒视频" [--selection 节点id,节点id]
             [--budget 积分] [--session 会话编号] [--watch] [--interval 2] [--timeout 600]
   agent events <会话编号> [--after 序号]      看已经发生的事（含审批条目）
-  agent approve <审批编号> [--items 0,1] [--reject] [--answer 文本]
+  agent approve <审批编号> [--session 会话编号] [--items 0,1] [--reject] [--answer 文本]
+                                        批准前会列出将批准的条目（需要 --session）；终端里还要再确认一次
   agent cancel <运行编号>
                                         只提交时打印运行编号；--watch 跟到结束或等到需要审批
 
@@ -113,15 +117,16 @@ const USAGE = `video-canvas-cli（beta）— 连镜命令行
   drama jobs <短剧编号> [--active]
   drama job-cancel <短剧编号> --job 任务id
 
-运行记录（转发 scripts/agent-trace；独立安装包用 --script 或 VC_AGENT_TRACE 指定）
+运行记录（转发 agent-trace 脚本；出于安全必须用 --script 或 VC_AGENT_TRACE 明确指定脚本）
   trace pull [--since 7d] [--feedback down] ...
   trace show <run_id>
   trace compare --by harness_key [--since 30d]
 
 全局选项
   --json          输出一行 JSON（{ok,data} / {ok:false,error}），供脚本与 Agent 解析
-  --base URL      覆盖 API 地址（也可用环境变量 VC_API_BASE）
-  --no-update-check  本次不检查新版本（也可用 VC_NO_UPDATE_CHECK=1）
+  --base URL      API 地址（也可用环境变量 VC_API_BASE）；登录态只属于登录时的站点，换站点要重新 login
+                  非 https 的远程地址会警告，令牌会明文传输
+  --no-update-check  本次不检查 GitHub 上的新版本（也可用 VC_NO_UPDATE_CHECK=1）
 
 退出码：0 成功，1 业务或网络错误（含任务失败），2 用法错误，
         3 等待超时（--wait / task wait），4 新建项目或节点级修改被取消
@@ -261,13 +266,21 @@ function buildContext(flags: Flags): Ctx {
     // 而不是后面拼出 `null/canvas` 报一句「无法连接 null」。
     baseError = err;
   }
+  // 令牌绑定登录时的站点：--base / VC_API_BASE 指向别处时不把令牌带过去（login 自己不用令牌）
+  let token = creds?.token;
+  let baseMismatch: Ctx["baseMismatch"] = null;
+  if (token && base && !(creds?.base && sameBase(creds.base, base))) {
+    baseMismatch = { saved: creds?.base ? normalizeBase(creds.base) : null, requested: base };
+    token = undefined;
+  }
   return {
     env,
     creds,
     credsPath: credentialsPath(env),
     base,
     baseError,
-    token: creds?.token,
+    baseMismatch,
+    token,
     json: flags.json === true || flags.json === "true",
     stdout: (line: string) => process.stdout.write(`${line}\n`),
     stderr: (line: string) => process.stderr.write(`${line}\n`),
@@ -305,6 +318,10 @@ async function main(argv: string[]): Promise<void> {
     process.stdout.write(`${USAGE}\n`);
     return;
   }
+  // 明文 http 的远程站点：令牌与内容都会裸奔，每次都提醒（本机调试地址不提醒）
+  if (ctx.base && command !== "trace" && command !== "skill" && isInsecureRemoteBase(ctx.base)) {
+    ctx.stderr(insecureBaseWarning(ctx.base));
+  }
 
   // 升级提醒在后台查，命令照跑；提示只写 stderr，且命令结束时最多等 400ms（见 startUpdateCheck）
   const updater = startUpdateCheck(ctx, rest);
@@ -332,6 +349,8 @@ async function main(argv: string[]): Promise<void> {
         return await credits(ctx);
       case "trace":
         return trace(ctx, { positional, flags });
+      case "skill":
+        return await skill(ctx, { positional, flags });
       default:
         throw new APIError(-1, `未知命令：${command}\n\n${USAGE}`, 2);
     }
@@ -346,30 +365,15 @@ async function main(argv: string[]): Promise<void> {
  */
 const CLI_CHANNEL = "beta";
 
-/** 语义化版本比较：a 比 b 新返回 true。beta 期间只比前三段数字，预发布后缀按同版本处理。 */
-function isNewer(a: string, b: string): boolean {
-  const parse = (value: string): number[] =>
-    String(value)
-      .split("-")[0]!
-      .split(".")
-      .map((part) => Number.parseInt(part, 10) || 0);
-  const left = parse(a);
-  const right = parse(b);
-  for (let i = 0; i < 3; i++) {
-    if ((left[i] || 0) !== (right[i] || 0)) return (left[i] || 0) > (right[i] || 0);
-  }
-  return false;
-}
-
 interface Updater {
   finish(): Promise<void>;
 }
 
 /**
- * 自动升级提醒：启动时向站点查一次最新版本，命令结束时最多等 400ms 再提示。
+ * 自动升级提醒：启动时向 npm registry 查一次最新版本，命令结束时最多等 400ms 再提示。
  *
  * 刻意做成「不落盘、不阻塞、失败静默」：
- * - 不写缓存文件，避免在只读 HOME / 容器里报错；一次 release 请求只有几百字节；
+ * - 不写缓存文件，避免在只读 HOME / 容器里报错；一次请求只有几百字节；
  * - 非交互（stderr 不是终端）不查，脚本与 CI 的日志里不会突然多一行；
  * - --json 时提示仍走 stderr，不影响 stdout 的单行 JSON；
  * - VC_NO_UPDATE_CHECK=1 或 --no-update-check 可彻底关掉。
@@ -378,19 +382,11 @@ function startUpdateCheck(ctx: Ctx, argv: string[]): Updater {
   const skip =
     process.env.VC_NO_UPDATE_CHECK === "1" ||
     argv.includes("--no-update-check") ||
-    !ctx.base ||
     !process.stderr.isTTY;
   if (skip) return { finish: async () => {} };
 
-  const base = ctx.base as string;
   const local = cliVersion();
-  const pending: Promise<string | null> = fetch(`${base}/cli/release`, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(1500),
-  })
-    .then((res) => (res.ok ? (res.json() as Promise<{ data?: { version?: string } }>) : null))
-    .then((body) => body?.data?.version || null)
-    .catch(() => null);
+  const pending = fetchLatestVersion();
 
   return {
     finish: async () => {
@@ -401,15 +397,8 @@ function startUpdateCheck(ctx: Ctx, argv: string[]): Updater {
       });
       const latest = await Promise.race([pending, timeout]);
       if (!latest || !isNewer(String(latest), local)) return;
-      const site = siteRootOf(base);
-      const how =
-        process.platform === "win32"
-          ? `irm ${site}/api/v1/cli/install.ps1 | iex`
-          : `curl -fsSL ${site}/api/v1/cli/install.sh | sh`;
       ctx.stderr("");
-      ctx.stderr(
-        `提示：命令行有新版本 ${latest}（当前 ${local}，${CLI_CHANNEL} 渠道）。升级：${how}`,
-      );
+      ctx.stderr(upgradeHint(latest, local, CLI_CHANNEL));
       ctx.stderr("  不想每次都查：VC_NO_UPDATE_CHECK=1");
     },
   };

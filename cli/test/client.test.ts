@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { APIError, normalizeBase, request, siteRootOf } from "../src/client.ts";
-import { parseArgs } from "../src/commands.ts";
+import { parseArgs } from "../src/commands/index.ts";
 
 test("normalizeBase：只给站点根时补 /api/v1，末尾斜杠去掉", () => {
   assert.equal(normalizeBase("https://example.com"), "https://example.com/api/v1");

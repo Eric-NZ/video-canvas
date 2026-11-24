@@ -3,13 +3,16 @@ export class APIError extends Error {
   readonly code: number;
   readonly status: number;
   readonly exitCode?: number;
+  /** 重试后可能成功的错误：网络不通、服务端 5xx。4xx 与业务错误重试没有意义。 */
+  readonly retryable: boolean;
 
-  constructor(code: number, message: string, status: number, exitCode?: number) {
+  constructor(code: number, message: string, status: number, exitCode?: number, retryable = false) {
     super(message);
     this.name = "APIError";
     this.code = code;
     this.status = status;
     this.exitCode = exitCode;
+    this.retryable = retryable;
   }
 }
 
@@ -97,7 +100,7 @@ export async function request<T = unknown>({
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (err) {
-    throw new APIError(-1, `无法连接 ${base}：${errorMessage(err)}`, 0);
+    throw new APIError(-1, `无法连接 ${base}：${errorMessage(err)}`, 0, undefined, true);
   }
 
   const text = await res.text();
@@ -105,7 +108,13 @@ export async function request<T = unknown>({
   try {
     envelope = text ? (JSON.parse(text) as Envelope) : {};
   } catch {
-    throw new APIError(-1, `服务端返回的不是 JSON（HTTP ${res.status}）`, res.status);
+    throw new APIError(
+      -1,
+      `服务端返回的不是 JSON（HTTP ${res.status}）`,
+      res.status,
+      undefined,
+      res.status >= 500,
+    );
   }
   if (res.status === 401) {
     throw new APIError(
@@ -119,6 +128,8 @@ export async function request<T = unknown>({
       envelope.code ?? -1,
       envelope.msg || `请求失败（HTTP ${res.status}）`,
       res.status,
+      undefined,
+      res.status >= 500,
     );
   }
   return envelope.data as T;

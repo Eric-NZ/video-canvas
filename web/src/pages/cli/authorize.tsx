@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheckBig, CircleSlash, Loader2, Terminal } from "lucide-react";
-import { useSearchParams } from "react-router";
-import { toast } from "sonner";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import {
   approveCLIDevice,
@@ -11,53 +10,87 @@ import {
 } from "@/api/auth/cli-device";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useUsername } from "@/pages/canvas/chrome/top-right-bar";
+import { useMeStore } from "@/store/me";
+import { classifyDescribeError, deviceView, type DeviceView } from "@/utils/cli/authorize";
+import { ApiError } from "@/utils/requests/request";
 
-/** 页面阶段：输入码 / 读取中 / 待确认 / 已同意 / 已拒绝 / 读不到 */
-type Phase = "input" | "loading" | "ready" | "approved" | "denied" | "error";
+import { AuthorizeConfirm } from "./authorize-confirm";
 
-/** 把后端的 RFC3339 时间展示成本地时间；不依赖「现在」，避免渲染期读时钟。 */
-function formatTime(iso: string): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return iso;
-  return at.toLocaleString("zh-CN", { hour12: false });
-}
+/** 页面阶段：输入码 / 读取中 / 读不到，以及申请本身的几种画面 */
+type Phase = "input" | "loading" | "error" | DeviceView;
+
+/** 终态画面的文案：图标之外只有一句标题和一句说明 */
+const RESULT_COPY: Partial<Record<Phase, { title: string; hint: string; ok?: boolean }>> = {
+  approved: { title: "已授权", hint: "可以关闭这个页面，回到命令行继续操作。", ok: true },
+  consumed: {
+    title: "已被命令行取走",
+    hint: "这次申请的令牌已经发给命令行。不是你本人操作的话，请尽快在网页上修改密码。",
+  },
+  denied: { title: "已拒绝", hint: "命令行不会拿到令牌，可以关闭这个页面。" },
+  expired: { title: "申请已失效", hint: "请在命令行重新执行登录。" },
+};
 
 /**
  * 命令行登录的授权页：CLI 申请一对码后把用户引到这里，用户确认后命令行才拿到令牌。
  *
  * 这一页不接收密码、也不签发令牌——令牌只在命令行轮询时下发，页面只做「同意 / 拒绝」。
- * 用户码可以从 URL 带进来，也可以手输：命令行打印的地址带 code，用户自己打开站点时则要手输。
+ * 路由要求已登录：授权的就是当前账号。用户码可以从 URL 带进来读申请信息，
+ * 但不论怎么进来，同意前都要手动输入终端里的码（见 AuthorizeConfirm）。
  */
 export default function CLIAuthorize() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const queryCode = params.get("code") ?? "";
-  const [code, setCode] = useState(queryCode);
+  const [code, setCode] = useState("");
+  const [typed, setTyped] = useState("");
   const [device, setDevice] = useState<CLIDeviceInfo | null>(null);
   const [phase, setPhase] = useState<Phase>(queryCode ? "loading" : "input");
+  const [errorText, setErrorText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const tokenUsername = useUsername();
+  const account = useMeStore((state) => state.me?.username) ?? tokenUsername ?? "";
 
-  const load = useCallback(async (raw: string) => {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      setPhase("input");
-      return;
-    }
-    setPhase("loading");
-    try {
-      const info = await getCLIDevice(trimmed);
-      setDevice(info);
-      // 已经处理过的码（刷新页面、重复打开）直接显示结果，不再让用户点一次
-      if (info.status === "approved" || info.status === "consumed") setPhase("approved");
-      else if (info.status === "denied") setPhase("denied");
-      else setPhase("ready");
-    } catch {
-      setDevice(null);
-      setPhase("error");
-    }
-  }, []);
+  /** 登录态失效（令牌过期，请求层已清掉）：回登录页，登录后回到这一页并带着 code */
+  const toLogin = useCallback(() => {
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
+  }, [location.pathname, location.search, location.hash, navigate]);
+
+  /**
+   * 读申请信息。fromLink 时用户还没输过码，确认卡片里的输入框留空；
+   * 手输进来的码就是用户亲手输的，直接带进确认框。
+   */
+  const load = useCallback(
+    async (raw: string, fromLink: boolean) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        setPhase("input");
+        return;
+      }
+      setPhase("loading");
+      try {
+        const info = await getCLIDevice(trimmed);
+        setDevice(info);
+        setTyped(fromLink ? "" : trimmed);
+        setPhase(deviceView(info.status));
+      } catch (error) {
+        const failure = classifyDescribeError(error);
+        if (failure.kind === "login") {
+          toLogin();
+          return;
+        }
+        setDevice(null);
+        setErrorText(failure.message);
+        setPhase("error");
+      }
+    },
+    [toLogin],
+  );
 
   useEffect(() => {
-    if (queryCode) void load(queryCode);
+    if (queryCode) void load(queryCode, true);
   }, [queryCode, load]);
 
   const decide = async (allow: boolean) => {
@@ -71,14 +104,15 @@ export default function CLIAuthorize() {
         await denyCLIDevice(device.user_code);
         setPhase("denied");
       }
-    } catch {
-      toast.error("操作失败，请在命令行重新执行登录");
+    } catch (error) {
+      // 失败原因已由请求层弹出；只有登录态失效需要页面自己带用户去登录
+      if (error instanceof ApiError && error.status === 401) toLogin();
     } finally {
       setSubmitting(false);
     }
   };
 
-  const expired = device?.status === "expired" || device?.status === "consumed";
+  const result = RESULT_COPY[phase];
 
   return (
     <main className="bg-background grid min-h-svh place-items-center p-6">
@@ -100,7 +134,7 @@ export default function CLIAuthorize() {
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              void load(code);
+              void load(code, false);
             }}
           >
             <label className="text-sm" htmlFor="cli-user-code">
@@ -110,16 +144,12 @@ export default function CLIAuthorize() {
               id="cli-user-code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
-              placeholder="ABCD-EFGH"
+              placeholder="XXXX-XXXX"
               autoComplete="off"
               autoFocus
               spellCheck={false}
             />
-            {phase === "error" ? (
-              <p className="text-destructive text-xs">
-                用户码不对或已过期，请在命令行重新执行登录。
-              </p>
-            ) : null}
+            {phase === "error" ? <p className="text-destructive text-xs">{errorText}</p> : null}
             <Button type="submit" disabled={phase === "loading" || !code.trim()}>
               {phase === "loading" ? <Loader2 className="size-4 animate-spin" /> : null}
               继续
@@ -127,65 +157,27 @@ export default function CLIAuthorize() {
           </form>
         ) : null}
 
-        {phase === "ready" && device ? (
-          <>
-            <dl className="bg-muted/50 grid gap-2 rounded-xl p-4 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">设备</dt>
-                <dd className="truncate font-medium">{device.client_name || "命令行工具"}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">用户码</dt>
-                <dd className="font-mono">{device.user_code}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">到期时间</dt>
-                <dd>{formatTime(device.expires_at)}</dd>
-              </div>
-            </dl>
-            {expired ? (
-              <p className="text-destructive text-xs">
-                这次申请已失效（过期或已被使用），请在命令行重新执行登录。
-              </p>
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                如果不是你本人发起，请点「拒绝」。授权后命令行会拿到和网页登录同等的权限。
-              </p>
-            )}
-            <div className="flex gap-3">
-              <Button
-                className="flex-1"
-                disabled={submitting || expired}
-                onClick={() => void decide(true)}
-              >
-                {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                同意授权
-              </Button>
-              <Button
-                className="flex-1"
-                variant="outline"
-                disabled={submitting}
-                onClick={() => void decide(false)}
-              >
-                拒绝
-              </Button>
-            </div>
-          </>
+        {phase === "confirm" && device ? (
+          <AuthorizeConfirm
+            device={device}
+            account={account}
+            typed={typed}
+            submitting={submitting}
+            onTypedChange={setTyped}
+            onApprove={() => void decide(true)}
+            onDeny={() => void decide(false)}
+          />
         ) : null}
 
-        {phase === "approved" || phase === "denied" ? (
+        {result ? (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
-            {phase === "approved" ? (
+            {result.ok ? (
               <CircleCheckBig className="text-status-success size-10" />
             ) : (
               <CircleSlash className="text-muted-foreground size-10" />
             )}
-            <p className="text-sm font-medium">{phase === "approved" ? "已授权" : "已拒绝"}</p>
-            <p className="text-muted-foreground text-xs">
-              {phase === "approved"
-                ? "可以关闭这个页面，回到命令行继续操作。"
-                : "命令行不会拿到令牌，可以关闭这个页面。"}
-            </p>
+            <p className="text-sm font-medium">{result.title}</p>
+            <p className="text-muted-foreground text-xs">{result.hint}</p>
           </div>
         ) : null}
       </section>

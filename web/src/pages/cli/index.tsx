@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { BookOpen, Terminal } from "lucide-react";
 import { Link } from "react-router";
 
@@ -20,6 +20,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cliApiBase, cliSiteRoot } from "@/utils/cli/api-base";
+import {
+  CLI_INSTALL_COMMAND,
+  CLI_NPM_PACKAGE,
+  buildCLIAgentPrompt,
+  cliInstallCommands,
+} from "@/utils/cli/install";
 
 /**
  * 命令行（CLI）说明页：/cli（用户菜单）与 /admin/cli（后台导航）共用。
@@ -33,19 +39,16 @@ export default function CLIPage() {
   // 不写死任何一个域名，也不假设页面地址就是接口地址。
   const apiBase = cliApiBase(import.meta.env.VITE_API_BASE_URL);
   const siteRoot = cliSiteRoot(import.meta.env.VITE_API_BASE_URL);
-  const release = useCLIRelease(apiBase);
 
-  // 三条安装路径都指向**当前站点**：CLI 没有发布到 npm，包只能由本站提供。
-  // 地址按运行时算，换域名、走内网、挂反代前缀都不用改这里。
-  const installUnix = `# macOS / Linux：装到 ~/.local，之后可以直接敲 vc
-curl -fsSL ${siteRoot}/api/v1/cli/install.sh | sh`;
+  // 一键脚本放在网页静态目录，用页面 origin 拼；SSR 测试里没有 window，按相对站点根处理
+  const site = typeof window === "undefined" ? "" : window.location.origin;
+  const oneKey = cliInstallCommands(site);
+  const agentPrompt = buildCLIAgentPrompt({ site, apiBase });
 
-  const installWindows = `# Windows PowerShell：装到 %LOCALAPPDATA%，并写入用户 PATH
-irm ${siteRoot}/api/v1/cli/install.ps1 | iex`;
-
-  const installManual = `# 不想执行脚本就手动下包（解压后 node <目录>/dist/cli.js 即可运行）
-curl -fsSL ${siteRoot}/api/v1/cli/download?os=unix -o video-canvas-cli.tgz   # macOS / Linux
-curl -fsSL ${siteRoot}/api/v1/cli/download?os=windows -o video-canvas-cli.zip # Windows`;
+  // 不跑脚本时：npm 直接装 GitHub Release 上的最新包（升级是同一条），再装技能
+  const manual = `${CLI_INSTALL_COMMAND}
+vc skill install`;
+  const uninstall = `npm uninstall -g ${CLI_NPM_PACKAGE}`;
 
   const login = `# 打印用户码并自动打开浏览器，在网页上点「允许」
 vc login --base ${apiBase}
@@ -68,26 +71,22 @@ vc generate image --model <模型key> --prompt "…" --canvas <画布编号> --n
 vc canvas node add <画布编号> --kind script --label "旁白" --text "第一句"
 vc canvas save <画布编号> --payload 画布.json --revision 3
 
-# 成片：按连线顺序拼片
-vc canvas compose <画布编号> --node <成片节点id> --wait
-
 # 复杂操作交给画布里的 Agent：它挑模型、接参考图，要花钱或不可逆时停下来等你确认
 vc agent run <画布编号> --message "把 S03 重做成 10 秒视频" --watch
 vc agent approve <审批编号> --items 0,1`;
 
   const tasks = `vc task get <任务ID>                  # 查一次生成任务
-vc task wait <任务ID> --timeout 600   # 阻塞到出结果；超时是退出码 3，任务仍在跑
-vc canvas compose-status <画布编号> --node <成片节点id>`;
+vc task wait <任务ID> --timeout 600   # 阻塞到出结果；超时是退出码 3，任务仍在跑`;
 
   const scripting = `vc canvas list --json    # 一行 JSON：{ok,data} / {ok:false,error}
 # 退出码：0 成功 · 1 业务或网络错误 · 2 用法错误 · 3 等待超时 · 4 确认被取消`;
 
-  // 技能跟着安装包走，路径带版本号，用通配符找
-  const skill = `# 技能就装在命令行目录下
-ls -d ~/.local/share/video-canvas-cli/*/skill
+  // 技能随 npm 包一起装下来；一键脚本最后一步就是 vc skill install，手动装 npm 包时自己执行一次
+  const skill = `# 装进 Claude Code；已装 Codex 的也一并装。升级 CLI 后再执行一次
+vc skill install
 
-# 拷进你用的助手的技能目录（Claude Code / Codex / WorkBuddy 等），放一处即可
-mkdir -p ~/.claude/skills && cp -R ~/.local/share/video-canvas-cli/*/skill ~/.claude/skills/video-canvas-cli`;
+# 其它助手：指定它的技能目录
+vc skill install --to <技能目录>`;
 
   return (
     <DataPage>
@@ -100,7 +99,7 @@ mkdir -p ~/.claude/skills && cp -R ~/.local/share/video-canvas-cli/*/skill ~/.cl
             </Badge>
           </PageHeaderTitle>
           <p className="text-muted-foreground mt-1 max-w-3xl text-sm">
-            在终端或脚本里读写你名下的画布：登录、生成、合成、导出。凭据是你自己的登录态，不涉及 MCP
+            在终端或脚本里读写你名下的画布：登录、生成、导出。凭据是你自己的登录态，不涉及 MCP
             令牌。
           </p>
           <p className="text-muted-foreground mt-1 max-w-3xl text-xs">
@@ -119,45 +118,57 @@ mkdir -p ~/.claude/skills && cp -R ~/.local/share/video-canvas-cli/*/skill ~/.cl
       </PageHeader>
 
       <Panel title="安装" className="mb-4">
-        <p className="text-muted-foreground text-xs">
-          命令行单独发版，版本号与站点版本无关
-          {release.version ? `：当前 ${release.version}` : ""}。 它<strong>没有发布到 npm</strong>
-          ，安装包由本站提供；按系统选一条执行即可（需要 Node 22.18 及以上，脚本会先检查）。
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs">
+            一键脚本从 GitHub Release 下载安装包，校验后装好 CLI 和配套技能，需要 Node 22.18
+            及以上。
+          </p>
+          <CopyButton text={agentPrompt} label="复制命令给 Agent" variant="outline" />
+        </div>
         <CopyBlock>
           <CopyBlockHeader>
             <CopyBlockTitle>macOS / Linux</CopyBlockTitle>
-            <CopyButton text={installUnix} />
+            <CopyButton text={oneKey.unix} />
           </CopyBlockHeader>
-          <CopyBlockCode>{installUnix}</CopyBlockCode>
+          <CopyBlockCode>{oneKey.unix}</CopyBlockCode>
         </CopyBlock>
         <CopyBlock>
           <CopyBlockHeader>
-            <CopyBlockTitle>Windows（PowerShell）</CopyBlockTitle>
-            <CopyButton text={installWindows} />
+            <CopyBlockTitle>Windows PowerShell</CopyBlockTitle>
+            <CopyButton text={oneKey.powershell} />
           </CopyBlockHeader>
-          <CopyBlockCode>{installWindows}</CopyBlockCode>
+          <CopyBlockCode>{oneKey.powershell}</CopyBlockCode>
         </CopyBlock>
         <CopyBlock>
           <CopyBlockHeader>
-            <CopyBlockTitle>手动下载</CopyBlockTitle>
-            <CopyButton text={installManual} />
+            <CopyBlockTitle>Windows CMD</CopyBlockTitle>
+            <CopyButton text={oneKey.cmd} />
           </CopyBlockHeader>
-          <CopyBlockCode>{installManual}</CopyBlockCode>
+          <CopyBlockCode>{oneKey.cmd}</CopyBlockCode>
+        </CopyBlock>
+        <CopyBlock>
+          <CopyBlockHeader>
+            <CopyBlockTitle>手动安装 / 升级</CopyBlockTitle>
+            <CopyButton text={manual} />
+          </CopyBlockHeader>
+          <CopyBlockCode>{manual}</CopyBlockCode>
+        </CopyBlock>
+        <CopyBlock>
+          <CopyBlockHeader>
+            <CopyBlockTitle>卸载</CopyBlockTitle>
+            <CopyButton text={uninstall} />
+          </CopyBlockHeader>
+          <CopyBlockCode>{uninstall}</CopyBlockCode>
         </CopyBlock>
         <p className="text-muted-foreground text-xs">
           装好后有两个等价的命令名：<code>vc</code> 和 <code>video-canvas-cli</code>。
-          升级就是重跑同一条安装命令（脚本向服务端要最新版本）；卸载删掉{" "}
-          <code>~/.local/share/video-canvas-cli</code>（Windows 是{" "}
-          <code>%LOCALAPPDATA%\video-canvas-cli</code>）与 PATH 里的两个链接即可。
         </p>
       </Panel>
 
       <Panel title="配套技能" className="mb-4">
         <p className="text-muted-foreground text-xs">
-          安装包附带一份技能文档，供终端里的 AI 助手（Claude Code、Codex、WorkBuddy
+          npm 包附带一份技能文档，供终端里的 AI 助手（Claude Code、Codex、WorkBuddy
           等）查阅：适用场景、模型与参数的查询方式、节点 id 的选取方法、需要人工确认的操作。
-          文档随安装包放在安装目录下。
         </p>
         <CopyBlock>
           <CopyBlockHeader>
@@ -178,8 +189,9 @@ mkdir -p ~/.claude/skills && cp -R ~/.local/share/video-canvas-cli/*/skill ~/.cl
         </CopyBlock>
         <p className="text-muted-foreground text-xs">
           上面的地址是按当前页面的接口配置实时算出来的，换域名或走内网地址访问，这里会自动跟着变，
-          不用手改。 用户码 10 分钟内有效；网页上点「拒绝」，命令会立刻退出，什么都不做则等超时。
-          不想自动开浏览器就加 <code>--no-open</code>，手动打开打印出来的地址。
+          不用手改。 用户码 10
+          分钟内有效；网页上要输入终端里显示的用户码才能同意，点「拒绝」命令会立刻退出，
+          什么都不做则等超时。不想自动开浏览器就加 <code>--no-open</code>，手动打开打印出来的地址。
         </p>
       </Panel>
 
@@ -224,8 +236,10 @@ mkdir -p ~/.claude/skills && cp -R ~/.local/share/video-canvas-cli/*/skill ~/.cl
           不要提交进仓库、不要共享给他人。
         </p>
         <p className="text-muted-foreground text-xs">
-          <code>vc logout</code> 只删除本机凭据，服务端那枚令牌要等自然过期或用网页改密码后失效。
-          换站点就重新 <code>vc login --base 新地址</code>，会覆盖旧凭据。
+          <code>vc logout</code>{" "}
+          只删除本机凭据，服务端那枚令牌要等登录态到期或用网页改密码后才失效。
+          令牌绑定登录时的站点：<code>--base</code> 指向别的站点会被拒绝，换站点就重新{" "}
+          <code>vc login --base 新地址</code>，会覆盖旧凭据；非 https 且不是本机的地址会给出警告。
         </p>
       </Panel>
     </DataPage>
@@ -251,27 +265,4 @@ function Panel({
       {children}
     </section>
   );
-}
-
-/**
- * 读服务端的 CLI 发行信息，只为在页面上显示「当前版本」。
- * 它和安装脚本读的是同一个接口，所以界面上的版本号不会与包体不一致。
- * 拿不到（老部署没有这个接口）就什么都不显示——安装命令本身仍然可用。
- */
-function useCLIRelease(apiBase: string): { version: string | null } {
-  const [version, setVersion] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch(`${apiBase}/cli/release`, { headers: { accept: "application/json" } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { data?: { version?: string } } | null) => {
-        const next = body?.data?.version;
-        if (alive && typeof next === "string" && next) setVersion(next);
-      })
-      .catch(() => setVersion(null));
-    return () => {
-      alive = false;
-    };
-  }, [apiBase]);
-  return { version };
 }

@@ -1,17 +1,18 @@
 import type { ReactNode } from "react";
-import { User } from "lucide-react";
+import { Terminal, User } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { NavUser } from "@/components/admin-ui/nav-user";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
 import { useMeStore } from "@/store/me";
+import { copyCLIAgentPrompt } from "@/utils/cli/install";
 import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
 
 /**
  * 侧栏底部的账号菜单，首页侧栏和后台侧栏共用，保证两边的头像、名称、菜单项一致：
- * 头像和名称读当前用户资料（资料没拉到时用令牌里的用户名兜底），菜单里固定有「个人中心」。
- * @param children 「个人中心」下面的额外菜单项，比如首页的「管理后台」
+ * 头像和名称读当前用户资料（资料没拉到时用令牌里的用户名兜底），菜单里固定有「个人中心」和「复制命令给 Agent」。
+ * @param children 「个人中心」下面的额外菜单项，比如首页的「管理后台」；「复制命令给 Agent」排在它们后面
  */
 export function SidebarAccount({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
@@ -34,6 +35,10 @@ export function SidebarAccount({ children }: { children?: ReactNode }) {
         个人中心
       </DropdownMenuItem>
       {children}
+      <DropdownMenuItem onClick={() => void copyCLIAgentPrompt()}>
+        <Terminal />
+        复制命令给 Agent
+      </DropdownMenuItem>
     </NavUser>
   );
 }

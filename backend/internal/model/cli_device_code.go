@@ -25,6 +25,7 @@ type CLIDeviceCode struct {
 	DeviceCodeHash  string     `gorm:"size:64;not null;uniqueIndex:uk_cli_device_codes_hash" json:"-"`
 	UserCode        string     `gorm:"size:12;not null;uniqueIndex:uk_cli_device_codes_user_code" json:"user_code"`
 	ClientName      string     `gorm:"size:64;not null;default:''" json:"client_name"`
+	CreatedIP       string     `gorm:"size:45;not null;default:''" json:"-"`
 	Status          string     `gorm:"size:16;not null;default:pending" json:"status"`
 	UserID          *uint64    `gorm:"index:idx_cli_device_codes_user" json:"-"`
 	IntervalSeconds int        `gorm:"not null;default:5" json:"-"`
@@ -79,9 +80,11 @@ type CLIDeviceApproveReq struct {
 }
 
 // CLIDeviceDescribeView 是授权页展示的设备信息，不含发起人身份（尚未绑定）。
+// client_name 由调用方自填、不可信；client_ip 是服务端看到的发起方来源 IP，供授权人核对。
 type CLIDeviceDescribeView struct {
 	UserCode   string    `json:"user_code"`
 	ClientName string    `json:"client_name"`
+	ClientIP   string    `json:"client_ip"`
 	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
