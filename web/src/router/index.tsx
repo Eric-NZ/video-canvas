@@ -138,6 +138,7 @@ export const router = createBrowserRouter([
             path: "drama/:id",
             element: <DramaWorkspace />,
           },
+          { path: "drama/:id/reader", element: <DramaWorkspace viewer /> },
           /** 营销创作台：全屏，与短剧工作台同级，不带首页侧栏 */
           {
             path: "marketing/:id",

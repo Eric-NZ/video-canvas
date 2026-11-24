@@ -1,3 +1,4 @@
+import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
 import {
   createContext,
   useCallback,
@@ -209,11 +210,12 @@ export function useStudio(): Studio {
  * 选中的片段及其参考素材组装、积分预估，以及增删改排序、采用结果、立即生成、批量生成这些动作。
  */
 export function useStudioState(drama: Drama, no: number, refresh: () => Promise<void>): Studio {
+  const shared = useSharedWorkspace();
   const dramaId = drama.id;
   const episode = drama.episodes.find((ep) => ep.no === no);
   const key = segmentKey(dramaId, no);
   const list = useDramaSegmentsStore((state) => state.byEpisode[key]);
-  const segments = list ?? NO_SEGMENTS;
+  const segments = (shared ? shared.segments[no] : list) ?? NO_SEGMENTS;
   const [segmentsStatus, setSegmentsStatus] = useState<Studio["segmentsStatus"]>("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -226,6 +228,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
 
   // 载入 + 登记「正在看这一集」（WebSocket 重连 / 回到前台时据此对账）
   useEffect(() => {
+    if (shared) return;
     let active = true;
     void reloadSegments(dramaId, no).then(
       (ok) => active && setSegmentsStatus(ok ? "ready" : "error"),
@@ -235,15 +238,15 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
       active = false;
       unwatch();
     };
-  }, [dramaId, no]);
+  }, [dramaId, no, shared]);
 
   // 有片段在生成：定时对账，推送丢了也能看到结果
   const anyRunning = segments.some(isRunning);
   useEffect(() => {
-    if (!anyRunning) return;
+    if (shared || !anyRunning) return;
     const timer = setInterval(() => void reloadSegments(dramaId, no), POLL_MS);
     return () => clearInterval(timer);
-  }, [anyRunning, dramaId, no]);
+  }, [anyRunning, dramaId, no, shared]);
 
   const settled = useDramaJobsStore((state) => state.settled[dramaId] ?? 0);
   const {
@@ -869,7 +872,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
     episode: episode as EpisodeSummary,
     no,
     segments,
-    segmentsStatus,
+    segmentsStatus: shared ? "ready" : segmentsStatus,
     selected,
     select: setSelectedId,
     assets,

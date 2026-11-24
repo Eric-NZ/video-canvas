@@ -65,6 +65,8 @@ func All() []any {
 		&VirtualHuman{},
 		&VirtualHumanImage{},
 		&DramaProject{},
+		&DramaViewer{},
+		&DramaDelivery{},
 		&DramaSourceDraft{},
 		&DramaUnit{},
 		&DramaPrompt{},

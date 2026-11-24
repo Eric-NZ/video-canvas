@@ -30,6 +30,9 @@ export default function DramaListPage() {
       <section className="mt-12 md:mt-14">
         <div className="mb-5 flex items-center gap-2">
           <h2 className="text-[17px] font-semibold">我的短剧</h2>
+          <Button variant="outline" size="sm" render={<Link to="/canvases?scope=shared-drama" />}>
+            共享给我
+          </Button>
           {total > 0 && <span className="text-muted-foreground text-sm tabular-nums">{total}</span>}
           {total > PREVIEW_COUNT && (
             <Link
@@ -64,7 +67,12 @@ export default function DramaListPage() {
             还没有短剧，在上面上传一份剧本开始吧
           </div>
         ) : (
-          <DramaGrid items={items} deletingId={deletingId} onDelete={remove} />
+          <DramaGrid
+            items={items}
+            deletingId={deletingId}
+            onDelete={remove}
+            onTransferred={reload}
+          />
         )}
       </section>
     </div>

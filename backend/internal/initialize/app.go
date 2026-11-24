@@ -382,6 +382,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Me:              handler.NewMeHandler(meSvc),
 		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Drama:           handler.NewDramaHandler(dramaSvc),
+		DramaShare:      handler.NewDramaShareHandler(service.NewDramaShareService(repository.NewDramaShareRepository(db), assetSvc)),
 		AdminStep:       handler.NewAdminStepHandler(stepSvc),
 		AdminFormatter:  handler.NewAdminFormatterHandler(),
 		Marketing:       handler.NewMarketingHandler(marketingSvc),
