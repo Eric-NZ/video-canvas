@@ -50,7 +50,6 @@ export function DramaShareDialog({
   const [members, setMembers] = useState<Viewer[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
-  const [key, setKey] = useState(() => crypto.randomUUID());
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -73,13 +72,14 @@ export function DramaShareDialog({
     }
     setBusy(true);
     try {
-      await dramaSharing.submit(id, mode, email.trim(), key);
+      await dramaSharing.submit(id, mode, email.trim());
       toast.success(
         mode === "view" ? "已授予查看权限" : mode === "copy" ? "已发送副本" : "已转移所有权",
       );
       if (mode === "transfer") transferred();
       close();
-    } catch {
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "共享失败，请重试");
       setConfirm(false);
     } finally {
       setBusy(false);
@@ -107,7 +107,7 @@ export function DramaShareDialog({
           <DialogTitle>{confirm ? "确认转移所有权" : `共享《${title}》`}</DialogTitle>
           <DialogDescription>
             {confirm
-              ? `将《${title}》转移给 ${email.trim()}。你的账号将移除该剧，现有 ${members?.length ?? 0} 位查看者的权限将被收回。`
+              ? `将《${title}》转移给 ${email.trim()}。你的账号将移除该剧，${members ? `现有 ${members.length} 位查看者` : "已有查看者"}的权限将被收回。`
               : "用接收方的注册邮箱共享这部短剧。"}
           </DialogDescription>
         </DialogHeader>
@@ -126,10 +126,7 @@ export function DramaShareDialog({
                 required
                 maxLength={128}
                 value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setKey(crypto.randomUUID());
-                }}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </label>
             <fieldset className="grid gap-2">
@@ -144,10 +141,7 @@ export function DramaShareDialog({
                     name="mode"
                     className="mt-1"
                     checked={mode === option.mode}
-                    onChange={() => {
-                      setMode(option.mode);
-                      setKey(crypto.randomUUID());
-                    }}
+                    onChange={() => setMode(option.mode)}
                   />
                   <span className="text-sm font-medium">
                     {option.label}
@@ -168,11 +162,7 @@ export function DramaShareDialog({
             >
               {confirm ? "返回核对" : "取消"}
             </Button>
-            <Button
-              type="submit"
-              variant={confirm ? "destructive" : "default"}
-              disabled={busy || (mode === "transfer" && !members)}
-            >
+            <Button type="submit" variant={confirm ? "destructive" : "default"} disabled={busy}>
               {busy
                 ? "处理中…"
                 : confirm

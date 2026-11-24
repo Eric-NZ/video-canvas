@@ -90,17 +90,21 @@ function Workspace({ id, viewer }: { id: string; viewer: boolean }) {
   }, [go, setEp, currentEp, episodeNos, paletteOpen, breakdownOpen, viewer]);
 
   if (error && !drama) {
+    const missingMessage = viewer ? "共享已失效或短剧已被删除" : "这部短剧不存在或已被删除";
+    const backPath = viewer ? "/canvases?scope=shared-drama" : "/drama";
     return (
       <div className="drama-theme bg-background text-foreground grid h-svh place-items-center">
         <div className="flex flex-col items-center gap-3 text-sm">
-          <p>{error === "notfound" ? "这部短剧不存在或已被删除" : "短剧加载失败"}</p>
+          <p>{error === "notfound" ? missingMessage : "短剧加载失败"}</p>
           <div className="flex gap-2">
             {error === "failed" && (
               <Button variant="outline" onClick={() => void refresh()}>
                 重试
               </Button>
             )}
-            <Button render={<Link to="/drama" />}>返回短剧列表</Button>
+            <Button render={<Link to={backPath} />}>
+              {viewer ? "返回共享给我" : "返回短剧列表"}
+            </Button>
           </div>
         </div>
       </div>

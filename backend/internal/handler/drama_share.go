@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,7 +37,18 @@ func (h *DramaShareHandler) Share(c *gin.Context) {
 	if !BindJSON(c, &req) {
 		return
 	}
-	if err := h.service.Share(c.Request.Context(), currentUserID(c), id, req); err != nil {
+	ctx := c.Request.Context()
+	if req.Mode != "view" {
+		deadline := relaxTransferDeadlines(c)
+		// 给失败后的素材回收和 HTTP 响应留出时间。
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline.Add(-30*time.Second))
+		defer cancel()
+	}
+	if err := h.service.Share(ctx, currentUserID(c), id, req); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			err = errcode.ErrInternal.WithMsg("短剧交付超时，请重试")
+		}
 		response.Fail(c, err)
 		return
 	}

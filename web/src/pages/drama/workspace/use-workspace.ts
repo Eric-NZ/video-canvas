@@ -23,6 +23,7 @@ export function summarizeSave(states: Record<string, AutosaveStatus>): SaveSumma
 }
 
 const NO_JOBS: DramaJob[] = [];
+const SHARED_REFRESH_MS = 60_000;
 
 /** 工作台对子组件开放的状态与动作 */
 export type DramaWorkspace = {
@@ -71,12 +72,13 @@ export function useDramaWorkspace(id: string, viewer = false) {
       setError(null);
     } catch (e) {
       if (seq !== fetchSeq.current) return;
-      // 已经有数据时刷新失败不打断；第一次就失败才显示错误页
-      if (viewer) {
+      const notFound = isDramaError(e, DRAMA_ERR.notFound);
+      // 暂时断线时保留已打开的工作台，授权失效时立即退出查看。
+      if (viewer && notFound) {
         setShared(null);
         setDrama(null);
       }
-      setError((prev) => (isDramaError(e, DRAMA_ERR.notFound) ? "notfound" : (prev ?? "failed")));
+      setError((prev) => (notFound ? "notfound" : (prev ?? "failed")));
     }
   }, [id, viewer]);
 
@@ -89,7 +91,7 @@ export function useDramaWorkspace(id: string, viewer = false) {
       const reload = () => void refresh();
       reload();
       window.addEventListener("focus", reload);
-      const interval = window.setInterval(reload, 30 * 60_000);
+      const interval = window.setInterval(reload, SHARED_REFRESH_MS);
       return () => {
         window.removeEventListener("focus", reload);
         clearInterval(interval);
