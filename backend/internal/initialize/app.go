@@ -397,6 +397,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Conversation: handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		AgentSkill:   agenthandler.NewSkillHandler(skillSvc),
 		CLIDevice:    handler.NewCLIDeviceHandler(cliDeviceSvc),
+		CLIInstall:   handler.NewCLIInstallHandler(),
 		AgentObserve: agenthandler.NewAgentObserveHandler(observeSvc),
 		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
 			who, err := observeSvc.AuthenticateToken(ctx, plain)

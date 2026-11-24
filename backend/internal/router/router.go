@@ -28,6 +28,8 @@ type Handlers struct {
 
 	// 命令行设备授权：CLI 申请短码 → 用户在网页确认 → 轮询换 JWT
 	CLIDevice *handler.CLIDeviceHandler
+	// 命令行一键安装脚本：内嵌的静态文本，免登录（装 CLI 时还没有凭据）
+	CLIInstall *handler.CLIInstallHandler
 
 	// Agent 运行观测：后台只读查看与导出、分析令牌
 	AgentObserve  *agenthandler.AgentObserveHandler // 后台运行记录（只读）和分析令牌管理
@@ -92,6 +94,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// 命令行登录：设备授权（RFC 8628 简化版）。申请与轮询发生在拿到令牌之前，不能要求登录态。
 		v1.POST("/auth/cli/device", h.CLIDevice.Start)
 		v1.POST("/auth/cli/token", h.CLIDevice.Poll)
+		// 命令行一键安装：脚本是内嵌的固定内容，不读请求头；安装包从 GitHub Release 下载并校验 sha256
+		v1.GET("/cli/install.sh", h.CLIInstall.Unix)
+		v1.GET("/cli/install.ps1", h.CLIInstall.Windows)
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
 
 		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接

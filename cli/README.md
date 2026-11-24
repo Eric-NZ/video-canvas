@@ -14,11 +14,11 @@
 安装包随每次站点发版挂在 GitHub Release 上（不发布到 npm 仓库），需要 Node 22.18+（随包技能里的脚本直接跑 `.ts`）。站点提供一键脚本（下载、校验 sha256、装 CLI、装技能）：
 
 ```bash
-curl -fsSL <网页站点>/cli/install.sh | sh          # macOS / Linux
-irm <网页站点>/cli/install.ps1 | iex               # Windows PowerShell
+curl -fsSL <站点>/api/v1/cli/install.sh | sh          # macOS / Linux
+irm <站点>/api/v1/cli/install.ps1 | iex               # Windows PowerShell
 ```
 
-脚本在 `web/public/cli/`。也可以手动装（不校验 sha256）：
+脚本内嵌在后端（`backend/internal/cliinstall/`），由 `GET /api/v1/cli/install.sh|.ps1` 下发。也可以手动装（不校验 sha256）：
 
 ```bash
 npm i -g https://github.com/zaylora/video-canvas/releases/latest/download/video-canvas-cli.tgz

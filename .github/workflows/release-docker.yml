@@ -264,7 +264,7 @@ jobs:
 
   # 命令行（cli/）不发布到 npm 仓库，安装包挂在本次 GitHub Release 上：
   # 文件名固定（不带版本号），`releases/latest/download/<文件名>` 永远指向最新一版，
-  # 一键安装脚本（web/public/cli/）和 CLI 的升级检查都按这个地址取。
+  # 一键安装脚本（backend/internal/cliinstall/，由后端下发）和 CLI 的升级检查都按这个地址取。
   pack-cli:
     name: Pack CLI
     needs: quality

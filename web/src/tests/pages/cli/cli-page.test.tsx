@@ -12,8 +12,8 @@ const html = renderToStaticMarkup(
 
 describe("/cli 页", () => {
   test("安装区给出三个平台的一键脚本命令和「复制命令给 Agent」", () => {
-    expect(html).toContain("/cli/install.sh | sh");
-    expect(html).toContain("/cli/install.ps1 | iex");
+    expect(html).toContain("/api/v1/cli/install.sh | sh");
+    expect(html).toContain("/api/v1/cli/install.ps1 | iex");
     expect(html).toContain("-ExecutionPolicy Bypass");
     expect(html).toContain("复制命令给 Agent");
   });
@@ -33,7 +33,7 @@ describe("/cli 页", () => {
   });
 
   test("不再引用后端已删除的安装包接口", () => {
-    for (const gone of ["api/v1/cli/install", "cli/download", "cli/release"]) {
+    for (const gone of ["cli/download", "cli/release"]) {
       expect(html).not.toContain(gone);
     }
   });

@@ -5,9 +5,9 @@ import { join } from "node:path";
 const docs = readFileSync(join(import.meta.dir, "../../content/cli-docs.md"), "utf8");
 
 describe("CLI 文档与现状一致", () => {
-  test("安装讲网页静态目录下的一键脚本与 npm 手动安装，技能用 vc skill install", () => {
-    expect(docs).toContain("/cli/install.sh | sh");
-    expect(docs).toContain("/cli/install.ps1 | iex");
+  test("安装讲后端下发的一键脚本与手动安装，技能用 vc skill install", () => {
+    expect(docs).toContain("/api/v1/cli/install.sh | sh");
+    expect(docs).toContain("/api/v1/cli/install.ps1 | iex");
     expect(docs).toContain(
       "npm i -g https://github.com/zaylora/video-canvas/releases/latest/download/video-canvas-cli.tgz",
     );
@@ -17,7 +17,7 @@ describe("CLI 文档与现状一致", () => {
 
   test("不再指向后端已删除的安装包接口与旧安装变量", () => {
     for (const gone of [
-      "/api/v1/cli/",
+      "/api/v1/cli/download",
       "/cli/download",
       "/cli/release",
       "VC_PREFIX",

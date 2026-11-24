@@ -40,10 +40,9 @@ export default function CLIPage() {
   const apiBase = cliApiBase(import.meta.env.VITE_API_BASE_URL);
   const siteRoot = cliSiteRoot(import.meta.env.VITE_API_BASE_URL);
 
-  // 一键脚本放在网页静态目录，用页面 origin 拼；SSR 测试里没有 window，按相对站点根处理
-  const site = typeof window === "undefined" ? "" : window.location.origin;
-  const oneKey = cliInstallCommands(site);
-  const agentPrompt = buildCLIAgentPrompt({ site, apiBase });
+  // 一键脚本由后端下发，和登录一样按接口地址拼
+  const oneKey = cliInstallCommands(apiBase);
+  const agentPrompt = buildCLIAgentPrompt(apiBase);
 
   // 不跑脚本时：npm 直接装 GitHub Release 上的最新包（升级是同一条），再装技能
   const manual = `${CLI_INSTALL_COMMAND}

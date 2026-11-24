@@ -103,16 +103,17 @@ CLI 的版本号与站点版本**无关**，安装包随每次站点发版挂在
 
 ```bash
 # macOS / Linux
-curl -fsSL <网页站点>/cli/install.sh | sh
+curl -fsSL <站点>/api/v1/cli/install.sh | sh
 
 # Windows PowerShell
-irm <网页站点>/cli/install.ps1 | iex
+irm <站点>/api/v1/cli/install.ps1 | iex
 
 # Windows CMD
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <网页站点>/cli/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <站点>/api/v1/cli/install.ps1 | iex"
 ```
 
-脚本是网页静态目录下的固定文件，不含任何站点地址。它从 GitHub 最新 Release 下载 `video-canvas-cli.tgz`
+地址和 `vc login --base` 用的是同一个接口根（`/cli` 页和「复制命令给 Agent」给出的是本站的完整地址）。
+脚本是编译进后端的固定内容，不随请求变化，也不含任何站点地址。它从 GitHub 最新 Release 下载 `video-canvas-cli.tgz`
 和同名的 `.sha256`，**校验通过才**交给 `npm i -g` 本地安装，最后执行 `vc skill install`。
 全局目录没有写权限时（macOS / Linux），脚本改装到 `~/.local` 并提示把 `~/.local/bin` 加进 PATH，不会调用 sudo。
 

@@ -1,6 +1,6 @@
 # 连镜（video-canvas）命令行一键安装（Windows）：装 CLI 并把配套技能装进终端助手。
-# PowerShell：irm <站点>/cli/install.ps1 | iex
-# CMD：powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <站点>/cli/install.ps1 | iex"
+# PowerShell：irm <站点>/api/v1/cli/install.ps1 | iex
+# CMD：powershell -NoProfile -ExecutionPolicy Bypass -Command "irm <站点>/api/v1/cli/install.ps1 | iex"
 #
 # 安装包来自 GitHub Release（每次发版附带 video-canvas-cli.tgz 与它的 .sha256），
 # 先校验 sha256 再交给 npm 本地安装。脚本是静态文件，不含任何站点地址。

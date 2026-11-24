@@ -21,12 +21,13 @@ export interface CLIInstallCommands {
 }
 
 /**
- * 一键安装命令：脚本放在网页的静态目录（public/cli/），由网页所在的站点下发，
- * 所以用页面的 origin 拼，不用接口地址。脚本会装 CLI 并把技能装进终端助手。
- * @param site 网页站点根，例如 https://example.com
+ * 一键安装命令：脚本由后端内嵌下发（GET /api/v1/cli/install.sh|.ps1），所以按接口地址拼，
+ * 与 `vc login --base` 用的是同一个地址，API 挂在别的域名或前缀下也对得上。
+ * 脚本会从 GitHub Release 下载安装包、校验 sha256，再装好 CLI 和技能。
+ * @param apiBase 接口根，例如 https://example.com/api/v1
  */
-export function cliInstallCommands(site: string): CLIInstallCommands {
-  const root = site.replace(/\/+$/, "");
+export function cliInstallCommands(apiBase: string): CLIInstallCommands {
+  const root = apiBase.replace(/\/+$/, "");
   const ps1 = `irm ${root}/cli/install.ps1 | iex`;
   return {
     unix: `curl -fsSL ${root}/cli/install.sh | sh`,
@@ -36,18 +37,12 @@ export function cliInstallCommands(site: string): CLIInstallCommands {
   };
 }
 
-/** 拼提示要的两个地址：网页站点根（下脚本）与接口根（登录用） */
-export interface CLISiteInfo {
-  site: string;
-  apiBase: string;
-}
-
 /**
  * 生成「交给 Agent」的整段提示：用户把它粘进 Claude Code、Codex 这类终端助手，
  * 由助手按系统挑一条命令装好 CLI 与技能，再带着用户走完登录授权。
  */
-export function buildCLIAgentPrompt({ site, apiBase }: CLISiteInfo): string {
-  const cmds = cliInstallCommands(site);
+export function buildCLIAgentPrompt(apiBase: string): string {
+  const cmds = cliInstallCommands(apiBase);
   return `请帮我安装连镜（video-canvas）CLI 与配套 Skill，根据当前系统执行对应命令（需要 Node.js 22.18 及以上）：
 
 macOS / Linux: ${cmds.unix}
@@ -59,12 +54,9 @@ Windows CMD: ${cmds.cmd}
 安装后请阅读 Skill，引导我完成可用性验证、登录和授权。`;
 }
 
-/** 当前页面对应的站点与接口地址（接口地址与应用实际请求一致，见 api-base.ts） */
-export function currentCLISite(): CLISiteInfo {
-  return {
-    site: typeof window === "undefined" ? "" : window.location.origin,
-    apiBase: cliApiBase(import.meta.env.VITE_API_BASE_URL),
-  };
+/** 当前页面对应的接口地址，与应用实际请求一致（见 api-base.ts） */
+export function currentCLIApiBase(): string {
+  return cliApiBase(import.meta.env.VITE_API_BASE_URL);
 }
 
 /** 复制与提示的依赖，默认用浏览器剪贴板和全局 toast；测试里传假的 */
@@ -86,10 +78,10 @@ const defaultDeps: CopyCLIDeps = {
  * @returns 是否复制成功
  */
 export async function copyCLIAgentPrompt(
-  info: CLISiteInfo = currentCLISite(),
+  apiBase: string = currentCLIApiBase(),
   deps: CopyCLIDeps = defaultDeps,
 ): Promise<boolean> {
-  const ok = await deps.copy(buildCLIAgentPrompt(info));
+  const ok = await deps.copy(buildCLIAgentPrompt(apiBase));
   if (ok) deps.success("已复制，粘贴给你的 Agent 即可");
   else deps.failure("复制失败，请到「命令行（CLI）」页手动复制");
   return ok;
