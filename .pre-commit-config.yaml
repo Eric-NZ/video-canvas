@@ -71,6 +71,21 @@ repos:
         files: ^agent/(src|test)/.*\.(ts|js|mjs|cjs)$
         pass_filenames: false
 
+      # cli/ 同 agent：oxfmt 只查暂存文件，修复：cd cli && npm run format
+      - id: cli-format
+        name: oxfmt (cli)
+        entry: bash -c 'cd cli || exit 1; files=(); for f in "$@"; do files+=("${f#cli/}"); done; npx --no-install oxfmt --check "${files[@]}" || { echo "修复：cd cli && npm run format"; exit 1; }' --
+        language: system
+        files: ^cli/.*\.(ts|js|mjs|cjs|json|md)$
+        exclude: ^cli/(dist/|package-lock\.json$)
+
+      - id: cli-lint
+        name: oxlint (cli)
+        entry: bash -c 'cd cli && npm run lint'
+        language: system
+        files: ^cli/(src|test)/.*\.(ts|js|mjs|cjs)$
+        pass_filenames: false
+
       - id: web-typecheck
         name: tsc typecheck (web)
         entry: bash -c 'unset BUN_OPTIONS; cd web && bun run typecheck'

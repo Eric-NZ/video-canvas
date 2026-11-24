@@ -5,8 +5,8 @@ description: 提交或推送 video-canvas 代码前，在本地跑一遍和 GitH
 
 # 提交前对齐 CI
 
-CI（`.github/workflows/ci.yml`）有三个 job：backend（golangci-lint 增量 + 迁移只增 + build + `go test -race`）、
-agent（oxfmt --check + oxlint + typecheck + test + build）、web（oxfmt --check + tsc + oxlint + bun test + build）。
+CI（`.github/workflows/ci.yml`）有四个 job：backend（golangci-lint 增量 + 迁移只增 + build + `go test -race`）、
+agent 与 cli（都是 oxfmt --check + oxlint + typecheck + test + build）、web（oxfmt --check + tsc + oxlint + bun test + build）。
 本 skill 的目标：**推上去之前本地就是绿的**，不靠 CI 发现格式问题再返工。
 
 ## 已有的自动约束（不需要你手动做，但要知道）

@@ -17,6 +17,7 @@ type Handlers struct {
 	Me             *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
 	CanvasProject  *handler.CanvasProjectHandler
 	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
+	CanvasOps      *handler.CanvasOpsHandler      // 节点级编辑：只提交差异，服务端用 canvasgraph 应用
 	Storyboard     *handler.StoryboardHandler     // 画布分镜表：从剧本拆分镜
 	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
 	// AgentProxy：画布 Agent 的会话、运行、审批、评价由独立的 Agent 服务负责，这些接口只校验登录态后反向代理过去
@@ -24,6 +25,11 @@ type Handlers struct {
 	AgentProxy      *agenthandler.AgentProxyHandler
 	PricingSettings *handler.PricingSettingsHandler
 	AgentSkill      *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+
+	// 命令行设备授权：CLI 申请短码 → 用户在网页确认 → 轮询换 JWT
+	CLIDevice *handler.CLIDeviceHandler
+	// 命令行一键安装脚本：内嵌的静态文本，免登录（装 CLI 时还没有凭据）
+	CLIInstall *handler.CLIInstallHandler
 
 	// Agent 运行观测：后台只读查看与导出、分析令牌
 	AgentObserve  *agenthandler.AgentObserveHandler // 后台运行记录（只读）和分析令牌管理
@@ -85,6 +91,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.POST("/auth/register/code", h.User.SendRegisterCode)
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
+		// 命令行登录：设备授权（RFC 8628 简化版）。申请与轮询发生在拿到令牌之前，不能要求登录态。
+		v1.POST("/auth/cli/device", h.CLIDevice.Start)
+		v1.POST("/auth/cli/token", h.CLIDevice.Poll)
+		// 命令行一键安装：脚本是内嵌的固定内容，不读请求头；安装包从 GitHub Release 下载并校验 sha256
+		v1.GET("/cli/install.sh", h.CLIInstall.Unix)
+		v1.GET("/cli/install.ps1", h.CLIInstall.Windows)
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
 
 		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接
@@ -101,6 +113,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		// 首页公告：生效中的公告，最多 5 条，全站共享；只在登录后的首页外壳展示，所以要登录
 		auth.GET("/announcements", h.Announcement.Public)
+
+		// CLI 设备授权的确认页：要认当前登录用户，未登录会被 middleware 挡回 401。
+		auth.GET("/auth/cli/device", h.CLIDevice.Describe) // ?code=ABCD-EFGH
+		auth.POST("/auth/cli/device/approve", h.CLIDevice.Approve)
+		auth.POST("/auth/cli/device/deny", h.CLIDevice.Deny)
 
 		// 个人中心：只操作当前登录用户自己的数据
 		me := auth.Group("/me")
@@ -122,6 +139,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
 		canvas.GET("/:id/export", h.CanvasTransfer.Export)
 		canvas.POST("/import", h.CanvasTransfer.Import)
+		canvas.POST("/:id/ops", h.CanvasOps.Apply)                         // 节点级编辑：ops + deleteNodeIds，带 revision 乐观锁
 		canvas.POST("/:id/storyboard/split", h.Storyboard.Split)           // 异步任务：建任务 + 入队，立刻返回 pending
 		canvas.GET("/:id/storyboard/split/active", h.Storyboard.ActiveJob) // 按 node_id 补查进行中的任务（弹窗打开 / 刷新页面）
 		canvas.GET("/:id/storyboard/split/:jobId", h.Storyboard.Job)       // 按 id 读任务当前状态（断线对账）

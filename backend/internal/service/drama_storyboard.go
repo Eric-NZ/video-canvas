@@ -18,9 +18,10 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// dramaStoryboardInput 持久化视频模型时长上限，任务执行不能依赖后续请求配置。
+// dramaStoryboardInput 持久化视频模型的时长与参考音频上限，任务执行不能依赖后续请求配置。
 type dramaStoryboardInput struct {
 	MaxSeconds int `json:"max_seconds"`
+	MaxAudios  int `json:"max_audios"`
 }
 
 // dramaStoryboardAsset 仅暴露分镜所需的画布资产信息，不发送其他集资产或图片数据。
@@ -30,6 +31,8 @@ type dramaStoryboardAsset struct {
 	Name          string `json:"name"`
 	Look          string `json:"look"`
 	PromptSummary string `json:"prompt_summary"`
+	// HasVoice 角色配了声音，片场提交视频时要占一个参考音频
+	HasVoice bool `json:"has_voice"`
 }
 
 // checkStoryboardRequest 单集拆分必须显式选择范围；缺省时长遵循契约15秒。
@@ -83,8 +86,8 @@ func (s *DramaService) estimateStoryboard(ctx context.Context, userID, id uint64
 	if err != nil {
 		return 0, dramaError(err)
 	}
-	// 与提交共用时长解析，视频模型读取失败时两边同样报错
-	if _, err = s.storyboardSeconds(ctx, project, req); err != nil {
+	// 与提交共用上限解析，视频模型读取失败或不可用时两边同样报错
+	if _, _, err = s.storyboardLimits(ctx, project, req); err != nil {
 		return 0, err
 	}
 	snap, err := s.resolveModel(ctx, project.TextModel)
@@ -96,12 +99,12 @@ func (s *DramaService) estimateStoryboard(ctx context.Context, userID, id uint64
 
 // enqueueStoryboard 保存不可变输入并标记generating，随冻结和队列插入一起回滚。
 func enqueueStoryboard(ctx context.Context, tx repository.DramaTx, j *model.DramaJob, req *model.DramaJobReq, eps []model.DramaEpisode) error {
-	// 提交前已由 storyboardSeconds 解析；0 只在直接调用时出现，按契约缺省
+	// 提交前已由 storyboardLimits 解析；0 只在直接调用时出现，按契约缺省
 	limit := req.MaxSeconds
 	if limit == 0 {
 		limit = storyboardDefaultSeconds
 	}
-	input, err := json.Marshal(dramaStoryboardInput{MaxSeconds: limit})
+	input, err := json.Marshal(dramaStoryboardInput{MaxSeconds: limit, MaxAudios: req.MaxAudios})
 	if err != nil {
 		return err
 	}
@@ -135,16 +138,24 @@ func (s *DramaService) runStoryboard(ctx context.Context, run *dramaRun, vars ma
 	if err != nil {
 		return nil, err
 	}
-	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds
+	vars["script_md"], vars["episode_no"], vars["assets"], vars["max_seconds"], vars["max_audios"] = ep.ScriptMD, ep.No, assets, input.MaxSeconds, input.MaxAudios
 	// 创作段：写法都在这一段（内置正文是即梦 / Seedance 分栏，用户可以整段换掉），输出纯文本分镜稿，不解析结构。
 	draft, draftCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard", "", vars, nil)
 	if err != nil {
 		return nil, err
 	}
 	// 格式段：系统固定，只拿创作稿与资产清单，负责切段、时长、资产引用和 JSON，不改写法。校验失败只重试这一段，不重跑创作段。
-	formatVars := map[string]any{"draft_md": draft, "episode_no": ep.No, "assets": assets, "max_seconds": input.MaxSeconds}
+	formatVars := map[string]any{"draft_md": draft, "episode_no": ep.No, "assets": assets, "max_seconds": input.MaxSeconds, "max_audios": input.MaxAudios}
+	voiced := map[string]bool{}
+	for _, asset := range assets {
+		voiced[asset.NodeID] = asset.HasVoice
+	}
 	output, formatCost, err := s.callDrama(ctx, run.job, &run.snapshot, "storyboard_format", "", formatVars, func(value any) error {
-		return value.(drama.StoryboardOutput).ValidateMaxSeconds(input.MaxSeconds)
+		out := value.(drama.StoryboardOutput)
+		if err := out.ValidateMaxSeconds(input.MaxSeconds); err != nil {
+			return err
+		}
+		return out.ValidateVoices(input.MaxAudios, voiced)
 	})
 	if err != nil {
 		return nil, err
@@ -180,6 +191,12 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 				Params struct {
 					Prompt string `json:"prompt"`
 				} `json:"params"`
+				Character *struct {
+					Voice *struct {
+						Mode    string `json:"mode"`
+						AssetID string `json:"assetId"`
+					} `json:"voice"`
+				} `json:"character"`
 			} `json:"data"`
 		} `json:"nodes"`
 	}
@@ -197,7 +214,9 @@ func (s *DramaService) storyboardAssets(ctx context.Context, p *model.DramaProje
 		if len(summary) > 500 {
 			summary = summary[:500]
 		}
-		assets = append(assets, dramaStoryboardAsset{NodeID: node.ID, Type: d.Type, Name: d.Name, Look: d.Look, PromptSummary: string(summary)})
+		// 和片场提交视频同一口径：角色卡绑了音频声音就会带上参考音频
+		voice := node.Data.Character != nil && node.Data.Character.Voice != nil && node.Data.Character.Voice.Mode == "audio" && node.Data.Character.Voice.AssetID != ""
+		assets = append(assets, dramaStoryboardAsset{NodeID: node.ID, Type: d.Type, Name: d.Name, Look: d.Look, PromptSummary: string(summary), HasVoice: d.Type == "character" && voice})
 	}
 	return assets, nil
 }
