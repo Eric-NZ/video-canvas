@@ -6,7 +6,7 @@
 
 ### 新增
 
-- 新增命令行工具 `video-canvas-cli`（命令名 `video-canvas-cli` 或 `vc`），安装包随每次发版挂在 GitHub Release 上，需要 Node 22.18 或更高。站点提供一键安装脚本（macOS / Linux 用 `curl … /api/v1/cli/install.sh | sh`，Windows 用 `irm … /api/v1/cli/install.ps1 | iex`），下载后先校验 sha256，再装好 CLI 和给终端助手用的配套技能；GitHub 访问不畅时可用 `VC_DOWNLOAD_BASE` 指向镜像。用设备码在浏览器里确认一次即可登录，不必把密码或长期令牌交给脚本。支持画布列表 / 详情 / 新建 / 导入导出 / 整图保存 / 节点级编辑、生成任务查询与等待、运行记录导出；`--json` 输出一行结构化结果，供脚本与 Agent 解析。签发的仍是同一套 JWT（含 `token_version`），改密码后命令行登录态同样失效。命令行有自己的一页（`/cli`，后台在「AI 配置 → 命令行（CLI）」），页头的「查看 CLI 文档」进完整参考（`/cli/docs`），侧栏头像菜单和 `/cli` 页的「复制命令给 Agent」会复制一段完整提示，粘给 Claude Code、Codex 这类终端助手，由它装好并带你完成登录授权。
+- 新增命令行工具 `video-canvas-cli`（命令名 `video-canvas-cli` 或 `vc`），安装包随每次发版挂在 GitHub Release 上，需要 Node 22.18 或更高。站点提供一键安装脚本（macOS / Linux 用 `curl … /api/v1/cli/install.sh | sh`，Windows 用 `irm … /api/v1/cli/install.ps1 | iex`），下载后先校验 sha256，再装好 CLI 和给终端助手用的配套技能；GitHub 访问不畅时可用 `VC_DOWNLOAD_BASE` 指向镜像。用设备码在浏览器里确认一次即可登录，不必把密码或长期令牌交给脚本。支持画布列表 / 详情 / 新建 / 导入导出 / 整图保存 / 节点级编辑、生成任务查询与等待、运行记录导出；`--json` 输出一行结构化结果，供脚本与 Agent 解析。签发的仍是同一套 JWT（含 `token_version`），改密码后命令行登录态同样失效。命令行有自己的一页（`/cli`，后台在「AI 配置 → 命令行（CLI）」），页头的「查看 CLI 文档」进完整参考（`/cli/docs`），侧栏头像菜单的「在 Agent 里使用」会打开 CLI 介绍弹窗，弹窗和 `/cli` 页上的「复制命令给 Agent」会复制一段完整提示，粘给 Claude Code、Codex 这类终端助手，由它装好并带你完成登录授权。
 - 安装包随附配套技能（`skill/`）：给终端里的 AI 助手看的说明。一键安装脚本会自动装进 Claude Code（已装 Codex 的也一并装），手动安装后执行 `vc skill install` 即可。
 - 生成任务的产物改由服务端写回画布节点：任务落终态时写入并推 `canvas.patch`，不再依赖浏览器在线。命令行、无人值守批量出片提交完，画布上也能直接看到结果。
 - 短剧工作台的「项目设置」现在可以查看开拍时选定的题材、画风和单集时长。三项设置均为只读，自定义画风会显示完整描述。
