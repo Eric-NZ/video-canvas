@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
 
+import SharedCanvasReader from "@/pages/canvas/shared-reader";
 import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
@@ -70,7 +71,7 @@ function RequireAuth() {
   return (
     <>
       {/* 登录态下常驻：任务 WebSocket 在列表页、画布页之间不断线 */}
-      <WsRuntime />
+      {!/^\/canvas\/[^/]+\/reader\/?$/.test(location.pathname) && <WsRuntime />}
       <Outlet />
     </>
   );
@@ -138,6 +139,7 @@ export const router = createBrowserRouter([
             path: "drama/:id",
             element: <DramaWorkspace />,
           },
+          { path: "canvas/:id/reader", element: <SharedCanvasReader /> },
           { path: "drama/:id/reader", element: <DramaWorkspace viewer /> },
           /** 营销创作台：全屏，与短剧工作台同级，不带首页侧栏 */
           {

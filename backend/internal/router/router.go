@@ -42,6 +42,7 @@ type Handlers struct {
 	AssetLibrary   *handler.AssetLibraryHandler   // 资产库：文件夹、库归属、生成历史
 	VirtualHuman   *handler.VirtualHumanHandler   // 真人库：方舟虚拟人像库备案
 	Drama          *handler.DramaHandler          // 短剧项目、分集剧本、资产流水线
+	CanvasShare    *handler.CanvasShareHandler
 	DramaShare     *handler.DramaShareHandler
 	DramaSegment   *handler.DramaSegmentHandler        // 分集片段编辑、排序与视频/首帧生成
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
@@ -117,6 +118,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 			c.Request.Header.Set("Authorization", "Bearer "+ticket)
 			middleware.JWTAuth(mediaSecret + ":" + c.Param("id"))(c)
 		}, middleware.RequireActive(h.UserState), h.DramaShare.Media)
+		canvasSecret := jwtSecret + ":canvas-media"
+		v1.GET("/canvas-media/:id/:asset", func(c *gin.Context) {
+			ticket, _ := c.Cookie("canvas_media")
+			c.Request.Header.Set("Authorization", "Bearer "+ticket)
+			middleware.JWTAuth(canvasSecret + ":" + c.Param("id"))(c)
+		}, middleware.RequireActive(h.UserState), h.CanvasShare.Media)
 
 		// 首页公告：生效中的公告，最多 5 条，全站共享；只在登录后的首页外壳展示，所以要登录
 		auth.GET("/announcements", h.Announcement.Public)
@@ -139,6 +146,13 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		// 画布操作
 		canvas := auth.Group("/canvas")
+		canvas.GET("/shared", h.CanvasShare.Shared)
+		canvas.GET("/:id/deliveries/:key", h.CanvasShare.Receipt)
+		canvas.POST("/:id/shares", h.CanvasShare.Share)
+		canvas.GET("/:id/shares", h.CanvasShare.Members)
+		canvas.DELETE("/:id/shares/:member", h.CanvasShare.Remove)
+		canvas.GET("/:id/reader", h.CanvasShare.Workspace(canvasSecret))
+		canvas.GET("/:id/reader/media/:asset", h.CanvasShare.Media)
 		canvas.POST("", h.CanvasProject.Create)
 		canvas.GET("", h.CanvasProject.List)
 		canvas.GET("/:id", h.CanvasProject.Get)

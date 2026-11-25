@@ -382,6 +382,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Me:              handler.NewMeHandler(meSvc),
 		CanvasProject:   handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Drama:           handler.NewDramaHandler(dramaSvc),
+		CanvasShare:     handler.NewCanvasShareHandler(service.NewCanvasShareService(repository.NewCanvasShareRepository(db), assetSvc, service.AgentCanvasDeliveryGuard(cfg.Agent))),
 		DramaShare:      handler.NewDramaShareHandler(service.NewDramaShareService(repository.NewDramaShareRepository(db), assetSvc)),
 		AdminStep:       handler.NewAdminStepHandler(stepSvc),
 		AdminFormatter:  handler.NewAdminFormatterHandler(),
@@ -733,6 +734,9 @@ func (a *App) cleanupUploads(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if err := repository.NewCanvasShareRepository(a.db).SweepStages(ctx, a.assets.DeleteStagedObject); err != nil {
+				logger.Error("回收过期画布交付对象失败", zap.Error(err))
+			}
 			if n, err := a.assets.CleanupUploads(ctx, 200); err != nil {
 				logger.Error("清理过期直传失败", zap.Error(err))
 			} else if n > 0 {
