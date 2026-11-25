@@ -23,6 +23,7 @@ import { useAnalyzing } from "./analyzing-view";
 import { ScriptEditor } from "./script-editor";
 import { SceneList } from "./script-editor/scene-list";
 import { SourcePane } from "./script-editor/source-pane";
+import { useSourceSync } from "./script-editor/use-source-sync";
 import { useScriptEditor } from "./script-editor/use-script-editor";
 import { ProjectDoc } from "./project-doc";
 import { useEstimate } from "./use-estimate";
@@ -71,6 +72,10 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
   /** 原著对照分栏是否打开 */
   const [compare, setCompare] = useState(false);
   const reduceMotion = useReducedMotion();
+  /** 稿纸和原著栏：对照时原著栏跟着稿纸滚 */
+  const paperRef = useRef<HTMLDivElement>(null);
+  const sourceRef = useRef<HTMLElement>(null);
+  const syncSource = useSourceSync(compare, paperRef, sourceRef);
   /** 剧本编辑器：读取、编辑、自动保存都在这里；侧栏的场次目录和人物弹窗共用同一份 */
   const editor = useScriptEditor(
     drama.id,
@@ -295,12 +300,19 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
                           }
                     }
                   >
-                    <SourcePane dramaId={drama.id} from={summary.unitFrom} to={summary.unitTo} />
+                    <SourcePane
+                      dramaId={drama.id}
+                      from={summary.unitFrom}
+                      to={summary.unitTo}
+                      paneRef={sourceRef}
+                      onLoaded={syncSource}
+                    />
                   </motion.div>
                 </motion.div>
               )}
             </AnimatePresence>
             <div
+              ref={paperRef}
               className={cn(
                 // 稿纸：宋体正文、宽行距，左右留出页边给光标所在行的类型标签
                 "bg-paper text-paper-foreground ring-border font-display relative min-w-0 flex-1 rounded-t-md rounded-b-[20px] px-[clamp(20px,7vw,88px)] pt-16 pb-24 text-[16px] leading-[2.05] shadow-[0_30px_60px_-30px_rgb(0_0_0/0.6)] ring-1 transition-[filter] duration-200",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 import { getUnit } from "@/api/drama";
 import type { DramaUnit } from "@/api/drama/type";
@@ -8,12 +8,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 const MAX_UNITS = 30;
 
 /**
- * 原著对照：只读显示这一集对应的原文（逐个单元读取），和稿纸各自滚动，不做段落联动。
+ * 原著对照：只读显示这一集对应的原文（逐个单元读取）。滚动跟着稿纸走（见 useSourceSync），不做段落联动。
  * @param dramaId 短剧 id
  * @param from 起始单元号
  * @param to 结束单元号
+ * @param paneRef 这一栏自己，供滚动同步读写 scrollTop
+ * @param onLoaded 原文读完（内容高度有了）时调用，用来对齐一次滚动位置
  */
-export function SourcePane({ dramaId, from, to }: { dramaId: string; from: number; to: number }) {
+export function SourcePane({
+  dramaId,
+  from,
+  to,
+  paneRef,
+  onLoaded,
+}: {
+  dramaId: string;
+  from: number;
+  to: number;
+  paneRef?: RefObject<HTMLElement | null>;
+  onLoaded?: () => void;
+}) {
   const [units, setUnits] = useState<DramaUnit[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -27,8 +41,16 @@ export function SourcePane({ dramaId, from, to }: { dramaId: string; from: numbe
     };
   }, [dramaId, from, to]);
 
+  // 原文画出来之后高度才是对的，等一帧再通知
+  useEffect(() => {
+    if (!units) return;
+    const frame = requestAnimationFrame(() => onLoaded?.());
+    return () => cancelAnimationFrame(frame);
+  }, [units, onLoaded]);
+
   return (
     <aside
+      ref={paneRef}
       aria-label="原著对照"
       className="bg-card ring-border sticky top-6 max-h-[calc(100svh-7rem)] min-w-0 self-start overflow-y-auto rounded-2xl px-6 py-5 ring-1"
     >
