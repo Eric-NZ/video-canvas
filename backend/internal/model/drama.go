@@ -47,6 +47,8 @@ type DramaProject struct {
 	CharactersMD     string         `gorm:"type:text;not null;default:''"`
 	Status           string         `gorm:"size:16;not null;default:analyzing"`
 	Revision         int64          `gorm:"not null;default:1"`
+	// ScriptBiosImported 为 true 表示当前的 characters_md 已导入人物表（小传以人物表 note 为准）；研读重写传记时置回 false。
+	ScriptBiosImported bool `gorm:"not null;default:false"`
 }
 
 // TableName 返回 DramaProject 对应的表名。

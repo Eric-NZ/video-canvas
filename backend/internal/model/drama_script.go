@@ -32,6 +32,7 @@ type DramaScriptLocation struct {
 	DramaID      uint64                      `gorm:"not null;index:idx_drama_script_location_drama,priority:1"`
 	Name         string                      `gorm:"size:64;not null"`
 	Aliases      datatypes.JSONSlice[string] `gorm:"type:jsonb;not null;default:'[]'"`
+	Note         string                      `gorm:"type:text;not null;default:''"`
 	CanvasNodeID string                      `gorm:"size:64;not null;default:''"`
 	Confirmed    bool                        `gorm:"not null;default:false"`
 	Position     int                         `gorm:"not null;default:0"`

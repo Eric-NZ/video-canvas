@@ -43,6 +43,12 @@ func (r *httpDramaRepo) MarkScriptStructured(context.Context, uint64, uint64) er
 	r.project.ScriptStructured = true
 	return nil
 }
+
+// MarkScriptBiosImported 标记人物传记已导入人物表。
+func (r *httpDramaRepo) MarkScriptBiosImported(context.Context, uint64, uint64) error {
+	r.project.ScriptBiosImported = true
+	return nil
+}
 func (r *httpDramaRepo) WithTx(_ context.Context, fn func(repository.DramaTx) error) error {
 	return fn(r)
 }

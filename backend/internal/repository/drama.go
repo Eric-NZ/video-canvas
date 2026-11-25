@@ -48,6 +48,8 @@ type DramaTx interface {
 	DeleteDramaScript(context.Context, uint64, uint64) error
 	// MarkScriptStructured 把项目标为整部剧已转成结构。
 	MarkScriptStructured(context.Context, uint64, uint64) error
+	// MarkScriptBiosImported 把项目标为人物传记已导入人物表。
+	MarkScriptBiosImported(context.Context, uint64, uint64) error
 	// SetEpisodeScriptMD 只改一集的 script_md，不升 revision。
 	SetEpisodeScriptMD(context.Context, uint64, uint64, uint64, string) error
 	// ScriptCharacters 读取人物表。

@@ -148,6 +148,11 @@ func (r *DramaRepository) MarkScriptStructured(ctx context.Context, userID, dram
 	return r.db.WithContext(ctx).Model(&model.DramaProject{}).Where("user_id = ? AND id = ?", userID, dramaID).UpdateColumn("script_structured", true).Error
 }
 
+// MarkScriptBiosImported 把项目标为人物传记已导入人物表；同样不动项目 revision。
+func (r *DramaRepository) MarkScriptBiosImported(ctx context.Context, userID, dramaID uint64) error {
+	return r.db.WithContext(ctx).Model(&model.DramaProject{}).Where("user_id = ? AND id = ?", userID, dramaID).UpdateColumn("script_bios_imported", true).Error
+}
+
 // ScriptCharacters 读取一部短剧的人物表，按 position、ID 排序。
 func (r *DramaRepository) ScriptCharacters(ctx context.Context, userID, dramaID uint64) ([]model.DramaScriptCharacter, error) {
 	var rows []model.DramaScriptCharacter
@@ -178,7 +183,7 @@ func (r *DramaRepository) SaveScriptLocation(ctx context.Context, l *model.Drama
 	if l.ID == 0 {
 		return db.Create(l).Error
 	}
-	res := db.Model(l).Where("user_id = ? AND drama_id = ?", l.UserID, l.DramaID).Select("name", "aliases", "canvas_node_id", "confirmed", "position").Updates(l)
+	res := db.Model(l).Where("user_id = ? AND drama_id = ?", l.UserID, l.DramaID).Select("name", "aliases", "note", "canvas_node_id", "confirmed", "position").Updates(l)
 	return rowsOrNotFound(res)
 }
 

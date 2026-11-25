@@ -452,3 +452,91 @@ func TestParseReservedLabelsAreNeverSpeakers(t *testing.T) {
 		t.Fatalf("元素=%v", got)
 	}
 }
+
+// numberedScript 是另一种常见写法：「第一场：地点 · 时间 · 内外」做场次标题，
+// 说话人单独一行、台词在下一行，【画面】做段落标签。
+const numberedScript = `剧名：《少年闰土》
+主要人物：
+少年迅哥儿（11-12岁）： 封建大户人家的少爷。
+成年“我”（40余岁，仅画外音）： 沧桑、温厚。
+
+第一场：海边沙地 · 夜 · 外（意象镜头）
+
+【画面】
+黑屏渐亮。
+动作特写： 那黑影（猹）极其伶俐。
+
+成年“我”（画外音）：
+这少年便是闰土。
+
+第二场：周家大院 · 祠堂与内院 · 日 · 内/外
+
+【镜头语言】
+母亲走过来。
+
+闰土父亲：
+（憨厚地笑，推了推闰土）这是少爷。
+快叫少爷。
+
+【画面】蒙太奇快切： 两个少年蹲在灶台边烤火。`
+
+func TestParseNumberedSceneHeadings(t *testing.T) {
+	r := newRoster()
+	r.chars = map[string]uint64{}
+	r.locs = map[string]uint64{}
+	res := script.Parse(numberedScript, r)
+	if len(res.Scenes) != 3 {
+		t.Fatalf("应为文头 + 两场，得到 %d 场", len(res.Scenes))
+	}
+	head := res.Scenes[0]
+	for _, e := range head.Elements {
+		if e.Type != script.Action {
+			t.Fatalf("文头里的人物介绍应作为动作保存：%+v", e)
+		}
+	}
+	s1, s2 := res.Scenes[1], res.Scenes[2]
+	if s1.TimeLabel != "夜" || s1.IntExt != script.Exterior || s1.Title != "意象镜头" || s1.LocationID == 0 {
+		t.Fatalf("第一场标题解析错误：%+v", s1)
+	}
+	if s2.TimeLabel != "日" || s2.IntExt != script.InteriorExterior || s2.LocationID == 0 {
+		t.Fatalf("第二场标题解析错误：%+v", s2)
+	}
+	if r.locs["海边沙地"] == 0 || r.locs["周家大院·祠堂与内院"] == 0 {
+		t.Fatalf("地点登记错误：%v", r.locs)
+	}
+	for _, name := range r.registered {
+		switch name {
+		case "海边沙地", "周家大院·祠堂与内院", "成年“我”", "闰土父亲":
+		default:
+			t.Fatalf("不应登记 %q", name)
+		}
+	}
+}
+
+func TestParseSpeakerOnOwnLine(t *testing.T) {
+	r := newRoster()
+	r.chars = map[string]uint64{}
+	r.locs = map[string]uint64{}
+	res := script.Parse(numberedScript, r)
+	s1 := res.Scenes[1].Elements
+	if got := types(s1); !reflect.DeepEqual(got, []script.ElementType{script.Action, script.Action, script.Character, script.Dialogue}) {
+		t.Fatalf("第一场元素=%v %+v", got, s1)
+	}
+	if s1[1].Text != "动作特写： 那黑影（猹）极其伶俐。" || s1[3].Text != "这少年便是闰土。" {
+		t.Fatalf("第一场文本错误：%+v", s1)
+	}
+	if s1[2].Extension != script.ExtVO {
+		t.Fatalf("画外音应标为 VO：%+v", s1[2])
+	}
+	s2 := res.Scenes[2].Elements
+	want := []script.ElementType{script.Action, script.Character, script.Parenthetical, script.Dialogue, script.Action}
+	if got := types(s2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("第二场元素=%v %+v", got, s2)
+	}
+	if s2[2].Text != "憨厚地笑，推了推闰土" || s2[3].Text != "这是少爷。快叫少爷。" {
+		t.Fatalf("括号和多行台词错误：%+v", s2)
+	}
+	if s2[4].Text != "蒙太奇快切： 两个少年蹲在灶台边烤火。" {
+		t.Fatalf("【画面】后的文字应作为动作：%q", s2[4].Text)
+	}
+}

@@ -87,6 +87,12 @@ func (r *dramaMemory) MarkScriptStructured(context.Context, uint64, uint64) erro
 	return nil
 }
 
+// MarkScriptBiosImported 标记人物传记已导入人物表。
+func (r *dramaMemory) MarkScriptBiosImported(context.Context, uint64, uint64) error {
+	r.project.ScriptBiosImported = true
+	return nil
+}
+
 func newDramaMemory() *dramaMemory {
 	return &dramaMemory{project: model.DramaProject{BaseModel: model.BaseModel{ID: 1}, UserID: 7, CanvasID: 2, Title: "测试", SourceText: "第一章\n小说正文", SourceKind: "novel", SourceSummary: "原文摘要", StyleKey: "custom", StyleCustom: "写实", Revision: 1}, credit: model.UserCredit{UserID: 7, Balance: 1000}, nextID: 10, mu: &sync.Mutex{}}
 }
@@ -152,6 +158,8 @@ func (r *dramaMemory) UpdateProject(_ context.Context, userID, id uint64, revisi
 			r.project.SourceSummary = v.(string)
 		case "characters_md":
 			r.project.CharactersMD = v.(string)
+		case "script_bios_imported":
+			r.project.ScriptBiosImported = v.(bool)
 		case "outline_md":
 			r.project.OutlineMD = v.(string)
 		case "status":

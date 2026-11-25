@@ -35,7 +35,7 @@ func loadScriptEntities(ctx context.Context, tx repository.DramaTx, userID, id u
 		rows, err := tx.ScriptLocations(ctx, userID, id)
 		out := make([]scriptEntity, len(rows))
 		for i, r := range rows {
-			out[i] = scriptEntity{ID: r.ID, Name: r.Name, Aliases: orEmpty([]string(r.Aliases)), Node: r.CanvasNodeID, Confirmed: r.Confirmed, Position: r.Position}
+			out[i] = scriptEntity{ID: r.ID, Name: r.Name, Aliases: orEmpty([]string(r.Aliases)), Note: r.Note, Node: r.CanvasNodeID, Confirmed: r.Confirmed, Position: r.Position}
 		}
 		return out, err
 	}
@@ -49,7 +49,7 @@ func loadScriptEntities(ctx context.Context, tx repository.DramaTx, userID, id u
 
 func saveScriptEntity(ctx context.Context, tx repository.DramaTx, userID, id uint64, kind string, e *scriptEntity) error {
 	if kind == scriptKindLocation {
-		row := model.DramaScriptLocation{ID: e.ID, UserID: userID, DramaID: id, Name: e.Name, Aliases: e.Aliases, CanvasNodeID: e.Node, Confirmed: e.Confirmed, Position: e.Position}
+		row := model.DramaScriptLocation{ID: e.ID, UserID: userID, DramaID: id, Name: e.Name, Aliases: e.Aliases, Note: e.Note, CanvasNodeID: e.Node, Confirmed: e.Confirmed, Position: e.Position}
 		err := tx.SaveScriptLocation(ctx, &row)
 		e.ID = row.ID
 		return err
@@ -92,11 +92,21 @@ func cleanAliases(name string, aliases []string) []string {
 }
 
 // ListScriptEntities 返回人物表（kind=character）或地点表（kind=location），带每个条目出现的集号和人物的发言次数。
+// 列人物表时，研读的人物传记还没导入就先导入（只在需要时加项目锁）。
 func (s *DramaService) ListScriptEntities(ctx context.Context, userID, id uint64, kind string) ([]DramaScriptEntityView, error) {
 	var out []DramaScriptEntityView
 	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
-		if _, e := s.structuredProject(ctx, tx, userID, id); e != nil {
+		p, e := s.structuredProject(ctx, tx, userID, id)
+		if e != nil {
 			return e
+		}
+		if kind == scriptKindCharacter && !p.ScriptBiosImported {
+			if p, e = tx.Project(ctx, userID, id, true); e != nil {
+				return e
+			}
+			if e = s.ensureBiosImported(ctx, tx, p); e != nil {
+				return e
+			}
 		}
 		list, e := loadScriptEntities(ctx, tx, userID, id, kind)
 		if e != nil {
