@@ -12,23 +12,23 @@ import {
 import { GLASS_PANEL } from "@/components/admin-ui/glass";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { KIND_LABEL } from "@/utils/admin/drama-preset";
 
 import { SettingsError } from "../settings/settings-state";
 import { PresetDialog } from "./preset-dialog";
-import { PresetList } from "./preset-list";
+import { PresetGrid, PresetGridSkeleton } from "./preset-grid";
 import { usePresetsAdmin } from "./use-presets-admin";
 
 /** 弹窗的状态：关闭、新建（item 为 null）、编辑某一条 */
 type EditorState = { open: false } | { open: true; item: DramaPresetAdminItem | null };
 
 /**
- * 一个种类的预设清单：加载、拖动排序、启停、编辑、删除 + 新建 / 编辑弹窗。
+ * 一个种类的预设卡片墙：加载、拖动排序、启停、编辑、删除 + 新建 / 编辑弹窗。
  *
  * 由页面用 key={kind} 挂载：切到另一个种类时整块重挂载，列表与加载状态自然回到初始值，
- * 不需要在 effect 里手动清空（那样会多一次渲染，也容易出现「上一个种类的行闪一下」）。
+ * 不需要在 effect 里手动清空（那样会多一次渲染，也容易出现「上一个种类的卡片闪一下」）。
+ * 新建入口就在卡片墙的最后一张虚线卡上，所以列表非空时页面上没有工具条。
  * @param kind 题材 / 画风
  * @param canDelete 是否允许删除（只有 super_admin）
  */
@@ -49,47 +49,36 @@ export function PresetPanel({ kind, canDelete }: { kind: DramaPresetKind; canDel
 
   return (
     <>
-      {/* 工具条：条数与新建入口。空列表时下面还有一个新建按钮，两处都留是为了不让空状态只剩一行字 */}
-      {status === "ready" && items.length > 0 && (
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-muted-foreground text-xs">
-            共 {items.length} 条，拖动左侧手柄可调整顺序
-          </p>
-          <Button size="sm" onClick={openNew}>
-            <Plus />
-            新建{KIND_LABEL[kind]}
-          </Button>
-        </div>
-      )}
-      {status === "loading" && <Skeleton className="h-60 w-full rounded-xl" />}
+      {status === "loading" && <PresetGridSkeleton />}
       {status === "error" && <SettingsError onRetry={() => void admin.reload()} />}
-      {status === "ready" && (
+      {status === "ready" && items.length === 0 && (
         <Card className={cn(GLASS_PANEL, "gap-0 py-0")}>
-          {items.length === 0 ? (
-            <EmptyState className="m-4 border-0">
-              <EmptyStateIcon>
-                <Clapperboard />
-              </EmptyStateIcon>
-              <EmptyStateTitle>还没有{KIND_LABEL[kind]}</EmptyStateTitle>
-              <EmptyStateActions>
-                <Button onClick={openNew}>
-                  <Plus />
-                  新建{KIND_LABEL[kind]}
-                </Button>
-              </EmptyStateActions>
-            </EmptyState>
-          ) : (
-            <PresetList
-              items={items}
-              busyIds={admin.busyIds}
-              canDelete={canDelete}
-              onReorder={(next) => void admin.reorder(next).catch(() => undefined)}
-              onToggle={(item) => void admin.toggleEnabled(item)}
-              onEdit={(item) => setEditor({ open: true, item })}
-              onRemove={askRemove}
-            />
-          )}
+          <EmptyState className="m-4 border-0">
+            <EmptyStateIcon>
+              <Clapperboard />
+            </EmptyStateIcon>
+            <EmptyStateTitle>还没有{KIND_LABEL[kind]}</EmptyStateTitle>
+            <EmptyStateActions>
+              <Button onClick={openNew}>
+                <Plus />
+                新建{KIND_LABEL[kind]}
+              </Button>
+            </EmptyStateActions>
+          </EmptyState>
         </Card>
+      )}
+      {status === "ready" && items.length > 0 && (
+        <PresetGrid
+          items={items}
+          kind={kind}
+          busyIds={admin.busyIds}
+          canDelete={canDelete}
+          onReorder={(next) => void admin.reorder(next).catch(() => undefined)}
+          onToggle={(item) => void admin.toggleEnabled(item)}
+          onEdit={(item) => setEditor({ open: true, item })}
+          onRemove={askRemove}
+          onNew={openNew}
+        />
       )}
 
       <PresetDialog
