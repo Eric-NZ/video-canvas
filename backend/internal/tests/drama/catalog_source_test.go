@@ -168,27 +168,3 @@ func TestSeedMatchesBuiltin(t *testing.T) {
 		}
 	}
 }
-
-// fmtSscan 是 fmt.Sscan 的薄封装，单独抽出来只为让上面的循环保持可读。
-func fmtSscan(s string, out *int) (int, error) {
-	var n int
-	_, err := sscanInt(s, &n)
-	*out = n
-	return 1, err
-}
-
-// sscanInt 解析十进制整数（迁移里的 sort_order 都是 0 起的下标）。
-func sscanInt(s string, out *int) (int, error) {
-	if s == "" {
-		return 0, errors.New("空数字")
-	}
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return 0, errors.New("非法数字")
-		}
-		n = n*10 + int(r-'0')
-	}
-	*out = n
-	return 1, nil
-}
