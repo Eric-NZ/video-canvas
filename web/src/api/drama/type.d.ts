@@ -56,7 +56,7 @@ export type DramaSourceKind = "script" | "novel" | "";
 export type StartRatio = "9:16" | "16:9" | "4:3";
 
 /** 提示词来源：内置 / 我的提示词 / 后台技能 */
-export type PromptSource = "builtin" | "mine" | "skill";
+export type PromptSource = "builtin" | "mine" | "skill" | "preset";
 
 /** 一个环节的提示词选择（提交给后端的结构）：mine 带 id，skill 带技能 name */
 export interface PromptChoice {
@@ -66,6 +66,20 @@ export interface PromptChoice {
   id?: string;
   /** source = skill 时的技能 name */
   skill?: string;
+  revision?: number;
+}
+
+export interface PromptPreset {
+  id: string;
+  name: string;
+  description: string;
+  revision: number;
+}
+
+export interface PromptPresetGroup {
+  step: PromptStep;
+  default_id: string;
+  items: PromptPreset[];
 }
 
 /** 各环节的提示词选择；省略的环节等于内置 */
@@ -73,6 +87,8 @@ export type PromptChoices = Partial<Record<PromptStep, PromptChoice>>;
 
 /** 已建剧的一个环节提示词设置（快照来源与展示名） */
 export interface PromptSetting extends PromptChoice {
+  version?: number;
+  update_available?: boolean;
   /** 展示名，如「内置」「我的 · 古风资产」「技能 · 跨集连续性」 */
   label: string;
   /** true 表示快照来源（我的提示词 / 技能）已被删或停用：快照照常可用，界面标红提示 */
@@ -674,6 +690,7 @@ export interface SourceEstimateInput {
   episodeSeconds: number;
   /** 文本模型 key，空串 = 默认模型 */
   textModel: string;
+  planPrompt?: PromptChoice;
 }
 
 /** 内置提示词的一页（现在每个环节一页） */

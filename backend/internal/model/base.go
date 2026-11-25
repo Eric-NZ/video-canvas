@@ -71,6 +71,8 @@ func All() []any {
 		&DramaUnit{},
 		&DramaPrompt{},
 		&DramaPromptSplit{},
+		&DramaPromptPreset{},
+		&DramaPromptPresetGroup{},
 		&DramaEpisode{},
 		&DramaJob{},
 		&DramaSegment{},

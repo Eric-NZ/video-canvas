@@ -283,6 +283,10 @@ var (
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
 	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
+	ErrDramaPresetChanged        = New(67031, "提示词已移除或更新，请刷新后重新选择", http.StatusConflict)
+	ErrDramaPresetDefault        = New(67032, "请先把另一条已启用的提示词设为默认", http.StatusConflict)
+	ErrDramaPresetNotFound       = New(67033, "内置提示词不存在", http.StatusNotFound)
+	ErrDramaPresetInactive       = New(67034, "仅已启用的提示词可以设为默认，已归档的提示词不可修改", http.StatusConflict)
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），

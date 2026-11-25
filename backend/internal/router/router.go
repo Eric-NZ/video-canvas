@@ -264,6 +264,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/drama-sources/preflight", h.Drama.Preflight)
 		auth.POST("/drama-sources/:token/estimate", h.Drama.EstimateSource)
 		auth.GET("/drama-prompt-templates", h.Drama.PromptTemplates)
+		auth.GET("/drama-prompt-presets", h.Drama.PromptPresetCatalog)
 		auth.GET("/drama-prompts", h.Drama.ListPrompts)
 		auth.POST("/drama-prompts", h.Drama.CreatePrompt)
 		auth.PUT("/drama-prompts/:id", h.Drama.UpdatePrompt)
@@ -371,6 +372,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI.GET("/test-runs/:id", h.AdminAI.GetTestRun)
 		adminAI.GET("/test-runs/:id/trace", h.AdminAI.GetTestTrace)
 		adminAI.GET("/schema/model", h.AdminAI.Schema)
+
+		presetAdmin := auth.Group("/admin/drama-prompt-presets", middleware.RequireAdmin(h.AdminRole))
+		presetAdmin.GET("", h.Drama.AdminPromptPresetCatalog)
+		presetAdmin.POST("/:step", h.Drama.CreatePromptPreset)
+		presetAdmin.PUT("/:step/:id", h.Drama.UpdatePromptPreset)
+		presetAdmin.PUT("/:step/:id/state", h.Drama.SetPromptPresetState)
 
 		// Agent 技能管理：admin 与 super_admin 都能导入、启停、删除（产品决定，不收紧）；全部写操作进审计。
 		// imports 是静态段，与 /:name 同层；Gin 优先匹配静态段。

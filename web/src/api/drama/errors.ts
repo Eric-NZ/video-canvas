@@ -56,6 +56,7 @@ export const DRAMA_ERR = {
   adaptMissing: 67027,
   /** 内容触发了模型的安全过滤（Msg 可点名被过滤的资产） */
   contentFiltered: 67029,
+  presetChanged: 67031,
 } as const;
 
 /** 各错误码的兜底文案：后端 Msg 为空时用 */
@@ -100,7 +101,8 @@ export const isRevisionConflict = (error: unknown): boolean =>
   error.code !== DRAMA_ERR.jobBusy &&
   error.code !== DRAMA_ERR.episodeLocked &&
   error.code !== DRAMA_ERR.storyboardHasTakes &&
-  error.code !== DRAMA_ERR.adaptBusy;
+  error.code !== DRAMA_ERR.adaptBusy &&
+  error.code !== DRAMA_ERR.presetChanged;
 
 /** 后端 Msg 写了具体原因、优先展示 Msg 的错误码 */
 const MSG_FIRST = new Set<number>([
@@ -108,6 +110,7 @@ const MSG_FIRST = new Set<number>([
   DRAMA_ERR.stepNotReady,
   DRAMA_ERR.promptInvalid,
   DRAMA_ERR.contextTooSmall,
+  DRAMA_ERR.presetChanged,
 ]);
 
 /**

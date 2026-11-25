@@ -28,6 +28,7 @@ import type {
   JobEstimate,
   MyPrompt,
   MyPromptInput,
+  PromptPresetGroup,
   PreflightInput,
   PromptSettings,
   PromptStep,
@@ -389,6 +390,7 @@ export const estimateSource = async (
         range_end: input.rangeEnd,
         episode_seconds: input.episodeSeconds,
         text_model: input.textModel,
+        ...(input.planPrompt ? { plan_prompt: input.planPrompt } : {}),
       },
       { silent: true },
     ),
@@ -596,6 +598,18 @@ const mapMyPrompt = (raw: BackendMyPrompt): MyPrompt => ({
 export const listPromptTemplates = async (): Promise<PromptTemplate[]> => {
   const res = await service.get<{ items: PromptTemplate[] | null }>("/drama-prompt-templates");
   return res.items ?? [];
+};
+
+export const listPromptPresets = async (): Promise<PromptPresetGroup[]> => {
+  const res = await service.get<{ items: PromptPresetGroup[] }>(
+    "/drama-prompt-presets",
+    undefined,
+    {
+      silent: true,
+    },
+  );
+  if (!Array.isArray(res.items)) throw new Error("内置提示词目录格式无效");
+  return res.items;
 };
 
 /**

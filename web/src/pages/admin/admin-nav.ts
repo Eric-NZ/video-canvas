@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowUpCircle,
+  Clapperboard,
   Coins,
   Film,
   HardDrive,
@@ -42,6 +43,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
       { to: "agent/skills", label: "技能", icon: Lightbulb },
+      { to: "drama-prompt-presets", label: "短剧提示词", icon: Clapperboard },
       { to: "agent/runs", label: "运行记录", icon: History },
       { to: "agent/tokens", label: "分析令牌", icon: KeyRound },
       { to: "cli", label: "命令行（CLI）", icon: Terminal, badge: "beta" },

@@ -176,6 +176,12 @@ export const router = createBrowserRouter([
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },
               { path: "agent/skills", element: <AgentSkillsPage /> },
+              {
+                path: "drama-prompt-presets",
+                lazy: async () => ({
+                  Component: (await import("@/pages/admin/drama-presets")).default,
+                }),
+              },
               // 旧的详情页链接：跳到列表页并打开详情弹窗
               { path: "agent/skills/:name", element: <SkillDetailRedirect /> },
               { path: "agent/steps", element: <AgentStepsPage /> },

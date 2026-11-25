@@ -85,6 +85,7 @@ type DramaModelStreamer interface {
 // DramaDeps 短剧服务依赖，文本步骤用后台的 Agent 模型：Registry 选模型，Streamer 经 LLM 网关请求渠道，Secrets 取渠道 Key。
 type DramaDeps struct {
 	Settings     DramaSettingsRepo
+	Presets      DramaPresetRepo
 	Skills       DramaSkills
 	Repo         DramaRepo
 	Registry     provider.Registry
@@ -105,6 +106,7 @@ type DramaDeps struct {
 // DramaService 短剧项目和固定流水线的业务入口。
 type DramaService struct {
 	settings     DramaSettingsRepo
+	presets      DramaPresetRepo
 	skills       DramaSkills
 	repo         DramaRepo
 	registry     provider.Registry
@@ -124,7 +126,7 @@ type DramaService struct {
 
 // NewDramaService 创建短剧服务，不启动后台任务。
 func NewDramaService(d DramaDeps) *DramaService {
-	return &DramaService{settings: d.Settings, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL, retryDelays: dramaRetryDelays}
+	return &DramaService{settings: d.Settings, presets: d.Presets, skills: d.Skills, repo: d.Repo, registry: d.Registry, streamer: d.Streamer, secrets: d.Secrets, canvas: d.Canvas, bc: d.Broadcaster, credits: d.Credits, canvasAssets: d.CanvasAssets, segments: d.Segments, compose: d.Compose, assets: d.Assets, covers: d.Covers, coverURL: d.CoverURL, retryDelays: dramaRetryDelays}
 }
 
 // Create 校验原文和风格，在同一事务建立项目、画布与首个研读任务。
@@ -158,17 +160,17 @@ func (s *DramaService) Create(ctx context.Context, userID uint64, req *model.Cre
 	if err != nil {
 		return nil, err
 	}
-	if err = checkUnitsFit(snap, parsed.Units[:end]); err != nil {
-		return nil, err
-	}
 	if err = s.checkDramaModels(ctx, &req.VideoModel, &req.ImageModels); err != nil {
 		return nil, err
 	}
 	if err = s.checkDramaImageParams(ctx, req.ImageModels, req.ImageParams); err != nil {
 		return nil, err
 	}
-	settings, err := s.snapshotPrompts(ctx, userID, req.SourceKind, req.Prompts)
+	settings, err := s.snapshotPrompts(ctx, userID, req.SourceKind, req.Prompts, true)
 	if err != nil {
+		return nil, err
+	}
+	if err = checkUnitsFit(snap, parsed.Units[:end], settings["plan"]); err != nil {
 		return nil, err
 	}
 	raw, _ := json.Marshal(settings)
@@ -327,29 +329,24 @@ func (s *DramaService) fillCovers(ctx context.Context, userID uint64, rows []mod
 }
 
 // checkModelFitsDrama 换模型前确认新模型装得下这部剧规划范围内的每个单元，只读字数不读正文。
-func (s *DramaService) checkModelFitsDrama(ctx context.Context, userID, id uint64, key string) error {
+func (s *DramaService) checkModelFitsDrama(ctx context.Context, project *model.DramaProject, key string, plan model.DramaPromptSetting) error {
 	snap, err := s.resolveModel(ctx, key)
 	if err != nil {
 		return err
 	}
-	p, err := s.repo.Project(ctx, userID, id, false)
-	if err != nil {
-		return dramaError(err)
-	}
-	rows, err := s.settings.UnitSizes(ctx, userID, id, 1, p.RangeEnd)
+	rows, err := s.settings.UnitSizes(ctx, project.UserID, project.ID, 1, project.RangeEnd)
 	if err != nil {
 		return err
 	}
-	return checkUnitsFit(snap, sourceUnits(rows))
+	return checkUnitsFit(snap, sourceUnits(rows), plan)
 }
 
 // Update 带版本更新项目，不改变已锁定集正文。
 func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model.UpdateDramaReq) (*model.DramaView, error) {
 	// 1. 模型及来源解析放事务外，入队任务已有正文快照不受影响。
-	if req.TextModel != nil {
-		if err := s.checkModelFitsDrama(ctx, userID, id, *req.TextModel); err != nil {
-			return nil, err
-		}
+	changed, err := s.resolveDramaSettingsPatch(ctx, userID, id, req)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.checkDramaModels(ctx, req.VideoModel, req.ImageModels); err != nil {
 		return nil, err
@@ -368,24 +365,8 @@ func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model
 			return nil, err
 		}
 	}
-	var changed map[string]model.DramaPromptSetting
-	if req.Prompts != nil {
-		p, err := s.repo.Project(ctx, userID, id, false)
-		if err != nil {
-			return nil, dramaError(err)
-		}
-		all, err := s.snapshotPrompts(ctx, userID, p.SourceKind, req.Prompts)
-		if err != nil {
-			return nil, err
-		}
-		changed = map[string]model.DramaPromptSetting{}
-		for key := range req.Prompts {
-			changed[key] = all[key]
-		}
-	}
-
 	// 1. 事务中锁项目并执行revision比较；PATCH遗漏字段保持原值。
-	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		p, err := tx.Project(ctx, userID, id, true)
 		if err != nil {
 			return err
@@ -411,6 +392,35 @@ func (s *DramaService) Update(ctx context.Context, userID, id uint64, req *model
 		return nil, dramaError(err)
 	}
 	return s.Get(ctx, userID, id)
+}
+
+func (s *DramaService) resolveDramaSettingsPatch(ctx context.Context, userID, id uint64, req *model.UpdateDramaReq) (map[string]model.DramaPromptSetting, error) {
+	if req.Prompts == nil && req.TextModel == nil {
+		return nil, nil
+	}
+	project, err := s.repo.Project(ctx, userID, id, false)
+	if err != nil {
+		return nil, dramaError(err)
+	}
+	if project.Revision != req.Revision {
+		return nil, errcode.ErrCanvasConflict
+	}
+	changed, err := s.snapshotPrompts(ctx, userID, project.SourceKind, req.Prompts, false)
+	if err != nil {
+		return nil, err
+	}
+	plan, changedPlan := changed["plan"]
+	if req.TextModel == nil && plan.Source != "preset" {
+		return changed, nil
+	}
+	if !changedPlan {
+		plan = promptSettings(project)["plan"]
+	}
+	key := project.TextModel
+	if req.TextModel != nil {
+		key = *req.TextModel
+	}
+	return changed, s.checkModelFitsDrama(ctx, project, key, plan)
 }
 
 // dramaProjectPatch 仅应用请求中出现的字段，风格始终按最终组合校验。
