@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Reorder, useDragControls } from "motion/react";
-import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Plus } from "lucide-react";
 
 import type { DramaPresetAdminItem, DramaPresetKind } from "@/api/admin/drama-preset/type";
 import { GLASS_PANEL } from "@/components/admin-ui/glass";
@@ -49,33 +49,23 @@ function PresetMedia({ item }: { item: DramaPresetAdminItem }) {
  *
  * 排序手柄压在媒体区左上角，hover 或键盘聚焦才浮出来（触屏没有 hover，常显），
  * 免得 12 张卡上挂 12 个手柄把画面弄乱。
- * 有短剧在用的条目删不掉（后端会拒），这里直接禁用删除并写明原因。
+ * 卡片上没有删除：预设是给创作端用的目录，下架靠停用，历史上被引用过的条目不能凭空消失。
  */
 function PresetCard({
   item,
   busy,
-  canDelete,
   onDragEnd,
   onToggle,
   onEdit,
-  onRemove,
 }: {
   item: DramaPresetAdminItem;
   busy: boolean;
-  /** 仅 super_admin 能删；false 时按钮禁用 */
-  canDelete: boolean;
   onDragEnd: () => void;
   onToggle: () => void;
   onEdit: () => void;
-  onRemove: () => void;
 }) {
   const controls = useDragControls();
   const used = item.project_count > 0;
-  const removeReason = !canDelete
-    ? "只有超级管理员能删除预设"
-    : used
-      ? `已有 ${item.project_count} 部短剧在用，只能停用`
-      : "删除";
 
   return (
     <Reorder.Item
@@ -141,22 +131,9 @@ function PresetCard({
         <span className="text-muted-foreground truncate text-xs tabular-nums">
           {used ? `${item.project_count} 部短剧在用` : "暂无短剧使用"}
         </span>
-        <div className="flex shrink-0">
-          <Button variant="ghost" size="icon-sm" aria-label="编辑" title="编辑" onClick={onEdit}>
-            <Pencil />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="删除"
-            title={removeReason}
-            disabled={!canDelete || used}
-            className="hover:text-destructive"
-            onClick={onRemove}
-          >
-            <Trash2 />
-          </Button>
-        </div>
+        <Button variant="ghost" size="icon-sm" aria-label="编辑" title="编辑" onClick={onEdit}>
+          <Pencil />
+        </Button>
       </div>
     </Reorder.Item>
   );
@@ -171,21 +148,17 @@ export function PresetGrid({
   items,
   kind,
   busyIds,
-  canDelete,
   onReorder,
   onToggle,
   onEdit,
-  onRemove,
   onNew,
 }: {
   items: DramaPresetAdminItem[];
   kind: DramaPresetKind;
   busyIds: ReadonlySet<number>;
-  canDelete: boolean;
   onReorder: (items: DramaPresetAdminItem[]) => void;
   onToggle: (item: DramaPresetAdminItem) => void;
   onEdit: (item: DramaPresetAdminItem) => void;
-  onRemove: (item: DramaPresetAdminItem) => void;
   onNew: () => void;
 }) {
   const [local, setLocal] = useState(items);
@@ -210,11 +183,9 @@ export function PresetGrid({
           key={item.id}
           item={item}
           busy={busyIds.has(item.id)}
-          canDelete={canDelete}
           onDragEnd={commit}
           onToggle={() => onToggle(item)}
           onEdit={() => onEdit(item)}
-          onRemove={() => onRemove(item)}
         />
       ))}
       <button

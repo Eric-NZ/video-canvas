@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  deleteDramaPreset,
   getDramaPresets,
   reorderDramaPresets,
   setDramaPresetEnabled,
@@ -63,17 +62,6 @@ export function usePresetsAdmin(kind: DramaPresetKind) {
     [aliveRef, reload],
   );
 
-  /** 删除一条（调用方先确认过） */
-  const remove = useCallback(
-    async (item: DramaPresetAdminItem) => {
-      await deleteDramaPreset(item.id);
-      if (!aliveRef.current) return;
-      toast("已删除预设");
-      await reload();
-    },
-    [aliveRef, reload],
-  );
-
   /** 拖动排序：先改界面，保存成功后重新拉，失败也按服务端重新拉 */
   const reorder = useCallback(
     async (next: DramaPresetAdminItem[]) => {
@@ -91,5 +79,5 @@ export function usePresetsAdmin(kind: DramaPresetKind) {
     [aliveRef, kind, reload],
   );
 
-  return { items, status, busyIds, reload, toggleEnabled, remove, reorder };
+  return { items, status, busyIds, reload, toggleEnabled, reorder };
 }

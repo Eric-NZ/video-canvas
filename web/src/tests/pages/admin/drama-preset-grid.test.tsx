@@ -6,7 +6,7 @@ import type { PresetGrid as PresetGridType } from "@/pages/admin/drama-presets/p
 
 /**
  * 短剧预设卡片墙：每张卡自带名称、key、引用数，末尾一格是新建；
- * 删除的可用性同时受「有没有短剧在用」和「是不是 super_admin」两条约束。
+ * 卡片上只有编辑和启停，没有删除——预设下架靠停用，历史引用不能被切断。
  */
 
 const item = (patch: Partial<DramaPresetAdminItem> = {}): DramaPresetAdminItem => ({
@@ -41,11 +41,9 @@ describe("短剧预设卡片墙", () => {
         ]}
         kind="style"
         busyIds={new Set()}
-        canDelete
         onReorder={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
-        onRemove={() => {}}
         onNew={() => {}}
       />,
     );
@@ -60,76 +58,62 @@ describe("短剧预设卡片墙", () => {
     await m.unmount();
   });
 
-  test("被短剧引用的条目删不掉，原因写在 title 上；没用过的可以删", async () => {
+  test("卡片上没有删除：不管有没有短剧在用，都只给编辑和启用开关", async () => {
     const m = await dom.mount(
       <PresetGrid
-        items={[
-          item({ id: 1, name: "在用", project_count: 2 }),
-          item({ id: 2, key: "flat_2d", name: "没用过", project_count: 0 }),
-        ]}
+        items={[item({ id: 1, project_count: 5 }), item({ id: 2, key: "flat_2d", name: "没用过" })]}
         kind="style"
         busyIds={new Set()}
-        canDelete
         onReorder={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
-        onRemove={() => {}}
         onNew={() => {}}
       />,
     );
-    const used = m.container.querySelector<HTMLButtonElement>(
-      '[aria-label=删除][title*="只能停用"]',
-    );
-    const free = m.container.querySelector<HTMLButtonElement>('[aria-label=删除][title="删除"]');
-    expect(used?.disabled).toBe(true);
-    expect(used?.title).toBe("已有 2 部短剧在用，只能停用");
-    expect(free?.disabled).toBe(false);
+    expect(m.container.querySelector("[aria-label=删除]")).toBeNull();
+    expect(m.container.querySelectorAll("[aria-label=编辑]").length).toBe(2);
+    expect(m.container.querySelectorAll("[role=switch]").length).toBe(2);
     await m.unmount();
   });
 
-  test("非 super_admin：删除一律禁用，换成权限原因", async () => {
-    const m = await dom.mount(
-      <PresetGrid
-        items={[item({ project_count: 0 })]}
-        kind="style"
-        busyIds={new Set()}
-        canDelete={false}
-        onReorder={() => {}}
-        onToggle={() => {}}
-        onEdit={() => {}}
-        onRemove={() => {}}
-        onNew={() => {}}
-      />,
-    );
-    const remove = m.container.querySelector<HTMLButtonElement>("[aria-label=删除]");
-    expect(remove?.disabled).toBe(true);
-    expect(remove?.title).toBe("只有超级管理员能删除预设");
-    await m.unmount();
-  });
-
-  test("停用的卡打「已停用」标；点编辑、删除、新建各走各的回调", async () => {
+  test("停用的卡打「已停用」标；点编辑、新建各走各的回调", async () => {
     const seen: string[] = [];
     const m = await dom.mount(
       <PresetGrid
         items={[item({ id: 7, enabled: false, project_count: 0 })]}
         kind="style"
         busyIds={new Set()}
-        canDelete
         onReorder={() => {}}
         onToggle={() => {}}
         onEdit={() => seen.push("edit")}
-        onRemove={() => seen.push("remove")}
         onNew={() => seen.push("new")}
       />,
     );
     expect(m.container.textContent).toContain("已停用");
 
     m.container.querySelector<HTMLButtonElement>("[aria-label=编辑]")!.click();
-    m.container.querySelector<HTMLButtonElement>("[aria-label=删除]")!.click();
     [...m.container.querySelectorAll<HTMLButtonElement>("button")]
       .find((b) => b.textContent?.includes("新建画风"))!
       .click();
-    expect(seen).toEqual(["edit", "remove", "new"]);
+    expect(seen).toEqual(["edit", "new"]);
+    await m.unmount();
+  });
+
+  test("开关回调把整条预设交回去，由调用方按当前状态取反", async () => {
+    const seen: number[] = [];
+    const m = await dom.mount(
+      <PresetGrid
+        items={[item({ id: 9, enabled: true })]}
+        kind="style"
+        busyIds={new Set()}
+        onReorder={() => {}}
+        onToggle={(it) => seen.push(it.id)}
+        onEdit={() => {}}
+        onNew={() => {}}
+      />,
+    );
+    m.container.querySelector<HTMLElement>("[role=switch]")!.click();
+    expect(seen).toEqual([9]);
     await m.unmount();
   });
 });

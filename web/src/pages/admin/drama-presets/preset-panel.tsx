@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Clapperboard, Plus } from "lucide-react";
 
 import type { DramaPresetAdminItem, DramaPresetKind } from "@/api/admin/drama-preset/type";
-import { confirm } from "@/components/admin-ui/confirm-dialog";
 import {
   EmptyState,
   EmptyStateActions,
@@ -29,23 +28,15 @@ type EditorState = { open: false } | { open: true; item: DramaPresetAdminItem | 
  * 由页面用 key={kind} 挂载：切到另一个种类时整块重挂载，列表与加载状态自然回到初始值，
  * 不需要在 effect 里手动清空（那样会多一次渲染，也容易出现「上一个种类的卡片闪一下」）。
  * 新建入口就在卡片墙的最后一张虚线卡上，所以列表非空时页面上没有工具条。
+ * 预设只能停用不能删除：下架用启用开关，已建短剧的引用不会被切断。
  * @param kind 题材 / 画风
- * @param canDelete 是否允许删除（只有 super_admin）
  */
-export function PresetPanel({ kind, canDelete }: { kind: DramaPresetKind; canDelete: boolean }) {
+export function PresetPanel({ kind }: { kind: DramaPresetKind }) {
   const admin = usePresetsAdmin(kind);
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const { items, status } = admin;
 
   const openNew = () => setEditor({ open: true, item: null });
-  const askRemove = (item: DramaPresetAdminItem) =>
-    void confirm({
-      title: `删除这个${KIND_LABEL[item.kind]}？`,
-      description: `「${item.name}」删除后开拍设置里不再出现，操作审计里会留下记录。`,
-      confirmLabel: "删除",
-      destructive: true,
-      onConfirm: () => admin.remove(item),
-    });
 
   return (
     <>
@@ -72,11 +63,9 @@ export function PresetPanel({ kind, canDelete }: { kind: DramaPresetKind; canDel
           items={items}
           kind={kind}
           busyIds={admin.busyIds}
-          canDelete={canDelete}
           onReorder={(next) => void admin.reorder(next).catch(() => undefined)}
           onToggle={(item) => void admin.toggleEnabled(item)}
           onEdit={(item) => setEditor({ open: true, item })}
-          onRemove={askRemove}
           onNew={openNew}
         />
       )}

@@ -57,7 +57,6 @@ export const reorderDramaPresets = (kind: DramaPresetKind, ids: number[]) =>
  * 删除预设（仅 super_admin）：有短剧在用会返回 67033，只能停用
  * @param id 预设 ID
  */
-export const deleteDramaPreset = (id: number) => service.delete<null>(`/admin/drama-presets/${id}`);
 
 /**
  * 上传 / 替换画风预览图（admin）：只收 WebP / PNG / JPEG，2MB 以内
