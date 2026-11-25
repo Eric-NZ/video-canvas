@@ -9,18 +9,13 @@ import { caretOffset, isCollapsed, setCaret } from "./caret";
 import { ElementRow } from "./element-row";
 import { EntityPicker, type PickerTarget } from "./entity-picker";
 import { SceneHeading } from "./scene-heading";
-import { ElementToolbar } from "./toolbar";
+import { TypeMenu, type TypeMenuTarget } from "./type-menu";
 import type { ScriptEditorApi } from "./use-script-editor";
 
-/** 光标所在位置：哪一场的哪一行 */
-interface Cursor {
-  sceneKey: string;
-  elKey: string;
-}
-
 /**
- * 结构化剧本编辑器：场次标题 + 元素行。用户不用输入任何格式符号，
- * Enter 按规则接下一种元素（角色后接对白），Tab 切类型，对白永远挂在角色下面，格式乱不了。
+ * 结构化剧本编辑器（稿纸）：场次标题 + 元素行。用户不用输入任何格式符号，
+ * Enter 换行并按规则接下一种元素（角色后接对白），Tab 切类型，对白永远挂在角色下面，格式乱不了。
+ * 没有常驻工具条：光标所在行的左侧页边亮出类型标签，点开改类型、插闪回、新建一场。
  * @param editor 编辑状态与动作（由外层的 useScriptEditor 创建，侧栏也要用同一份）
  * @param no 集号，用来显示场号
  */
@@ -29,7 +24,8 @@ export function ScriptEditor({ editor, no }: { editor: ScriptEditorApi; no: numb
   // 根节点用 state 持有（回调 ref）：弹层定位的函数要在渲染外读它，闭包 state 比闭包 ref 更干净
   const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const appliedFocus = useRef(0);
-  const [cursor, setCursor] = useState<Cursor | null>(null);
+  /** 点页边类型标签打开的类型菜单 */
+  const [typeMenu, setTypeMenu] = useState<TypeMenuTarget | null>(null);
   /** 用户点按钮打开的选择框；新建角色行时的自动打开由 editor.focus 推出，不进这里 */
   const [picked, setPicked] = useState<PickerTarget | null>(null);
 
@@ -115,13 +111,6 @@ export function ScriptEditor({ editor, no }: { editor: ScriptEditorApi; no: numb
     void editor.paste(at.sc.key, at.i, text);
   };
 
-  const onFocus = (e: React.FocusEvent) => {
-    const row = (e.target as HTMLElement).closest<HTMLElement>("[data-el]");
-    if (row?.dataset.scene && row.dataset.el) {
-      setCursor({ sceneKey: row.dataset.scene, elKey: row.dataset.el });
-    }
-  };
-
   if (editor.phase === "loading") {
     return (
       <div className="grid gap-2.5 py-2">
@@ -141,23 +130,13 @@ export function ScriptEditor({ editor, no }: { editor: ScriptEditorApi; no: numb
     );
   }
 
-  const curScene = scenes.find((s) => s.key === cursor?.sceneKey) ?? scenes[0];
-  const curIndex = Math.max(
-    0,
-    curScene.elements.findIndex((e) => e.key === cursor?.elKey),
-  );
   const problem = editor.problem;
+  const typeScene = typeMenu ? scenes.find((s) => s.key === typeMenu.sceneKey) : undefined;
+  const openTypeMenu = (sceneKey: string, elKey: string, anchor: HTMLElement) =>
+    setTypeMenu({ sceneKey, elKey, anchor });
 
   return (
-    <div ref={setRootEl} onKeyDown={onKeyDown} onPaste={onPaste} onFocus={onFocus}>
-      <ElementToolbar
-        els={curScene.elements}
-        index={curIndex}
-        readOnly={readOnly}
-        onType={(type) => editor.setType(curScene.key, curIndex, type)}
-        onMarker={(type) => editor.insertMarker(curScene.key, curIndex, type)}
-        onNewScene={() => editor.addScene(curScene.key)}
-      />
+    <div ref={setRootEl} onKeyDown={onKeyDown} onPaste={onPaste}>
       {editor.status === "conflict" && (
         <div
           role="alert"
@@ -199,7 +178,7 @@ export function ScriptEditor({ editor, no }: { editor: ScriptEditorApi; no: numb
       {scenes.map((scene, si) => {
         const loc = scene.locationId ? locationName.get(scene.locationId) : undefined;
         return (
-          <section key={scene.key} data-scene-key={scene.key} className="mb-7 scroll-mt-16">
+          <section key={scene.key} data-scene-key={scene.key} className="mb-11 scroll-mt-16">
             <SceneHeading
               scene={scene}
               label={`${no}-${si + 1}`}
@@ -230,12 +209,21 @@ export function ScriptEditor({ editor, no }: { editor: ScriptEditorApi; no: numb
                     setPicked({ kind: "character", sceneKey, elKey, anchor })
                   }
                   onExtension={editor.cycleExtension}
+                  onTypeMenu={readOnly ? undefined : openTypeMenu}
                 />
               );
             })}
           </section>
         );
       })}
+      <TypeMenu
+        target={typeScene ? typeMenu : null}
+        els={typeScene?.elements ?? []}
+        onType={(index, type) => typeScene && editor.setType(typeScene.key, index, type)}
+        onMarker={(index, type) => typeScene && editor.insertMarker(typeScene.key, index, type)}
+        onNewScene={() => typeScene && editor.addScene(typeScene.key)}
+        onClose={() => setTypeMenu(null)}
+      />
       <EntityPicker
         target={picker}
         entities={picker?.kind === "location" ? editor.locations : editor.characters}

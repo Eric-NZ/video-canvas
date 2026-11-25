@@ -141,12 +141,14 @@ describe("编辑操作", () => {
     expect(r.scenes[0].elements.map((e) => e.text)).toEqual(["ab", "cd"]);
   });
 
-  test("在空行上按 Enter 切到下一种类型而不是再加一个动作行", () => {
+  test("在空行上按 Enter 也是换行：新起一行，不切换这一行的类型（切类型只用 Tab 和工具条）", () => {
     const s = scene(el("action", "a"), el("action", ""));
     const r = enterAt([s], s.key, 1, 0);
-    // 空动作行切成角色，角色行后面自动补一个对白
-    expect(types(r.scenes[0])).toEqual(["action", "character", "dialogue"]);
-    expect(r.focus).toMatchObject({ pick: true });
+    expect(types(r.scenes[0])).toEqual(["action", "action", "action"]);
+    expect(r.focus).toMatchObject({ key: r.scenes[0].elements[2].key, off: 0 });
+    // 空对白行按 Enter：对白留着，下面接动作
+    const d = scene(el("character", ""), el("dialogue", ""));
+    expect(types(enterAt([d], d.key, 1, 0).scenes[0])).toEqual(["character", "dialogue", "action"]);
   });
 
   test("Backspace：空行删除；行首非空与上一行合并；不能夹断角色和台词", () => {

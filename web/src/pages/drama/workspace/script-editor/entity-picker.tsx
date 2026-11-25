@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import type { ScriptEntityDto, ScriptEntityKind } from "@/api/drama/type";
 import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent } from "@/components/ui/popover";
+import { FLIP_COLLISION } from "./popup-flip";
 
 /** 正在选的是哪一项：角色行的人物，或场次的地点 */
 export interface PickerTarget {
@@ -16,6 +17,9 @@ export interface PickerTarget {
   /** 弹层贴着谁；用函数时等到定位那一刻才去找元素 */
   anchor: HTMLElement | (() => HTMLElement | null) | null;
 }
+
+/** 选项行：和原型一致，行高 36px、圆角跟着弹层走 */
+const ITEM = "data-selected:bg-chrome-hover min-h-9 rounded-xl px-2.5 text-[13px]";
 
 /** 选择框内容：每次打开都重新挂载，搜索词从头开始 */
 function PickerBody({
@@ -34,19 +38,20 @@ function PickerBody({
   const exact = entities.some((e) => e.name === name || e.aliases.includes(name));
   const noun = kind === "character" ? "人物" : "地点";
   return (
-    <Command shouldFilter className="bg-transparent">
+    <Command shouldFilter className="min-h-0 bg-transparent">
       <CommandInput
         value={query}
         onValueChange={setQuery}
         placeholder={`${noun}名或别名`}
         autoFocus
       />
-      <CommandList className="max-h-56">
+      <CommandList className="mt-1.5 max-h-56 min-h-0 [&_[cmdk-list-sizer]]:grid [&_[cmdk-list-sizer]]:gap-0.5">
         {entities.map((e) => (
           <CommandItem
             key={e.id}
             value={`${e.name} ${e.aliases.join(" ")}`}
             onSelect={() => onPick(e.id)}
+            className={ITEM}
           >
             <span className="truncate">{e.name}</span>
             {e.aliases.length > 0 && (
@@ -56,7 +61,12 @@ function PickerBody({
           </CommandItem>
         ))}
         {name && !exact && (
-          <CommandItem forceMount value={`__new ${name}`} onSelect={() => onCreate(name)}>
+          <CommandItem
+            forceMount
+            value={`__new ${name}`}
+            onSelect={() => onCreate(name)}
+            className={ITEM}
+          >
             <Plus className="size-4" />
             新建{noun}：{name}
           </CommandItem>
@@ -90,9 +100,11 @@ export function EntityPicker({
   return (
     <Popover open={!!target} onOpenChange={(open) => !open && onClose()}>
       <PopoverContent
+        collisionAvoidance={FLIP_COLLISION}
         anchor={target?.anchor ?? undefined}
         align="center"
-        className="bg-chrome ring-chrome-border w-60 rounded-2xl p-1.5 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150"
+        // 弹层方向固定朝下，限在可用高度内、列表在里面滚动，否则会伸出窗口把整页撑出滚动条
+        className="bg-chrome ring-chrome-border max-h-(--available-height) w-60 overflow-hidden rounded-2xl p-1.5 shadow-lg ring-1 backdrop-blur-xl backdrop-saturate-150"
       >
         {target && (
           <PickerBody

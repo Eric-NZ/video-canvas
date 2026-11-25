@@ -1,7 +1,7 @@
 import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Loader2, Lock, Users } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { BookOpen, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 import { getEpisode, updateEpisode } from "@/api/drama";
@@ -9,7 +9,8 @@ import { dramaErrorMessage, isRevisionConflict } from "@/api/drama/errors";
 import type { Episode } from "@/api/drama/type";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DURATION, EASE_OUT } from "@/lib/motion";
+import { ChromeButton, ChromePill, ChromeSeparator } from "@/components/canvas/chrome/chrome";
+import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MAX_JOB_EPISODES, nextStep, showEmptyScript } from "@/utils/drama/episodes";
 import type { ScriptDoc } from "@/utils/drama/stages";
@@ -19,7 +20,6 @@ import { DocEditor } from "./doc-editor";
 import { ScriptsDialog } from "./scripts-dialog";
 import { EmptyScript, EpisodeMeta, type MetaField } from "./episode-meta";
 import { useAnalyzing } from "./analyzing-view";
-import { PeopleDialog } from "./script-editor/people-dialog";
 import { ScriptEditor } from "./script-editor";
 import { SceneList } from "./script-editor/scene-list";
 import { SourcePane } from "./script-editor/source-pane";
@@ -68,9 +68,9 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
   const scriptStatus = summary?.scriptStatus;
   /** 已经读到（或自己刚存下）的 revision + 状态：目录里的值和它一致就不用再读，免得每次自动保存都多一次请求 */
   const known = useRef<string | null>(null);
-  const [peopleOpen, setPeopleOpen] = useState(false);
   /** 原著对照分栏是否打开 */
   const [compare, setCompare] = useState(false);
+  const reduceMotion = useReducedMotion();
   /** 剧本编辑器：读取、编辑、自动保存都在这里；侧栏的场次目录和人物弹窗共用同一份 */
   const editor = useScriptEditor(
     drama.id,
@@ -172,7 +172,13 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
 
   return (
     <div className="flex justify-center gap-8 px-6 pt-6 pb-28 max-sm:px-3">
-      <div className={cn("w-full min-w-0", compare ? "max-w-[1240px]" : "max-w-[720px]")}>
+      <div
+        className={cn(
+          // 打开原著对照时内容区平滑变宽，和原著栏展开同时进行
+          "w-full min-w-0 transition-[max-width] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+          compare ? "max-w-[1240px]" : "max-w-[720px]",
+        )}
+      >
         <div className="flex items-center gap-2">
           <h2 className="font-display min-w-0 truncate text-[22px] font-black tracking-wide">
             第 {no} 集 · {summary.title}
@@ -189,9 +195,10 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
             </span>
           )}
           {!empty && editor.phase === "ready" && (
-            <div className="ml-auto flex shrink-0 items-center gap-2">
+            // 统计和「原著对照」合成一条半透明胶囊；人物与地点在左侧栏「人物」页里改
+            <ChromePill className="ml-auto h-9 shrink-0 text-xs">
               <span
-                className="bg-chrome ring-chrome-border text-muted-foreground hidden h-8 items-center gap-3 rounded-full px-3.5 text-xs tabular-nums ring-1 backdrop-blur-xl md:flex"
+                className="text-muted-foreground hidden items-center gap-3 px-2.5 tabular-nums md:flex"
                 title="预估时长按对白每秒 4 个字、动作 / 空镜 / 字幕每条 2 秒估算"
               >
                 <span>
@@ -211,39 +218,21 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
                   {drama.episodeSeconds > 0 && ` / ${drama.episodeSeconds}`} 秒
                 </span>
               </span>
+              <ChromeSeparator className="max-md:hidden" />
               {summary.unitFrom !== null && summary.unitTo !== null && (
-                <Button
-                  variant="outline"
-                  size="sm"
+                <ChromeButton
+                  active={compare}
                   aria-pressed={compare}
-                  className={cn(
-                    "bg-chrome-hover border-chrome-border rounded-full",
-                    compare && "ring-chrome-border ring-1",
-                  )}
+                  className={cn("h-7 px-2.5 text-xs", compare && "bg-chrome-hover")}
                   onClick={() => setCompare((on) => !on)}
                 >
-                  <BookOpen />
+                  <BookOpen className="size-3.5!" />
                   原著对照
-                </Button>
+                </ChromeButton>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-chrome-hover border-chrome-border rounded-full"
-                onClick={() => setPeopleOpen(true)}
-              >
-                <Users />
-                人物与地点
-              </Button>
-            </div>
+            </ChromePill>
           )}
         </div>
-        <PeopleDialog
-          open={peopleOpen}
-          onOpenChange={setPeopleOpen}
-          dramaId={drama.id}
-          editor={editor}
-        />
         {summary.locked && (
           <div className="bg-status-warning/10 mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
             <Lock className="text-status-warning size-4 shrink-0" />
@@ -261,44 +250,65 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
             onGenerate={() => onGenerate(no)}
             onSaveMeta={shared ? undefined : saveMeta}
           />
+        ) : shared ? (
+          // 分享链接只读：数据来自快照，不读结构化接口，直接显示快照里的剧本文本
+          <div className="bg-paper text-paper-foreground ring-border font-display relative mt-4 rounded-t-md rounded-b-[20px] px-[clamp(20px,7vw,88px)] pt-16 pb-24 text-[16px] leading-[2.05] shadow-[0_30px_60px_-30px_rgb(0_0_0/0.6)] ring-1">
+            <DocEditor
+              key={`ep${no}`}
+              value={episode.scriptMd}
+              revision={episode.revision}
+              editable={false}
+              isConflict={isRevisionConflict}
+              onStatus={() => {}}
+              onSave={async () => episode.revision}
+            />
+          </div>
         ) : (
-          <div
-            className={cn(
-              "mt-4 items-start gap-4",
-              compare && summary.unitFrom !== null
-                ? "grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"
-                : "block",
-            )}
-          >
-            {shared ? (
-              // 分享链接只读：数据来自快照，不读结构化接口，直接显示快照里的剧本文本
-              <div className="bg-paper text-paper-foreground ring-border relative rounded-t-md rounded-b-2xl px-[clamp(20px,6vw,72px)] py-12 shadow-[0_24px_60px_-24px_rgb(0_0_0/0.5)] ring-1">
-                <DocEditor
-                  key={`ep${no}`}
-                  value={episode.scriptMd}
-                  revision={episode.revision}
-                  editable={false}
-                  isConflict={isRevisionConflict}
-                  onStatus={() => {}}
-                  onSave={async () => episode.revision}
-                />
-              </div>
-            ) : (
-              <>
-                {compare && summary.unitFrom !== null && summary.unitTo !== null && (
-                  <SourcePane dramaId={drama.id} from={summary.unitFrom} to={summary.unitTo} />
-                )}
-                <div
-                  className={cn(
-                    "bg-paper text-paper-foreground ring-border relative rounded-t-md rounded-b-2xl px-[clamp(20px,6vw,72px)] py-12 shadow-[0_24px_60px_-24px_rgb(0_0_0/0.5)] ring-1 transition-[filter] duration-200",
-                    "before:absolute before:inset-y-0 before:left-9 before:w-px before:bg-[repeating-linear-gradient(180deg,var(--border)_0_3px,transparent_3px_9px)] max-sm:before:hidden",
-                    summary.locked && "saturate-[.7]",
-                  )}
+          <div className="mt-4 flex items-start">
+            {/* 原著栏：宽度从 0 展开到 40%，内容稍后淡入并从左滑进来，稿纸跟着平滑变窄；收起时反过来、更快 */}
+            <AnimatePresence initial={false}>
+              {compare && summary.unitFrom !== null && summary.unitTo !== null && (
+                <motion.div
+                  key="source"
+                  // 吸顶放在最外层：原著栏自己的 sticky 包在动画容器里不起作用
+                  className="sticky top-6 min-w-0 shrink-0 self-start overflow-hidden"
+                  initial={reduceMotion ? false : { width: 0, marginRight: 0 }}
+                  animate={{ width: "40%", marginRight: 16 }}
+                  exit={reduceMotion ? undefined : { width: 0, marginRight: 0 }}
+                  transition={reduceMotion ? { duration: 0 } : SPRING}
                 >
-                  <ScriptEditor editor={editor} no={no} />
-                </div>
-              </>
-            )}
+                  <motion.div
+                    className="p-px"
+                    initial={reduceMotion ? false : { opacity: 0, x: -24 }}
+                    animate={{
+                      opacity: 1,
+                      x: 0,
+                      transition: { duration: DURATION.slow, ease: EASE_OUT, delay: 0.06 },
+                    }}
+                    exit={
+                      reduceMotion
+                        ? undefined
+                        : {
+                            opacity: 0,
+                            x: -24,
+                            transition: { duration: DURATION.exit, ease: EASE_OUT },
+                          }
+                    }
+                  >
+                    <SourcePane dramaId={drama.id} from={summary.unitFrom} to={summary.unitTo} />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div
+              className={cn(
+                // 稿纸：宋体正文、宽行距，左右留出页边给光标所在行的类型标签
+                "bg-paper text-paper-foreground ring-border font-display relative min-w-0 flex-1 rounded-t-md rounded-b-[20px] px-[clamp(20px,7vw,88px)] pt-16 pb-24 text-[16px] leading-[2.05] shadow-[0_30px_60px_-30px_rgb(0_0_0/0.6)] ring-1 transition-[filter] duration-200",
+                summary.locked && "saturate-[.7]",
+              )}
+            >
+              <ScriptEditor editor={editor} no={no} />
+            </div>
           </div>
         )}
       </div>
@@ -442,6 +452,9 @@ export function ScriptArea({
             </TocItem>
             <TocItem active={doc === "characters"} onClick={() => onDoc("characters")}>
               人物
+            </TocItem>
+            <TocItem active={doc === "locations"} onClick={() => onDoc("locations")}>
+              地点
             </TocItem>
             {drama.episodes.map((item) => (
               <TocItem key={item.no} active={!doc && ep === item.no} onClick={() => onEp(item.no)}>

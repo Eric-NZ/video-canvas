@@ -343,7 +343,7 @@ const typeAfter = (els: EditorElement[], i: number, base: ScriptElementType): Sc
 
 /**
  * Enter：在行尾新起一行（角色行已有台词时只是移到台词），在文字中间会把后面的文字带到新行；
- * 空行上按 Enter 等同 Tab，切到下一种类型
+ * 空行上也一样是换行，不切换类型（切类型只用 Tab 和工具条，连按回车不会把行切成意想不到的类型）
  * @param scenes 全部场次
  * @param sceneKey 所在场次
  * @param i 行号
@@ -380,7 +380,6 @@ export const enterAt = (
     ]);
     return { scenes: out, focus: { key: fresh.key, off: 0 } };
   }
-  if (!el.text.trim()) return cycleType(scenes, sceneKey, i, 1);
   const base: ScriptElementType =
     el.type === "parenthetical" ? "dialogue" : el.type === "dialogue" ? "action" : el.type;
   const fresh = blankElement(typeAfter(sc.elements, i, base), el.text.slice(offset));

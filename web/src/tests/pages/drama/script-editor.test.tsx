@@ -105,6 +105,17 @@ async function until(check: () => boolean, ms = 3000) {
   }
 }
 
+/** 点某一行页边的类型标签，等类型菜单弹出，返回菜单里的选项 */
+async function openTypeMenu(row: HTMLElement) {
+  await dom.click(row.querySelector<HTMLButtonElement>("[data-type-menu]"));
+  let items: HTMLButtonElement[] = [];
+  await until(() => {
+    items = [...dom.win.document.querySelectorAll<HTMLButtonElement>("[role=menu] button")];
+    return items.length > 0;
+  });
+  return items;
+}
+
 const rows = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("[data-el]")];
 const textRow = (c: HTMLElement, text: string) =>
   rows(c)
@@ -139,11 +150,16 @@ describe("结构化剧本编辑器", () => {
     expect(m.container.textContent).toContain("城西老码头");
     expect(m.container.querySelector("[data-pick]")?.textContent).toBe("林骁");
     expect(textRow(m.container, "走。")).toBeTruthy();
-    // 工具条：光标还没进任何行时按第一行算，动作行不能直接改成对白
-    const buttons = [...m.container.querySelectorAll<HTMLButtonElement>("[role=toolbar] button")];
-    const dialogue = buttons.find((b) => b.textContent === "对白");
+    // 稿纸上没有常驻工具条；每行页边的类型标签写着这一行的类型，点开是类型菜单
+    expect(m.container.querySelector("[role=toolbar]")).toBeNull();
+    const first = rows(m.container)[0];
+    expect(first.querySelector("[data-type-menu]")?.textContent).toBe("动作");
+    // 动作行不能直接改成对白，原因写在悬停提示里
+    const items = await openTypeMenu(first);
+    const dialogue = items.find((b) => b.textContent === "对白");
     expect(dialogue?.disabled).toBe(true);
     expect(dialogue?.title).toBe("前面要先有角色行");
+    expect(items.some((b) => b.textContent?.includes("新建一场"))).toBe(true);
     await m.unmount();
   });
 
@@ -176,10 +192,8 @@ describe("结构化剧本编辑器", () => {
     await until(() => rows(m.container).length === 3);
     const action = textRow(m.container, "雨。");
     await focusEnd(action);
-    const toolbarRole = [
-      ...m.container.querySelectorAll<HTMLButtonElement>("[role=toolbar] button"),
-    ].find((b) => b.textContent === "角色") as HTMLButtonElement;
-    await dom.click(toolbarRole);
+    const items = await openTypeMenu(action.closest<HTMLElement>("[data-el]")!);
+    await dom.click(items.find((b) => b.textContent === "角色"));
     // 动作行有文字：变成角色行，原来的文字落到后面新建的对白里，所以多一行
     await until(() => rows(m.container).length === 4);
     await until(() => !!m.container.querySelector("[role=alert]"), 4000);
@@ -196,10 +210,40 @@ describe("结构化剧本编辑器", () => {
     expect(dialogue.getAttribute("contenteditable")).toBe("false");
     await press(dialogue, "Enter");
     expect(rows(m.container)).toHaveLength(3);
-    const toolbar = [...m.container.querySelectorAll<HTMLButtonElement>("[role=toolbar] button")];
-    expect(toolbar.every((b) => b.disabled)).toBe(true);
+    // 锁定时没有类型标签；场次标题是纯文字，不出现下拉和占位词
+    expect(m.container.querySelector("[data-type-menu]")).toBeNull();
+    expect(m.container.querySelector("[data-scene-heading] select")).toBeNull();
+    expect(m.container.querySelector("[data-scene-heading]")?.textContent).not.toContain(
+      "选择地点",
+    );
     await dom.flush(1000);
     expect(put.mock.calls).toHaveLength(0);
+    await m.unmount();
+  });
+
+  test("场次标题的时间、内外景用和地点选择同一套弹层，不用原生下拉；选了就保存", async () => {
+    const m = await dom.mount(<Harness />);
+    await until(() => rows(m.container).length === 3);
+    const heading = m.container.querySelector<HTMLElement>("[data-scene-heading]")!;
+    expect(heading.querySelector("select")).toBeNull();
+    const time = heading.querySelector<HTMLButtonElement>("button[aria-label=时间]")!;
+    expect(time.textContent).toBe("夜");
+    await dom.click(time);
+    const option = await (async () => {
+      let found: HTMLButtonElement | undefined;
+      await until(() => {
+        found = [
+          ...dom.win.document.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]"),
+        ].find((b) => b.textContent === "日");
+        return !!found;
+      });
+      return found!;
+    })();
+    await dom.click(option);
+    await until(() => time.textContent === "日");
+    await until(() => put.mock.calls.length === 1);
+    const body = put.mock.calls[0][1] as { scenes: { time_label: string }[] };
+    expect(body.scenes[0].time_label).toBe("日");
     await m.unmount();
   });
 

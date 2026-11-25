@@ -40,7 +40,7 @@ export function EditableText({
       data-text
       onInput={(e) => onInput(e.currentTarget.textContent ?? "")}
       className={cn(
-        "min-h-[1.8em] rounded-md px-2 -mx-2 break-words whitespace-pre-wrap outline-none",
+        "min-h-[2.05em] rounded-md px-2 -mx-2 break-words whitespace-pre-wrap outline-none",
         "empty:before:text-muted-foreground/60 empty:before:content-[attr(data-placeholder)]",
         editable && "focus:bg-chrome-hover",
         className,
