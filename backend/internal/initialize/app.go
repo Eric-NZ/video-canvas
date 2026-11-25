@@ -18,6 +18,7 @@ import (
 	"video-canvas/internal/cache"
 	"video-canvas/internal/canvasdoc"
 	"video-canvas/internal/config"
+	"video-canvas/internal/drama"
 	"video-canvas/internal/handler"
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
@@ -196,6 +197,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 短剧流水线的文本步骤用后台的 Agent 模型（经 LLM 网关直接请求渠道）与账户计价；拆解写画布与角色卡由同一事务提交。
 	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	dramaRepo := repository.NewDramaRepository(db)
+	dramaPresetRepo := repository.NewDramaPresetRepository(db)
+	// 开拍设置的题材 / 画风改由后台维护（drama_presets 表）；目录在 internal/drama 里做 60 秒缓存，
+	// 后台保存后立刻失效。注入失败（表为空、查询报错）时目录自动回落编译期内置 styles.json。
+	drama.SetCatalogSource(func(ctx context.Context) (drama.Catalog, error) {
+		return service.LoadDramaCatalog(ctx, dramaPresetRepo)
+	})
 	dramaCanvasRepo := repository.NewDramaCanvasRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(dramaCanvasRepo, hub)
 	// 片段服务也管片场里的故事板：后端写短剧画布上的故事板节点，任务结束后把结果写回
