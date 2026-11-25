@@ -153,3 +153,40 @@ func (r *DramaPresetRepository) CountProjectsByGenre(ctx context.Context, key st
 	err := r.db.WithContext(ctx).Model(&model.DramaProject{}).Where("genre = ?", key).Count(&n).Error
 	return n, err
 }
+
+// UsageCounts 一次查出某个种类每条预设被多少部短剧使用（软删除的项目不算），键是预设 key。
+//
+// 后台列表每条都要显示「N 部剧在用」，逐条 count 就是 N+1 次查询；这里按列分组一次拿全。
+// 没有项目使用的 key 不会出现在结果里，调用方按 0 处理。
+func (r *DramaPresetRepository) UsageCounts(ctx context.Context, kind string) (map[string]int64, error) {
+	column := "style_key"
+	if kind == model.DramaPresetKindGenre {
+		column = "genre"
+	}
+	var rows []struct {
+		Key string
+		N   int64
+	}
+	err := r.db.WithContext(ctx).Model(&model.DramaProject{}).
+		Select(column + ` AS "key", COUNT(*) AS "n"`).
+		Where(column + " <> ''").
+		Group(column).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		out[row.Key] = row.N
+	}
+	return out, nil
+}
+
+// GetByPreviewKey 按预览图对象 key 反查预设；不存在返回 ErrNotFound。
+// 公开预览路由用它把 URL 里的 key 换成「该图在哪个存储」，key 猜不出来，与 /files 同一套安全性。
+func (r *DramaPresetRepository) GetByPreviewKey(ctx context.Context, key string) (*model.DramaPreset, error) {
+	var row model.DramaPreset
+	if err := r.db.WithContext(ctx).Where("preview_key = ?", key).First(&row).Error; err != nil {
+		return nil, translate(err)
+	}
+	return &row, nil
+}

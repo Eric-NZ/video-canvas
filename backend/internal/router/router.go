@@ -66,6 +66,7 @@ type Handlers struct {
 	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
 	Announcement   *handler.AnnouncementHandler        // 首页公告：用户端读取 + 后台管理
+	DramaPreset    *handler.DramaPresetHandler         // 开拍设置预设（题材 / 画风）：后台维护 + 公开预览图
 	Payment        *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
 	AdminPayment   *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
@@ -99,6 +100,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.GET("/cli/install.sh", h.CLIInstall.Unix)
 		v1.GET("/cli/install.ps1", h.CLIInstall.Windows)
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
+		// 画风预览图：后台新上传的图落在平台存储里，<img> 需要直接引用。
+		// 与 /files 一样不鉴权（key 里是 uuid，猜不出来），但归属是预设而不是素材，所以按 preview_key 反查存储
+		v1.GET("/drama-presets/previews/*filepath", h.DramaPreset.Preview)
 
 		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接
 		v1.Any("/payment/notify/:provider", h.Payment.Notify)
@@ -533,6 +537,18 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		settings.PUT("/announcements/:id", h.Announcement.Update)
 		settings.PUT("/announcements/:id/enabled", h.Announcement.SetEnabled)
 		settings.DELETE("/announcements/:id", h.Announcement.Delete)
+
+		// 开拍设置预设（题材 / 画风）：读与运营类的写 = admin 或 super_admin；
+		// 删除 = 仅 super_admin（一条画风被删，引用它的历史短剧就丢了画风描述，收紧一档）。
+		// 全部写操作进审计。order 是静态段，与 /:id 同层，Gin 优先匹配静态段。
+		adminPresets := auth.Group("/admin/drama-presets", middleware.RequireAdmin(h.AdminRole))
+		adminPresets.GET("", h.DramaPreset.AdminList)
+		adminPresets.POST("", h.DramaPreset.Create)
+		adminPresets.PUT("/order", h.DramaPreset.Reorder)
+		adminPresets.PUT("/:id", h.DramaPreset.Update)
+		adminPresets.PUT("/:id/enabled", h.DramaPreset.SetEnabled)
+		adminPresets.POST("/:id/preview", h.DramaPreset.UploadPreview)
+		adminPresets.DELETE("/:id", superOnly, h.DramaPreset.Delete)
 	}
 
 	// 素材的稳定地址：画布 payload 里存的就是它，永不过期、换存储也不变。

@@ -146,6 +146,15 @@ func TestDramaHandler_Styles(t *testing.T) {
 	if status != 200 || len(data["genres"].([]any)) != 12 || len(data["styles"].([]any)) != 12 {
 		t.Fatalf("风格契约：%+v", body)
 	}
+	// 每条画风都要带 preview_url：前端按它渲染缩略图，不再按 key 拼路径（见 docs/design/短剧预设后台 §5.1）。
+	// 这里没有注入数据库目录，走的是内置兜底，所以地址应是前端静态相对路径。
+	for _, raw := range data["styles"].([]any) {
+		style := raw.(map[string]any)
+		want := "/drama-styles/" + style["key"].(string) + ".webp"
+		if style["preview_url"] != want {
+			t.Fatalf("画风 %v 的 preview_url 应为 %s，实际 %v", style["key"], want, style["preview_url"])
+		}
+	}
 }
 
 func TestDramaHandler_CreateSourceExclusive(t *testing.T) {

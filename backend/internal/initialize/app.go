@@ -203,6 +203,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 	drama.SetCatalogSource(func(ctx context.Context) (drama.Catalog, error) {
 		return service.LoadDramaCatalog(ctx, dramaPresetRepo)
 	})
+	// 预设的后台维护：题材与画风同一套增删改 / 启停 / 排序，写操作进审计；
+	// 画风预览图落默认存储，公开地址走 /api/v1/drama-presets/previews/*（本地直出、私有桶现签名）
+	dramaPresetSvc := service.NewDramaPresetService(service.DramaPresetDeps{
+		Repo: dramaPresetRepo, Stores: storeRegistry, Audit: auditRepo,
+	})
 	dramaCanvasRepo := repository.NewDramaCanvasRepository(db)
 	dramaCanvasSvc := service.NewDramaCanvasService(dramaCanvasRepo, hub)
 	// 片段服务也管片场里的故事板：后端写短剧画布上的故事板节点，任务结束后把结果写回
@@ -451,6 +456,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminSystem:    newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:       handler.NewShowcaseHandler(showcaseSvc),
 		Announcement:   handler.NewAnnouncementHandler(announcementSvc),
+		DramaPreset:    handler.NewDramaPresetHandler(dramaPresetSvc),
 		Payment:        pay.user,
 		AdminPayment:   pay.admin,
 		AdminRole:      roleLookup,

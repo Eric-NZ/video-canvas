@@ -283,6 +283,13 @@ var (
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
 	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
+	// 开拍预设（后台维护的题材 / 画风目录）
+	ErrDramaPresetNotFound   = New(67031, "预设不存在", http.StatusNotFound)
+	ErrDramaPresetInvalid    = New(67032, "预设参数不合法", http.StatusBadRequest)             // 具体原因写进 Msg
+	ErrDramaPresetInUse      = New(67033, "预设仍被短剧使用，只能停用", http.StatusConflict)         // 具体条数写进 Msg
+	ErrDramaPresetOrderBad   = New(67034, "排序列表与现有预设不一致，请刷新后重试", http.StatusBadRequest) // 多了、少了或重复了条目
+	ErrDramaPresetFileFormat = New(67035, "预览图仅支持 WebP / PNG / JPEG", http.StatusBadRequest)
+	ErrDramaPresetFileLarge  = New(67036, "预览图不能超过 2MB", http.StatusRequestEntityTooLarge)
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），
