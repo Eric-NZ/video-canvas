@@ -8,6 +8,8 @@ import {
   updateScriptEntity,
 } from "@/api/drama";
 import type { ScriptEntityDto, ScriptEntityKind } from "@/api/drama/type";
+import { entityArt } from "@/utils/drama/entity-art";
+import type { RefAsset } from "@/utils/drama/segment-assets";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -19,23 +21,38 @@ const initialOf = (name: string) => name.replace(/[“”"「」『』]/g, "").s
 /** 名字对应一个稳定的色相，让没有图的占位也各有颜色 */
 const hueOf = (name: string) => [...name].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 7);
 
+/** 图位比例的范围：角色三视图是横版，场景图也是横版，竖版肖像也有，太极端的限在这个范围里 */
+const MIN_RATIO = 0.6;
+const MAX_RATIO = 2.4;
+
 /**
- * 图位：人物是竖版肖像，地点是横版场景图。资产还没生成时只显示一个暗色的首字和「待生成」状态；
- * 有图时图片淡入盖住首字。
+ * 图位：资产还没生成时只显示一个暗色的首字和「待生成」状态；有图时图片淡入盖住首字，完整显示不裁切。
+ * 图位比例由外面定（一面墙上所有卡片共用，没图的卡片和有图的一样高）。
  * @param name 名字（取首字和色相）
  * @param kind 人物或地点
- * @param src 资产图地址；资产拆解关联了画布节点之后由接口带回，现在没有
+ * @param ratio 图位宽高比
+ * @param src 资产图地址；资产还没出图或对不上名字时没有
+ * @param onRatio 图读出来之后，把它本身的宽高比告诉外面
  */
-function Slot({ name, kind, src }: { name: string; kind: ScriptEntityKind; src?: string }) {
+function Slot({
+  name,
+  kind,
+  ratio,
+  src,
+  onRatio,
+}: {
+  name: string;
+  kind: ScriptEntityKind;
+  ratio: number;
+  src?: string;
+  onRatio: (ratio: number) => void;
+}) {
   const [loaded, setLoaded] = useState(false);
   const hue = hueOf(name);
   return (
     <div
-      className={cn(
-        "relative isolate grid place-items-center overflow-hidden",
-        kind === "character" ? "aspect-[4/5]" : "aspect-video",
-      )}
-      style={{ backgroundColor: `oklch(0.21 0.008 ${hue})` }}
+      className="relative isolate grid place-items-center overflow-hidden"
+      style={{ backgroundColor: `oklch(0.21 0.008 ${hue})`, aspectRatio: ratio }}
     >
       <span
         data-slot-initial
@@ -53,9 +70,13 @@ function Slot({ name, kind, src }: { name: string; kind: ScriptEntityKind; src?:
         <img
           src={src}
           alt={name}
-          onLoad={() => setLoaded(true)}
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            if (w > 0 && h > 0) onRatio(Math.min(MAX_RATIO, Math.max(MIN_RATIO, w / h)));
+            setLoaded(true);
+          }}
           className={cn(
-            "absolute inset-0 size-full scale-[1.04] object-cover opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
+            "absolute inset-0 size-full scale-[1.04] object-contain opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
             loaded && "scale-100 opacity-100",
           )}
         />
@@ -144,12 +165,20 @@ function Aliases({
 function EntityCard({
   entity,
   kind,
+  art,
+  ratio,
+  onRatio,
   busy,
   onPatch,
   onDelete,
 }: {
   entity: ScriptEntityDto;
   kind: ScriptEntityKind;
+  /** 资产图地址；资产还没出图或对不上名字时为 null */
+  art: string | null;
+  /** 图位宽高比和读出新图比例时的回调：一面墙共用 */
+  ratio: number;
+  onRatio: (ratio: number) => void;
   busy: boolean;
   onPatch: (body: {
     name?: string;
@@ -189,7 +218,7 @@ function EntityCard({
       data-entity={entity.id}
       className="bg-card ring-border group relative flex flex-col overflow-hidden rounded-[22px] ring-1 transition-shadow duration-200 hover:shadow-[0_20px_40px_-24px_rgb(0_0_0/0.7)]"
     >
-      <Slot name={entity.name} kind={kind} />
+      <Slot name={entity.name} kind={kind} ratio={ratio} src={art ?? undefined} onRatio={onRatio} />
       <div className="absolute top-2.5 right-2.5 z-10 flex gap-0.5 rounded-full bg-black/35 p-[3px] opacity-0 backdrop-blur-md transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
         {!entity.confirmed && (
           <button
@@ -328,16 +357,20 @@ function NewCard({
  * 人物小传是 AI 写分集剧本时读的人物资料。
  * @param dramaId 短剧 id
  * @param kind 人物或地点
+ * @param assets 画布上的资产节点，卡片上的图从这里按名字找
  * @param onChanged 表改了之后调用（工作台据此刷新分集信息）
  * 人物和地点之间切换时外层要换 key，让读取状态从头开始。
  */
 export function EntityWall({
   dramaId,
   kind,
+  assets,
   onChanged,
 }: {
   dramaId: string;
   kind: ScriptEntityKind;
+  /** 画布上的资产节点：人物、地点按名字找对应的资产图，没有就显示占位 */
+  assets?: readonly RefAsset[];
   onChanged?: () => void;
 }) {
   const [list, setList] = useState<ScriptEntityDto[] | null>(null);
@@ -345,6 +378,9 @@ export function EntityWall({
   const [busy, setBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
+  /** 图位比例：第一张读出来的资产图决定，之后所有卡片都用它；没有图时用默认的 */
+  const [artRatio, setArtRatio] = useState<number | null>(null);
+  const ratio = artRatio ?? (kind === "character" ? 4 / 5 : 16 / 9);
 
   const load = useCallback(async () => {
     const next = await listScriptEntities(dramaId, kind);
@@ -410,7 +446,7 @@ export function EntityWall({
           className={cn(
             "grid gap-[18px]",
             kind === "character"
-              ? "grid-cols-[repeat(auto-fill,minmax(240px,1fr))]"
+              ? "grid-cols-[repeat(auto-fill,minmax(280px,1fr))]"
               : "grid-cols-[repeat(auto-fill,minmax(320px,1fr))]",
           )}
         >
@@ -419,6 +455,9 @@ export function EntityWall({
               key={entity.id}
               entity={entity}
               kind={kind}
+              art={entityArt(entity, kind, assets ?? [])}
+              ratio={ratio}
+              onRatio={(next) => setArtRatio((prev) => prev ?? next)}
               busy={busy === entity.id}
               onPatch={(body) =>
                 void run(entity.id, () => updateScriptEntity(dramaId, kind, entity.id, body))

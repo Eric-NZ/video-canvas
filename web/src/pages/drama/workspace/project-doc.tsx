@@ -1,6 +1,8 @@
 import { FilePenLine } from "lucide-react";
 
+import { useDramaAssets } from "@/hooks/use-drama-assets";
 import { useSharedWorkspace } from "@/hooks/use-shared-workspace";
+import { useDramaJobsStore } from "@/store/drama";
 
 import { cn } from "@/lib/utils";
 import { isRevisionConflict } from "@/api/drama/errors";
@@ -29,6 +31,9 @@ export function ProjectDoc({ doc }: { doc: ScriptDoc }) {
   const shared = useSharedWorkspace();
   const { drama, patch, reportSave, refresh } = useWorkspace();
   const { analyzing, paused } = useAnalyzing();
+  // 资产拆解、出图收尾后重读画布，人物卡、地点卡上的图跟着换
+  const settled = useDramaJobsStore((state) => state.settled[drama.id] ?? 0);
+  const { assets } = useDramaAssets(drama.canvasId, settled);
   const waiting = analyzing || paused;
   if (doc !== "outline") {
     if (shared) {
@@ -72,6 +77,7 @@ export function ProjectDoc({ doc }: { doc: ScriptDoc }) {
         key={doc}
         dramaId={drama.id}
         kind={doc === "characters" ? "character" : "location"}
+        assets={assets}
         onChanged={() => void refresh()}
       />
     );

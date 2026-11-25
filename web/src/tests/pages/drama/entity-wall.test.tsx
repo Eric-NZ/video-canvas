@@ -93,6 +93,62 @@ describe("人物卡片墙", () => {
     await m.unmount();
   });
 
+  test("画布上有同名的角色资产且已出图：卡片换上这张图，没有的继续显示首字", async () => {
+    const assets = [
+      {
+        id: "n1",
+        type: "character",
+        name: "闰土",
+        look: "少年",
+        label: "闰土 · 少年",
+        episodes: [],
+        kind: "character",
+        src: "/art/run.png",
+        generating: false,
+      },
+    ] as unknown as Parameters<typeof EntityWall>[0]["assets"];
+    const m = await dom.mount(<EntityWall dramaId="1a2b" kind="character" assets={assets} />);
+    await until(() => m.container.querySelectorAll("[data-entity]").length === 2);
+    expect(card(m.container, "闰土").querySelector("img")?.getAttribute("src")).toBe(
+      "/art/run.png",
+    );
+    expect(card(m.container, "迅哥儿").querySelector("img")).toBeNull();
+    expect(card(m.container, "迅哥儿").querySelector("[data-slot-initial]")?.textContent).toBe(
+      "迅",
+    );
+    await m.unmount();
+  });
+
+  test("资产图是横版三视图：整面墙的图位都按这张图的比例，没图的卡片一样高，图完整显示不裁切", async () => {
+    const assets = [
+      {
+        id: "n1",
+        type: "character",
+        name: "闰土",
+        look: "",
+        label: "闰土",
+        episodes: [],
+        kind: "character",
+        src: "/art/sheet.png",
+        generating: false,
+      },
+    ] as unknown as Parameters<typeof EntityWall>[0]["assets"];
+    const m = await dom.mount(<EntityWall dramaId="1a2b" kind="character" assets={assets} />);
+    await until(() => m.container.querySelectorAll("[data-entity]").length === 2);
+    const ratioOf = (name: string) =>
+      card(m.container, name).querySelector<HTMLElement>("[data-slot-initial]")!.parentElement!
+        .style.aspectRatio;
+    expect(Number(ratioOf("迅哥儿"))).toBeCloseTo(0.8); // 图还没读出来：默认竖版
+    const img = card(m.container, "闰土").querySelector("img")!;
+    Object.defineProperty(img, "naturalWidth", { value: 1600 });
+    Object.defineProperty(img, "naturalHeight", { value: 900 });
+    img.dispatchEvent(new dom.win.Event("load"));
+    await until(() => Math.abs(Number(ratioOf("迅哥儿")) - 1600 / 900) < 0.01);
+    expect(Number(ratioOf("闰土"))).toBeCloseTo(1600 / 900);
+    expect(img.className).toContain("object-contain");
+    await m.unmount();
+  });
+
   test("改名、加别名、改小传都写回人物表，并通知工作台刷新", async () => {
     let changed = 0;
     const m = await dom.mount(
