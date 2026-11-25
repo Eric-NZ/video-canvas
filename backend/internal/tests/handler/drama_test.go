@@ -143,7 +143,7 @@ func TestDramaHandler_Validation(t *testing.T) {
 func TestDramaHandler_Styles(t *testing.T) {
 	status, body := characterCall(t, httpDramaRouter(), "GET", "/drama-styles", "")
 	data := responseData(t, body)
-	if status != 200 || len(data["genres"].([]any)) != 12 || len(data["styles"].([]any)) != 11 {
+	if status != 200 || len(data["genres"].([]any)) != 12 || len(data["styles"].([]any)) != 12 {
 		t.Fatalf("风格契约：%+v", body)
 	}
 }

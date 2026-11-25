@@ -30,6 +30,7 @@ const STYLE_PREVIEW_KEYS = new Set([
   "real_historical",
   "real_city_film",
   "real_sweet_romance",
+  "hyperreal_cg_3d",
 ]);
 
 /** 浮层里的小标题 */

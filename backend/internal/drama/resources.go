@@ -23,7 +23,7 @@ type Style struct {
 	Prompt string `json:"prompt"`
 }
 
-// StylesView 是风格接口返回的十二类题材和十一种画风。
+// StylesView 是风格接口返回的十二类题材和十二种画风。
 type StylesView struct {
 	Genres []Genre `json:"genres"`
 	Styles []Style `json:"styles"`
