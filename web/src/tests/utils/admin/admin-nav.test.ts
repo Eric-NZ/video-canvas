@@ -52,12 +52,13 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、任务队列、模型渠道、插件、技能、运行记录、分析令牌、命令行；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
+  test("AI 配置分组：总览、任务队列、模型渠道、短剧预设、插件、技能、运行记录、分析令牌、命令行；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
       ["ai/queue", "任务队列"],
       ["ai/channels", "模型渠道"],
+      ["drama-presets", "短剧预设"],
       ["ai/plugins", "插件"],
       ["agent/skills", "技能"],
       ["agent/runs", "运行记录"],
@@ -65,6 +66,15 @@ describe("后台导航", () => {
       ["cli", "命令行（CLI）"],
     ]);
     expect(ADMIN_NAV.some((item) => item.label === "Agent")).toBe(false);
+  });
+
+  test("短剧预设紧跟在模型渠道下面，面包屑落在同一分组", () => {
+    const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
+    const paths = group?.items.map((item) => item.to) ?? [];
+    expect(paths.indexOf("drama-presets")).toBe(paths.indexOf("ai/channels") + 1);
+    const found = findNav("/admin/drama-presets");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("短剧预设");
   });
 
   test("技能页的面包屑落在 AI 配置分组下，路径不变", () => {
