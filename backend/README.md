@@ -316,6 +316,23 @@ docker compose logs agent plugin-runner | grep '<编号>'
 
 `code` 为 0 表示成功，错误码定义在 `internal/pkg/errcode`。
 
+### 短剧预设接口（admin / super_admin）
+
+维护开拍设置里的题材与画风目录（`drama_presets`，`kind` 为 `genre` / `style`）。写操作会立刻失效进程内目录缓存，
+开拍设置马上生效；多副本下其它实例最迟 60 秒跟上。删除只有 `super_admin` 能调，界面上没有入口 —— 预设是给创作端用的
+目录，`drama_projects` / `drama_scripts` 存的是 `style_key` 字符串、没有外键，下架走停用。
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | /api/v1/admin/drama-presets?kind= | admin | 列表（含 `project_count` 引用数、`preview_url`、`enabled`、`sort_order`） |
+| POST | /api/v1/admin/drama-presets | admin | 新建 `{kind, key, name, prompt?, preview_url?, enabled?}`；key 只允许小写字母数字下划线、≤32 位、不能是保留值 `custom`（67032）；题材不许带描述与预览图（67032） |
+| PUT | /api/v1/admin/drama-presets/:id | admin | 改 `{name?, prompt?, preview_url?, enabled?}`，key 不可改；手填 `preview_url` 会同时清掉预览图定位列 |
+| PUT | /api/v1/admin/drama-presets/:id/enabled | admin | 启停 `{enabled}` |
+| PUT | /api/v1/admin/drama-presets/order | admin | 整组排序 `{kind, ids[]}`，须覆盖该种类的全部条目（67034） |
+| POST | /api/v1/admin/drama-presets/:id/preview | admin | 上传画风预览图（multipart，WebP / PNG / JPEG，≤2MB；67035 / 67036），返回新的 `preview_url` |
+| DELETE | /api/v1/admin/drama-presets/:id | **super_admin** | 删除（67031）；有短剧在用返回 67033 并带条数，只能停用 |
+| GET | /api/v1/drama-presets/previews/*filepath | 公开 | 预览图直出（本地存储）或 302 到现签名地址（对象存储）；不存在的 key 404 |
+
 ### 后台小镜的运营与系统管理工具
 
 后台模式新增 `admin_query`：查询任务队列与吞吐、画布/后台运行摘要、用户、使用记录及汇总、操作审计，以及存储和图片服务。支持分页和时间、用户、模型、状态等相应筛选，单页最多 100 条。`admin_get_resource` 读取用户、注册设置、邮件服务、存储或图片服务的安全快照及 `body_sha256`。
