@@ -1,8 +1,5 @@
 # 安装：pip install pre-commit（或 brew install pre-commit），然后在仓库根目录执行 pre-commit install
 # 手动全量运行：pre-commit run --all-files
-# 同时装 commit-msg 钩子（检查 CHANGELOG）；之前只装过 pre-commit 的需要重新执行一次 pre-commit install
-default_install_hook_types: [pre-commit, commit-msg]
-# 没写 stages 的钩子只在 pre-commit 阶段跑，避免 commit-msg 阶段把消息文件当成代码去检查
 default_stages: [pre-commit]
 
 repos:
@@ -92,11 +89,3 @@ repos:
         language: system
         files: ^web/(src/.*\.(ts|tsx)|tsconfig.*\.json)$
         pass_filenames: false
-
-      # 本地校验暂存的日志文件格式，由 PR 检查是否需要新增日志。
-      - id: changelog
-        name: Changelog fragments
-        entry: node scripts/changelog-check.mjs commit-msg
-        language: system
-        stages: [commit-msg]
-        always_run: true

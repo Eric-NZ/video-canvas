@@ -75,14 +75,11 @@ docs(design): 3D 导演台补充面板可拖动调节的设计记录
 
 ### 版本日志（CHANGELOG）
 
-版本日志随改动编写。包含 `feat`、`fix`、`perf` 或破坏性变更（`type!:` 或正文有 `BREAKING CHANGE:`）的 PR 在 `changelog.d/` 新增日志文件。
+版本日志在发版时统一整理，开发时**不用改** `CHANGELOG.md`。维护者发版时会读上个版本以来合并的 PR 标题、描述和改动，写成面向用户的版本日志。为了让日志写得准，请：
 
-- 文件名用 `<改动名>.<类别>.md`。改动名使用小写英文字母、数字和连字符。例如 `changelog.d/storyboard-legacy-assets.fix.md`。
-- 类别用 `feat`（新增）、`perf`（改进）、`fix`（修复）、`deprecated`（废弃）、`breaking`（破坏性变更）或 `docs`（文档）。
-- 正文写一行简体中文，直接描述用户能感受到的结果。例如「提取资产时遇到模型繁忙，会自动稍等再试，不再直接失败。」
-- 确实没有用户可感知的变化时，在提交正文写 `Changelog: skip`，或请维护者给 PR 打 `skip-changelog` 标签。
-
-本地 `commit-msg` 钩子校验暂存的日志文件格式，并拦截写进 `CHANGELOG.md` `[Unreleased]` 的条目。PR 上的 `Changelog` 检查确认整个 PR 是否需要新增日志；除发版外，PR 不能删除 `changelog.d/` 里已有的日志（确需撤掉时请维护者打 `skip-changelog` 标签）。
+- PR 标题按提交信息格式写清楚，例如 `fix(storyboard): 旧画布的资产在分镜里不再丢失`。
+- 用户能感受到的改动，在 PR 描述的「用户能感受到的变化」里用一两句大白话写结果，例如「提取资产时遇到模型繁忙，会自动稍等再试，不再直接失败。」不用写函数名、文件名这类实现细节；没有就写「无」。
+- 不要改 `CHANGELOG.md` 和 `VERSION`。
 
 ## 提交前自检
 
@@ -133,7 +130,7 @@ npm test
 
 ## 发版
 
-发版时由维护者把 `changelog.d/` 汇总到 `CHANGELOG.md`，更新 `VERSION` 并打 `v*` 标签。流程见[开发指南](docs/development.md#持续集成与发布)。
+发版由维护者完成（整理版本日志写入 `CHANGELOG.md`、更新 `VERSION`、打 `v*` 标签）。贡献者只需在 PR 描述里写清用户能感受到的变化，不要改 `CHANGELOG.md` 和 `VERSION`。流程说明见 [开发指南](docs/development.md#持续集成与发布)。
 
 ## 行为准则
 

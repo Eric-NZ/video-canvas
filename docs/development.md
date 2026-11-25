@@ -150,17 +150,16 @@ feat(canvas): 支持节点分组
 docs: 更新部署说明
 ```
 
-用户可感知的改动在开发时写入独立的 `changelog.d/` 文件，格式见[贡献指南](../CONTRIBUTING.md#版本日志changelog)。
+版本日志在发版时根据合并的 PR 统一整理，开发时不改 [CHANGELOG.md](../CHANGELOG.md)，规则见 [贡献指南](../CONTRIBUTING.md#版本日志changelog)。
 
 分支命名、提交粒度、PR 描述、Issue 填写和评审合并流程见 [贡献指南](../CONTRIBUTING.md)。
 
 ## 持续集成与发布
 
 - 推送到 `master` 时，CI 运行前后端的 lint、构建和测试。
-- PR 有 `feat`、`fix`、`perf` 或破坏性变更时，Changelog 检查要求新增日志文件。本地 `commit-msg` 钩子校验暂存文件的格式。
 - 数据库迁移只能向前：最近一个 `v*` 标签里已有的迁移文件不能修改、删除或改名，要修正就新增迁移文件，否则 CI 不通过。
 - 推送 `v*` 标签时，CI 先校验标签、`VERSION` 和 [CHANGELOG.md](../CHANGELOG.md) 是否一致，再构建 `video-canvas-backend` 和 `video-canvas-web` 两个镜像发布到 GHCR，成功后创建 GitHub Release。
-- 发版前运行 `node scripts/changelog-check.mjs release 0.7.3 2026-11-25` 预览版本日志，把版本号和日期换成目标发版的信息。加上 `--write` 会把版本段落写入 `CHANGELOG.md`，更新 `VERSION` 并移除已汇总的文件。检查差异并一起提交，再创建和推送标签。
+- 因此发版时先根据上个版本以来合并的 PR 整理出 `## [x.y.z] - 日期` 段落（顶部保留空的 `[Unreleased]`），把 `VERSION` 改为目标版本，一起提交，再创建并推送标签。这一步由 `video-canvas-release` 技能完成。
 
 ## 相关文档
 

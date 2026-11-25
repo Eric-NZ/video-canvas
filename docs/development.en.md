@@ -150,17 +150,16 @@ feat(canvas): 支持节点分组
 docs: 更新部署说明
 ```
 
-Record user-visible changes in individual files under `changelog.d/`. See the [contributing guide](../CONTRIBUTING.en.md#changelog).
+Release notes are compiled from merged PRs at release time; do not edit [CHANGELOG.md](../CHANGELOG.md) during development. See the [contributing guide](../CONTRIBUTING.en.md#changelog).
 
 Branch naming, commit granularity, PR descriptions, how to file issues, and the review and merge process are in the [contributing guide](../CONTRIBUTING.en.md).
 
 ## CI and releases
 
 - Pushes to `master` run lint, build and tests for both backend and frontend.
-- The PR's `Changelog` check requires a new entry for `feat`, `fix`, `perf` or breaking changes. The local `commit-msg` hook validates staged entry files.
 - Migrations only move forward: migration files included in the latest `v*` tag must not be modified, deleted or renamed. Add a new migration instead, or CI will fail.
 - Pushing a `v*` tag makes CI check that the tag, `VERSION` and [CHANGELOG.md](../CHANGELOG.md) agree, build the `video-canvas-backend` and `video-canvas-web` images, publish them to GHCR, and then create a GitHub Release.
-- Preview release notes with `node scripts/changelog-check.mjs release 0.7.3 2026-11-25`, substituting the target version and release date. Add `--write` to insert the new section in `CHANGELOG.md`, update `VERSION` and remove the collected entries. Review and commit these changes together before creating and pushing the tag.
+- So when releasing, compile a `## [x.y.z] - date` section from the PRs merged since the last version (keeping an empty `[Unreleased]` on top), update `VERSION`, commit both, then create and push the tag. The `video-canvas-release` skill does this.
 
 ## Related documents
 

@@ -75,14 +75,11 @@ Notes:
 
 ### Changelog
 
-Write a separate entry in `changelog.d/` for each PR with a `feat`, `fix`, `perf` or breaking change (`type!:` or `BREAKING CHANGE:` in the commit body).
+The changelog is written at release time, so **do not edit** `CHANGELOG.md` during development. When releasing, maintainers read the titles, descriptions and changes of the PRs merged since the last version and turn them into user-facing notes. To keep the notes accurate:
 
-- Name the file `<change-name>.<category>.md`. Use lowercase letters, digits and hyphens for the change name, as in `storyboard-legacy-assets.fix.md`.
-- Use one of these categories: `feat`, `perf`, `fix`, `deprecated`, `breaking` or `docs`.
-- Write one line in Simplified Chinese that describes what users will notice.
-- For changes with no user-visible impact, add `Changelog: skip` to the commit body or ask a maintainer to apply the `skip-changelog` PR label.
-
-The local `commit-msg` hook validates staged entry files and rejects entries added under `[Unreleased]` in `CHANGELOG.md`. The PR's `Changelog` check enforces the entry requirement for the whole PR; apart from releases, a PR may not delete existing entries in `changelog.d/` (ask a maintainer for the `skip-changelog` label if you really need to).
+- Give the PR a clear title in commit-message format, e.g. `fix(storyboard): 旧画布的资产在分镜里不再丢失`.
+- For user-visible changes, describe the result in a sentence or two of plain language under "用户能感受到的变化" (user-visible changes) in the PR description. Skip function and file names; write "无" (none) if there is nothing.
+- Do not edit `CHANGELOG.md` or `VERSION`.
 
 ## Pre-submit checks
 
@@ -133,7 +130,7 @@ Running `pre-commit install` is recommended; it runs most of these checks on com
 
 ## Releases
 
-Maintainers collect `changelog.d/` entries into `CHANGELOG.md`, update `VERSION` and tag the release. See the [development guide](docs/development.en.md#ci-and-releases).
+Maintainers handle releases (writing the release notes into `CHANGELOG.md`, updating `VERSION`, tagging `v*`). In a PR, describe user-visible changes in the description; do not touch `CHANGELOG.md` or `VERSION`. See the [development guide](docs/development.en.md#ci-and-releases).
 
 ## Code of conduct
 

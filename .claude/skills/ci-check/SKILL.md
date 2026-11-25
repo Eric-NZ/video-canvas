@@ -18,7 +18,8 @@ agent 与 cli（都是 oxfmt --check + oxlint + typecheck + test + build）、we
    把 `core.hooksPath` 置空。被拦就修问题，钩子本身坏了就停下来告诉用户。
 3. **pre-commit**：`.pre-commit-config.yaml` 在提交时查暂存文件的 oxfmt（web / agent）、整个 web 的 oxlint / tsc、
    整个 agent 的 oxlint、后端 gofmt 与 golangci-lint 增量。
-4. **CHANGELOG**。包含 `feat`、`fix`、`perf` 或破坏性变更的 PR 要在 `changelog.d/` 新增日志文件。本地 `commit-msg` 钩子校验暂存文件的格式。确实没有用户可感知变化时可在提交正文加 `Changelog: skip`。
+4. **CHANGELOG**：开发时不改 `CHANGELOG.md`，版本日志由发版流程根据合并的 PR 整理。开 PR 时在描述的
+   「用户能感受到的变化」里用大白话写清结果，没有就写「无」。
 
 ## 交付前流程
 
