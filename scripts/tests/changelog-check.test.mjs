@@ -9,11 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("../changelog-check.mjs", import.meta.url));
 
-import {
-  lintUnreleased,
-  needsChangelog,
-  newUnreleasedEntries,
-} from "../changelog-check.mjs";
+import { lintUnreleased, needsChangelog } from "../changelog-check.mjs";
 
 const changelog = (unreleased, released = "### 修复\n\n- 旧的修复。\n") =>
   `# Changelog\n\n所有重要变更都会记录在此文件中。\n\n## [Unreleased]\n${unreleased}\n## [0.6.16] - 2026-11-17\n\n${released}`;
@@ -50,24 +46,6 @@ describe("needsChangelog", () => {
 
   test("忽略 git 注释行", () => {
     assert.equal(needsChangelog("refactor: 拆函数\n# feat: 这是注释"), false);
-  });
-});
-
-describe("newUnreleasedEntries", () => {
-  test("返回 Unreleased 里新增的条目", () => {
-    const before = changelog("\n### 新增\n\n- 已有条目。\n");
-    const after = changelog("\n### 新增\n\n- 已有条目。\n- 新条目。\n");
-    assert.deepEqual(newUnreleasedEntries(before, after), ["- 新条目。"]);
-  });
-
-  test("只改已发布版本的段落不算", () => {
-    const before = changelog("\n");
-    const after = changelog("\n", "### 修复\n\n- 旧的修复。\n- 补写到旧版本。\n");
-    assert.deepEqual(newUnreleasedEntries(before, after), []);
-  });
-
-  test("旧文件不存在时视为空", () => {
-    assert.deepEqual(newUnreleasedEntries("", changelog("\n### 修复\n\n- 一条。\n")), ["- 一条。"]);
   });
 });
 
@@ -164,8 +142,10 @@ describe("日志文件工作流", () => {
   });
 
   test("预览保留文件，写入按类别汇总并消费日志文件", (t) => {
-    const { cwd, read, run, write } = fixture(t);
+    const { cwd, git, read, run, write } = fixture(t);
     write("changelog.d/group.feat.md", "支持节点分组。\n");
+    git("add", ".");
+    git("commit", "-qm", "feat: 支持节点分组");
     const before = read("CHANGELOG.md");
     const preview = run("release", "1.1.0-beta.1", "2026-11-25");
     assert.equal(preview.status, 0, preview.stderr);
@@ -183,13 +163,98 @@ describe("日志文件工作流", () => {
   });
 
   test("发版遇到无效日志时保留版本和原始文件", (t) => {
-    const { read, run, write } = fixture(t);
+    const { git, read, run, write } = fixture(t);
     write("changelog.d/invalid.fix.md", "\n");
+    git("add", ".");
+    git("commit", "-qm", "chore: 无效日志");
     const before = read("CHANGELOG.md");
     const result = run("release", "1.1.0", "2026-11-25", "--write");
     assert.match(result.stderr, /invalid\.fix\.md/);
     assert.equal(read("CHANGELOG.md"), before);
     assert.equal(read("VERSION"), "1.0.0\n");
     assert.equal(read("changelog.d/previous.fix.md"), "修复已有问题。\n");
+  });
+
+  test("目录里的点文件（.DS_Store、.gitkeep）不影响检查和发版", (t) => {
+    const { git, run, write } = fixture(t);
+    write("changelog.d/.gitkeep", "");
+    git("add", ".");
+    git("commit", "-qm", "chore: 保留目录");
+    write("changelog.d/.DS_Store", "\0finder");
+    assert.equal(run("lint").status, 0, run("lint").stderr);
+    const preview = run("release", "1.1.0", "2026-11-25");
+    assert.equal(preview.status, 0, preview.stderr);
+    assert.doesNotMatch(preview.stdout, /DS_Store|gitkeep/);
+  });
+
+  test("发版遇到未提交的日志文件时拒绝执行，不发布也不删除", (t) => {
+    const { cwd, read, run, write } = fixture(t);
+    write("changelog.d/wip.feat.md", "还没合并的功能。\n");
+    const result = run("release", "1.1.0", "2026-11-25", "--write");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /wip\.feat\.md/);
+    assert.equal(read("changelog.d/wip.feat.md"), "还没合并的功能。\n");
+    assert.equal(read("VERSION"), "1.0.0\n");
+    rmSync(join(cwd, "changelog.d/wip.feat.md"));
+    write("changelog.d/previous.fix.md", "改了但没提交。\n");
+    assert.match(run("release", "1.1.0", "2026-11-25").stderr, /previous\.fix\.md/);
+  });
+
+  test("PR 改了 [Unreleased] 时要求它保持为空且格式正确", (t) => {
+    const { git, read, run, write } = fixture(t);
+    const base = git("rev-parse", "HEAD");
+    write("CHANGELOG.md", read("CHANGELOG.md").replace("## [Unreleased]\n", "## [Unreleased]\n\n### 修复\n\n修复保存问题\n"));
+    git("add", ".");
+    git("commit", "-qm", "docs: 写日志");
+    assert.match(run("pr", base).stderr, /changelog\.d|Unreleased/);
+  });
+
+  test("PR 不能删除待发布的日志，发版、改类别和 skip-changelog 除外", (t) => {
+    const { cwd, git, run, write } = fixture(t);
+    const base = git("rev-parse", "HEAD");
+    write("changelog.d/mine.fix.md", "修复我的问题。\n");
+    git("rm", "-q", "changelog.d/previous.fix.md");
+    git("add", ".");
+    git("commit", "-qm", "fix: 修复我的问题");
+    const result = run("pr", base);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /previous\.fix\.md/);
+    const skipped = spawnSync(process.execPath, [script, "pr", base], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, CHANGELOG_SKIP: "1" },
+    });
+    assert.equal(skipped.status, 0, skipped.stderr);
+
+    git("reset", "-q", "--hard", base);
+    git("mv", "changelog.d/previous.fix.md", "changelog.d/previous.feat.md");
+    git("commit", "-qm", "docs: 调整日志类别");
+    assert.equal(run("pr", base).status, 0, run("pr", base).stderr);
+
+    git("reset", "-q", "--hard", base);
+    assert.equal(run("release", "1.1.0", "2026-11-25", "--write").status, 0);
+    git("add", "-A");
+    git("commit", "-qm", "docs: update changelog for v1.1.0");
+    assert.equal(run("pr", base).status, 0, run("pr", base).stderr);
+  });
+
+  test("基准提交没有 CHANGELOG.md 时视为空", (t) => {
+    const { git, read, run, write } = fixture(t);
+    const content = read("CHANGELOG.md");
+    git("rm", "-q", "CHANGELOG.md");
+    git("commit", "-qm", "chore: 暂时去掉");
+    const base = git("rev-parse", "HEAD");
+    write("CHANGELOG.md", content);
+    git("add", ".");
+    git("commit", "-qm", "chore: 加回");
+    assert.equal(run("pr", base).status, 0, run("pr", base).stderr);
+  });
+
+  test("本地钩子拦截暂存到 [Unreleased] 的新条目", (t) => {
+    const { git, read, run, write } = fixture(t);
+    write("message", "fix: 修复保存\n");
+    write("CHANGELOG.md", read("CHANGELOG.md").replace("## [Unreleased]\n", "## [Unreleased]\n\n### 修复\n\n- 修复保存。\n"));
+    git("add", "CHANGELOG.md");
+    assert.match(run("commit-msg", "message").stderr, /changelog\.d/);
   });
 });

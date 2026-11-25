@@ -42,7 +42,7 @@ metadata:
 
 1. 进入项目目录，读取 `git status --short --branch`、`VERSION`、远端标签和当前提交。不要覆盖用户已有的未提交改动；工作区不干净时先说明并停止。
 2. 根据上面的规则计算目标版本。确认本地和远端不存在同名 `v<version>` 标签。
-3. 运行 `node scripts/changelog-check.mjs release <version> <YYYY-MM-DD>` 预览待发布条目。目录中无待发布条目时向用户说明。
+3. 运行 `node scripts/changelog-check.mjs release <version> <YYYY-MM-DD>` 预览待发布条目。脚本只汇总已提交的日志文件，`changelog.d/` 有未提交或改动过的文件时会拒绝执行。目录中无待发布条目时向用户说明。
 4. 找到最近的发布标签 `v<previous-version>`，对照 `v<previous-version>..HEAD` 中需要版本日志的非合并提交，核对是否遗漏了用户可感知的变化。
 5. 以预览为基础整理草稿，合并重复条目。把草稿和待确认的遗漏展示给用户，待其确认后写入。
 6. 运行预览命令并加上 `--write`，让脚本写入新版本段落、更新 `VERSION` 并移除已汇总的日志文件。把新版本段落调整为已确认的内容。若文件使用版本比较链接，同步更新对应链接。

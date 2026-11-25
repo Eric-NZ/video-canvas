@@ -38,11 +38,11 @@ function unreleasedLines(text) {
   return end === -1 ? rest : rest.slice(0, end);
 }
 
-/** newText 的 [Unreleased] 里有、oldText 里没有的条目。 */
-export function newUnreleasedEntries(oldText, newText) {
-  const entries = (text) => (unreleasedLines(text) || []).filter((line) => line.startsWith("- ")).map((line) => line.trim());
-  const old = new Set(entries(oldText));
-  return entries(newText).filter((entry) => !old.has(entry));
+/** [Unreleased] 段的归一化内容，用来判断有没有被改动；文件不存在时为空串。 */
+function unreleasedSnapshot(text) {
+  if (!text) return "";
+  const lines = unreleasedLines(text);
+  return lines === null ? null : lines.join("\n").trim();
 }
 
 /** [Unreleased] 的格式问题：只允许约定的小节名，条目写在小节下、以 "- " 开头，续行缩进。 */
@@ -71,10 +71,37 @@ function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
 }
 
+/** 读取某个版本里的文件；文件不存在时返回空串。 */
+function gitShowOrEmpty(spec) {
+  try {
+    return execFileSync("git", ["show", spec], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return "";
+  }
+}
+
+/** 以点开头的文件（.DS_Store、.gitkeep 等）不是日志，一律忽略。 */
+function isFragmentName(path) {
+  return !path.split("/").pop().startsWith(".");
+}
+
 function changedFragments(filter, ...revisions) {
-  return git("diff", "--no-renames", "-z", "--name-only", "--diff-filter=" + filter, ...revisions, "--", DIRECTORY)
+  // 删除检查要识别改名（例如改类别），其余检查按文件逐个校验。
+  const renames = filter === "D" ? "--find-renames" : "--no-renames";
+  return git("diff", renames, "-z", "--name-only", "--diff-filter=" + filter, ...revisions, "--", DIRECTORY)
     .split("\0")
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(isFragmentName);
+}
+
+/** 改了 [Unreleased] 时要求它格式正确且为空：未发布的日志应写到 changelog.d/。 */
+function checkUnreleasedUntouched(before, after) {
+  if (unreleasedSnapshot(before) === unreleasedSnapshot(after)) return;
+  const errors = lintUnreleased(after);
+  if (errors.length) throw new Error(errors.join("\n"));
+  if (unreleasedSnapshot(after)) {
+    throw new Error("请把未发布的日志写到 " + DIRECTORY + "/，" + FILE + " 的 [Unreleased] 保持为空。");
+  }
 }
 
 function parseFragment(path, text) {
@@ -101,14 +128,22 @@ function checkDiffFragments(filter, revision, ...revisions) {
 function checkPullRequest(baseRef) {
   const base = git("merge-base", baseRef, "HEAD").trim();
   checkDiffFragments("AMT", "HEAD", base, "HEAD");
+  checkUnreleasedUntouched(gitShowOrEmpty(base + ":" + FILE), gitShowOrEmpty("HEAD:" + FILE));
 
-  const changelog = git("show", "HEAD:" + FILE);
-  if (newUnreleasedEntries(git("show", base + ":" + FILE), changelog).length > 0) {
-    throw new Error("请把未发布的日志写到 " + DIRECTORY + "/。");
-  }
   if (process.env.CHANGELOG_SKIP === "1") {
-    console.log("PR 带 skip-changelog 标签，跳过新增日志要求。");
+    console.log("PR 带 skip-changelog 标签，跳过新增日志要求和删除检查。");
     return;
+  }
+
+  // 只有发版（会同时改 VERSION）才能消费日志文件，防止合并冲突时误删别人的日志。
+  const deleted = changedFragments("D", base, "HEAD");
+  const isRelease = git("diff", "--name-only", base, "HEAD", "--", "VERSION").trim() !== "";
+  if (deleted.length > 0 && !isRelease) {
+    throw new Error([
+      "PR 删除了待发布的日志，只有发版才能删除：",
+      ...deleted.map((path) => "  - " + path),
+      "如果确实要撤掉这些日志（例如功能已回滚），请维护者给 PR 打 skip-changelog 标签。",
+    ].join("\n"));
   }
 
   const needing = git("log", "--no-merges", "--format=%B%x00", base + "..HEAD")
@@ -135,7 +170,7 @@ function readFragments() {
     if (error.code === "ENOENT") return [];
     throw error;
   }
-  return files.sort().map((name) => {
+  return files.filter(isFragmentName).sort().map((name) => {
     const path = DIRECTORY + "/" + name;
     if (!lstatSync(path).isFile()) throw new Error(path + " 必须是普通文件。");
     return parseFragment(path, readFileSync(path, "utf8"));
@@ -147,6 +182,21 @@ function lint(changelog) {
   if (errors.length) throw new Error(errors.join("\n"));
   if (unreleasedLines(changelog).some((line) => line.trim())) {
     throw new Error(FILE + " 的 [Unreleased] 应为空，请先将条目移入 " + DIRECTORY + "/。");
+  }
+}
+
+/** 发版只汇总已提交的日志：未提交或改动过的文件会被误发布并删除，且无法从 Git 找回。 */
+function assertFragmentsCommitted() {
+  const dirty = git("status", "--porcelain", "-z", "--untracked-files=all", "--", DIRECTORY)
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => line.slice(3))
+    .filter(isFragmentName);
+  if (dirty.length > 0) {
+    throw new Error([
+      DIRECTORY + "/ 里有未提交的改动，请先提交或移走再发版：",
+      ...dirty.map((path) => "  - " + path),
+    ].join("\n"));
   }
 }
 
@@ -165,6 +215,7 @@ function release(version, date, write) {
     return title && (title[1] ?? title[2]) === version;
   })) throw new Error(FILE + " 已存在版本 " + version + "。");
 
+  assertFragmentsCommitted();
   const fragments = readFragments();
   if (fragments.length === 0) throw new Error(DIRECTORY + "/ 中没有待发布的日志。");
 
@@ -186,7 +237,10 @@ function release(version, date, write) {
 }
 
 function main([mode, arg, date, flag, ...extra]) {
-  if (mode === "commit-msg" && arg) return checkDiffFragments("AMT", "", "--cached");
+  if (mode === "commit-msg" && arg) {
+    checkDiffFragments("AMT", "", "--cached");
+    return checkUnreleasedUntouched(gitShowOrEmpty("HEAD:" + FILE), gitShowOrEmpty(":" + FILE));
+  }
   if (mode === "pr" && arg) return checkPullRequest(arg);
   if (mode === "lint") {
     lint(readFileSync(FILE, "utf8"));

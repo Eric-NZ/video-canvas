@@ -82,7 +82,7 @@ Write a separate entry in `changelog.d/` for each PR with a `feat`, `fix`, `perf
 - Write one line in Simplified Chinese that describes what users will notice.
 - For changes with no user-visible impact, add `Changelog: skip` to the commit body or ask a maintainer to apply the `skip-changelog` PR label.
 
-The local `commit-msg` hook validates staged entry files. The PR's `Changelog` check enforces the entry requirement for the whole PR.
+The local `commit-msg` hook validates staged entry files and rejects entries added under `[Unreleased]` in `CHANGELOG.md`. The PR's `Changelog` check enforces the entry requirement for the whole PR; apart from releases, a PR may not delete existing entries in `changelog.d/` (ask a maintainer for the `skip-changelog` label if you really need to).
 
 ## Pre-submit checks
 

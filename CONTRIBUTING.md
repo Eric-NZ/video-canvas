@@ -82,7 +82,7 @@ docs(design): 3D 导演台补充面板可拖动调节的设计记录
 - 正文写一行简体中文，直接描述用户能感受到的结果。例如「提取资产时遇到模型繁忙，会自动稍等再试，不再直接失败。」
 - 确实没有用户可感知的变化时，在提交正文写 `Changelog: skip`，或请维护者给 PR 打 `skip-changelog` 标签。
 
-本地 `commit-msg` 钩子校验暂存的日志文件格式，PR 上的 `Changelog` 检查确认整个 PR 是否需要新增日志。
+本地 `commit-msg` 钩子校验暂存的日志文件格式，并拦截写进 `CHANGELOG.md` `[Unreleased]` 的条目。PR 上的 `Changelog` 检查确认整个 PR 是否需要新增日志；除发版外，PR 不能删除 `changelog.d/` 里已有的日志（确需撤掉时请维护者打 `skip-changelog` 标签）。
 
 ## 提交前自检
 
