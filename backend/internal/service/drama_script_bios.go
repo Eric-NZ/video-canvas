@@ -93,10 +93,21 @@ func scriptCharactersMD(all []scriptEntity, fallback string) string {
 	return fallback
 }
 
-// scriptCharacters 在项目行锁内确保剧本已转成结构、传记已导入人物表，返回由人物表拼出的人物设定。
-func (s *DramaService) scriptCharacters(ctx context.Context, userID, id uint64) (string, error) {
-	var md string
-	err := s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
+// scriptLocationsMD 由地点表拼出场景设定：只列写了描述的地点（没描述的只有名字，不提供信息），每个一行「- **名字／别名**：描述」。
+func scriptLocationsMD(all []scriptEntity) string {
+	var bios []script.Bio
+	for _, e := range all {
+		if strings.TrimSpace(e.Note) != "" {
+			bios = append(bios, script.Bio{Name: e.Name, Aliases: e.Aliases, Text: e.Note})
+		}
+	}
+	return script.RenderBios(bios)
+}
+
+// scriptSettings 在项目行锁内确保剧本已转成结构、传记已导入人物表，返回由人物表、地点表拼出的人物设定和场景设定。
+// 写剧本读人物设定；拆解、资产图提示词、分镜两样都读，用户在卡片上改的小传、写的地点描述才会真正影响模型。
+func (s *DramaService) scriptSettings(ctx context.Context, userID, id uint64) (characters, locations string, err error) {
+	err = s.repo.WithTx(ctx, func(tx repository.DramaTx) error {
 		p, e := tx.Project(ctx, userID, id, true)
 		if e != nil {
 			return e
@@ -107,12 +118,17 @@ func (s *DramaService) scriptCharacters(ctx context.Context, userID, id uint64) 
 		if e = s.ensureBiosImported(ctx, tx, p); e != nil {
 			return e
 		}
-		all, e := loadScriptEntities(ctx, tx, userID, id, scriptKindCharacter)
+		people, e := loadScriptEntities(ctx, tx, userID, id, scriptKindCharacter)
 		if e != nil {
 			return e
 		}
-		md = scriptCharactersMD(all, p.CharactersMD)
+		places, e := loadScriptEntities(ctx, tx, userID, id, scriptKindLocation)
+		if e != nil {
+			return e
+		}
+		characters = scriptCharactersMD(people, p.CharactersMD)
+		locations = scriptLocationsMD(places)
 		return nil
 	})
-	return md, err
+	return characters, locations, err
 }

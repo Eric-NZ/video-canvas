@@ -224,3 +224,57 @@ func promptCharacters(t *testing.T, prompt string) string {
 	v, _ := data["characters_md"].(string)
 	return v
 }
+
+// promptVar 从提示词开头的 JSON 数据块里取出某个字符串变量。
+func promptVar(t *testing.T, prompt, key string) string {
+	t.Helper()
+	start := strings.Index(prompt, "{")
+	var data map[string]any
+	if err := json.NewDecoder(strings.NewReader(prompt[start:])).Decode(&data); err != nil {
+		t.Fatalf("提示词里没有 JSON 数据块：%v\n%s", err, prompt)
+	}
+	v, _ := data[key].(string)
+	return v
+}
+
+// 拆解（以及随后的资产图提示词）读人物表和地点描述，不再读研读生成的原始传记：
+// 用户在卡片上改的小传、写的地点描述才会影响角色、场景资产的设定。
+func TestDramaBreakdownPromptUsesCharacterAndLocationTables(t *testing.T) {
+	r := newDramaMemory()
+	r.project.Ratio = "9:16"
+	r.project.CharactersMD = "- **林骁**：研读时写的原始传记。\n"
+	dramaAddEpisode(r, 1, "第1集正文")
+	m := &dramaFakeModel{}
+	e := &dramaTextStreamer{respond: m.respond}
+	c := &dramaPipelineCanvas{mem: r}
+	s, _ := dramaTestService(r, e, c)
+	ctx := context.Background()
+	people, err := s.ListScriptEntities(ctx, 7, 1, "character")
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "表里改过的小传：左手有疤"
+	if _, err = s.UpdateScriptEntity(ctx, 7, 1, "character", idOf(entityByName(people, "林骁").ID), &service.UpdateDramaScriptEntityReq{Note: &note}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.CreateScriptEntity(ctx, 7, 1, "location", &service.CreateDramaScriptEntityReq{Name: "老码头", Note: "夜里潮湿阴冷，铁皮棚漏雨"}); err != nil {
+		t.Fatal(err)
+	}
+	// 没写描述的地点不进提示词
+	if _, err = s.CreateScriptEntity(ctx, 7, 1, "location", &service.CreateDramaScriptEntityReq{Name: "天台"}); err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.CreateJob(ctx, 7, 1, &model.DramaJobReq{Step: "breakdown", Episodes: []int{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.HandleDrama(ctx, 7, 1, uint64(j.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := promptVar(t, e.prompts[0], "characters_md"); !strings.Contains(got, "表里改过的小传：左手有疤") || strings.Contains(got, "原始传记") {
+		t.Fatalf("拆解的人物资料应来自人物表：%q", got)
+	}
+	if got := promptVar(t, e.prompts[0], "locations_md"); got != "- **老码头**：夜里潮湿阴冷，铁皮棚漏雨" {
+		t.Fatalf("拆解应带上地点描述（没描述的不列）：%q", got)
+	}
+}

@@ -19,7 +19,7 @@ func (s *DramaService) runScripts(ctx context.Context, p *model.DramaProject, j 
 	cost := 0
 	outputs := []map[string]any{}
 	// 人物设定以人物表为准：写之前确保研读传记已导入，再由人物表拼出 characters_md。
-	characters, err := s.scriptCharacters(ctx, p.UserID, p.ID)
+	characters, _, err := s.scriptSettings(ctx, p.UserID, p.ID)
 	if err != nil {
 		return nil, 0, err
 	}
