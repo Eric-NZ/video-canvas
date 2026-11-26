@@ -11,8 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"video-canvas/internal/drama"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
@@ -24,6 +27,10 @@ type composeMemory struct {
 	assets      []model.Asset
 	creditCalls int
 	insertErr   error
+	// timeline 已保存的时间线；nil 表示没剪过
+	timeline *model.DramaEpisodeTimeline
+	// library 用户素材库（结果视频、导入的素材）
+	library []model.Asset
 }
 
 func newComposeMemory() *composeMemory {
@@ -32,7 +39,36 @@ func newComposeMemory() *composeMemory {
 	canvas, chosen := uint64(2), uint64(20)
 	r.segments = []model.DramaSegment{{BaseModel: model.BaseModel{ID: 5}, UserID: 7, EpisodeID: 3, Seq: 0, ChosenTaskID: &chosen}, {BaseModel: model.BaseModel{ID: 6}, UserID: 7, EpisodeID: 3, Seq: 1}}
 	r.tasks = []model.GenerationTask{{ID: chosen, UserID: 7, CanvasProjectID: &canvas, NodeID: "seg:" + idcodec.Encode(5), Kind: model.KindVideo, Status: model.TaskSucceeded, OutputJSON: []byte(`[{"asset_id":30,"media_type":"video"}]`)}}
+	r.library = []model.Asset{{ID: 30, UserID: 7, Kind: "video", DurationMs: 5000}}
 	return r
+}
+
+func (r *composeMemory) Timeline(_ context.Context, user, episode uint64) (*model.DramaEpisodeTimeline, error) {
+	if r.timeline == nil || r.timeline.UserID != user || r.timeline.EpisodeID != episode {
+		return nil, repository.ErrNotFound
+	}
+	row := *r.timeline
+	return &row, nil
+}
+func (r *composeMemory) SaveTimeline(_ context.Context, row *model.DramaEpisodeTimeline, revision int64) error {
+	if r.timeline != nil && r.timeline.Revision != revision {
+		return repository.ErrStateConflict
+	}
+	saved := *row
+	saved.ID, saved.Revision = 1, revision+1
+	r.timeline, row.Revision = &saved, revision+1
+	return nil
+}
+func (r *composeMemory) TimelineAssets(_ context.Context, user uint64, ids []uint64) ([]model.Asset, error) {
+	out := []model.Asset{}
+	for _, a := range r.library {
+		for _, id := range ids {
+			if a.ID == id && a.UserID == user {
+				out = append(out, a)
+			}
+		}
+	}
+	return out, nil
 }
 
 func (r *composeMemory) WithTx(ctx context.Context, fn func(repository.DramaTx) error) error {
@@ -88,10 +124,12 @@ func (a *composeFiles) Open(_ context.Context, user, id uint64) (*provider.Asset
 	if a.downloadErr != nil {
 		return nil, a.downloadErr
 	}
-	if user != 7 || id != 30 {
-		return nil, provider.ErrAssetNotFound
+	for _, asset := range a.r.library {
+		if asset.ID == id && asset.UserID == user {
+			return &provider.AssetFile{Asset: &asset, Body: io.NopCloser(strings.NewReader("media"))}, nil
+		}
 	}
-	return &provider.AssetFile{Asset: &model.Asset{ID: id, UserID: user, Kind: "video"}, Body: io.NopCloser(strings.NewReader("video"))}, nil
+	return nil, provider.ErrAssetNotFound
 }
 func (a *composeFiles) PrepareDramaVideo(_ context.Context, user uint64, path string) (*model.Asset, error) {
 	if _, err := os.Stat(path); err != nil {
@@ -118,11 +156,17 @@ type composeProcessor struct {
 	during func()
 	err    error
 	inputs []string
+	clips  []videoframe.ComposeClip
+	ratio  string
 }
 
-func (p *composeProcessor) Compose(_ context.Context, paths []string, dst string) error {
+func (p *composeProcessor) ComposeClips(_ context.Context, clips []videoframe.ComposeClip, ratio, dst string) error {
 	p.calls++
-	p.inputs = append([]string{}, paths...)
+	p.clips, p.ratio = clips, ratio
+	p.inputs = nil
+	for _, c := range clips {
+		p.inputs = append(p.inputs, c.Path)
+	}
 	if p.during != nil {
 		p.during()
 	}
@@ -308,4 +352,75 @@ func (r *composeMemory) SegmentEpisode(_ context.Context, user, id uint64) (*mod
 		}
 	}
 	return nil, repository.ErrNotFound
+}
+
+// composeTimeline 给集3保存一条时间线。
+func composeTimeline(t *testing.T, r *composeMemory, muted bool, clips ...drama.TimelineClip) {
+	t.Helper()
+	raw, err := json.Marshal(clips)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.timeline = &model.DramaEpisodeTimeline{BaseModel: model.BaseModel{ID: 1}, UserID: 7, EpisodeID: 3, Clips: raw, Muted: muted, RemovedSegmentIDs: []byte(`[]`), Imports: []byte(`[]`), Revision: 1}
+}
+
+func TestDramaCompose_UsesTimeline(t *testing.T) {
+	r := newComposeMemory()
+	r.project.Ratio = "9:16"
+	r.library = append(r.library, model.Asset{ID: 40, UserID: 7, Kind: "image"})
+	composeTimeline(t, r, true,
+		drama.TimelineClip{ID: "a", Kind: drama.ClipSegment, SegmentID: 5, TaskID: 20, InMS: 1000, OutMS: 4000},
+		drama.TimelineClip{ID: "x", Kind: drama.ClipAsset, AssetID: 40, Media: drama.MediaImage, OutMS: 2000},
+	)
+	p := &composeProcessor{}
+	s := composeService(r, &composeFiles{r: r}, p)
+	ctx := context.Background()
+	job, err := s.CreateJob(ctx, 7, 1, &model.DramaJobReq{Step: "compose", Episodes: []int{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.HandleDrama(ctx, 7, 1, uint64(job.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if p.ratio != "9:16" || len(p.clips) != 2 {
+		t.Fatalf("合成参数 ratio=%q clips=%+v", p.ratio, p.clips)
+	}
+	if c := p.clips[0]; c.Image || c.InMS != 1000 || c.OutMS != 4000 || !c.Muted {
+		t.Fatalf("视频段 %+v", c)
+	}
+	if c := p.clips[1]; !c.Image || c.OutMS != 2000 || !c.Muted {
+		t.Fatalf("图片段 %+v", c)
+	}
+	// 片段 6 不在时间线上也没被删过：对账补成待采用占位，合成时跳过并提示
+	jobs, _ := s.ListJobs(ctx, 7, 1, false)
+	if got := jobs[0].Result; got == nil || len(got.SkippedSeqs) != 1 || got.SkippedSeqs[0] != 1 {
+		t.Fatalf("跳过的片段 %+v", got)
+	}
+}
+
+func TestDramaCompose_BrokenTimelineRejected(t *testing.T) {
+	r := newComposeMemory()
+	composeTimeline(t, r, false, drama.TimelineClip{ID: "a", Kind: drama.ClipSegment, SegmentID: 5, TaskID: 999, Pinned: true, OutMS: 4000})
+	s := composeService(r, &composeFiles{r: r}, &composeProcessor{})
+	_, err := s.CreateJob(context.Background(), 7, 1, &model.DramaJobReq{Step: "compose", Episodes: []int{1}})
+	dramaCheckCode(t, err, errcode.ErrDramaTimelineBroken.Code)
+}
+
+func TestDramaCompose_LegacyQueuedInput(t *testing.T) {
+	r := newComposeMemory()
+	p := &composeProcessor{}
+	s := composeService(r, &composeFiles{r: r}, p)
+	ctx := context.Background()
+	job, err := s.CreateJob(ctx, 7, 1, &model.DramaJobReq{Step: "compose", Episodes: []int{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 升级前入队的任务只有 asset_ids：整段拼接、沿用第一段比例
+	r.jobs[0].InputJSON = []byte(`{"episode_id":3,"segment_version":0,"asset_ids":[30],"skipped_seqs":[1]}`)
+	if err := s.HandleDrama(ctx, 7, 1, uint64(job.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if p.ratio != "" || len(p.clips) != 1 || p.clips[0].OutMS != 0 || p.clips[0].Image {
+		t.Fatalf("旧任务合成参数 ratio=%q clips=%+v", p.ratio, p.clips)
+	}
 }

@@ -283,6 +283,9 @@ var (
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
 	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
+	ErrDramaTimelineConflict     = New(67034, "时间线在别处被修改，已载入最新版本", http.StatusConflict)
+	ErrDramaTimelineInvalid      = New(67035, "时间线不合法", http.StatusBadRequest)             // Msg 写明第几段和原因
+	ErrDramaTimelineBroken       = New(67036, "时间线里有素材已失效，请换版本或删掉", http.StatusBadRequest) // Msg 写明第几段
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），

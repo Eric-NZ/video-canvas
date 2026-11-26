@@ -775,3 +775,97 @@ export interface BackendSourcePreflight {
     minutes: number;
   };
 }
+
+/** 时间线段的来源：分镜片段的某条视频结果，或画布素材 / 本地导入的素材 */
+export type TimelineClipKind = "segment" | "asset";
+
+/** 素材段的种类 */
+export type TimelineMedia = "video" | "image";
+
+/** 对账带来的变化种类：片段删除 / 取消采用 / 换了采用 / 占位采用了 / 新增片段 */
+export type TimelineChangeKind = "removed" | "unadopted" | "swapped" | "adopted" | "added";
+
+/** 后端时间线段（原样 snake_case，id 是编码串） */
+export interface BackendTimelineClip {
+  id: string;
+  kind: TimelineClipKind;
+  segment_id?: string | null;
+  task_id?: string | null;
+  pinned?: boolean;
+  asset_id?: string | null;
+  media?: TimelineMedia | "";
+  in_ms: number;
+  out_ms: number;
+  muted?: boolean;
+}
+
+/** GET/PUT /dramas/:id/episodes/:no/timeline 的响应 */
+export interface BackendTimelineView {
+  clips: BackendTimelineClip[] | null;
+  muted: boolean;
+  removed_segment_ids: string[] | null;
+  imports: string[] | null;
+  revision: number;
+  changes:
+    | { kind: TimelineChangeKind; segment_id: string | null; seq: number; clip_id: string }[]
+    | null;
+  invalid_clip_ids: string[] | null;
+  assets: BackendAssetDto[] | null;
+}
+
+/** 时间线上的一段；毫秒。视频的 in/out 是素材内的位置，图片 inMs 恒为 0、outMs 即时长 */
+export interface TimelineClip {
+  /** 段 ID，清单内唯一 */
+  id: string;
+  kind: TimelineClipKind;
+  /** 片段 ID；只用于 kind=segment */
+  segmentId: string;
+  /** 用的那条视频结果；空串 = 片段还没有采用（待采用占位，合成时跳过） */
+  taskId: string;
+  /** 用户在时间线里手动选了版本，不跟随片段的采用 */
+  pinned: boolean;
+  /** 素材 ID；只用于 kind=asset */
+  assetId: string;
+  /** 素材种类；只用于 kind=asset */
+  media: TimelineMedia | null;
+  /** 入点（毫秒） */
+  inMs: number;
+  /** 出点（毫秒）；图片是时长 */
+  outMs: number;
+  /** 这一段静音 */
+  muted: boolean;
+}
+
+/** 对账带来的一条变化 */
+export interface TimelineChange {
+  kind: TimelineChangeKind;
+  /** 片段 ID */
+  segmentId: string;
+  /** 片段序号（从 0 起）；被删的片段是它在原时间线里排第几个片段 */
+  seq: number;
+  /** 对应的段；空串 = 段已移除 */
+  clipId: string;
+}
+
+/** 一集的粗剪时间线 */
+export interface Timeline {
+  clips: TimelineClip[];
+  /** 整轨静音 */
+  muted: boolean;
+  /** 用户主动从轨上删掉的片段，片场再改也不自动加回 */
+  removedSegmentIds: string[];
+  /** 「已导入」里的素材 ID */
+  imports: string[];
+}
+
+/** 读到的时间线 */
+export interface TimelineView extends Timeline {
+  /** 乐观锁版本；0 = 还没保存过（按片段现算的默认时间线） */
+  revision: number;
+  /** 这次读取时按片场同步的变化 */
+  changes: TimelineChange[];
+  /** 固定的版本或素材已失效的段 */
+  invalidClipIds: string[];
+  /** 素材段和「已导入」引用的素材 */
+  assets: AssetDto[];
+}

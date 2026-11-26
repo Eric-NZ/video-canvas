@@ -74,6 +74,7 @@ func All() []any {
 		&DramaEpisode{},
 		&DramaJob{},
 		&DramaSegment{},
+		&DramaEpisodeTimeline{},
 		&PaymentChannel{},
 		&RechargeProduct{},
 		&PaymentOrder{},

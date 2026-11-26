@@ -125,3 +125,53 @@ type DramaSegmentStats struct {
 	// Boards 有故事板且没过期的片段数（故事板是短剧画布上的图片节点，见 DramaBoardHashes）
 	Boards int
 }
+
+// ---- 成片粗剪时间线的对外视图与请求（表结构见 drama_timeline.go） ----
+
+// DramaTimelineClip 时间线上的一段；视频的 in/out 是素材内的毫秒位置，图片的 out 就是时长。
+type DramaTimelineClip struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// SegmentID / TaskID / Pinned 只用于 kind=segment；TaskID 为 0 表示片段还没有采用（待采用占位）
+	SegmentID idcodec.ID `json:"segment_id,omitempty"`
+	TaskID    idcodec.ID `json:"task_id,omitempty"`
+	// Pinned 用户在时间线里手动选了版本，不再跟随片段的采用
+	Pinned bool `json:"pinned"`
+	// AssetID / Media 只用于 kind=asset
+	AssetID idcodec.ID `json:"asset_id,omitempty"`
+	Media   string     `json:"media,omitempty"`
+	InMS    int64      `json:"in_ms"`
+	OutMS   int64      `json:"out_ms"`
+	Muted   bool       `json:"muted"`
+}
+
+// DramaTimelineChange 对账产生的一条变化；ClipID 为空表示对应的段已移除。
+type DramaTimelineChange struct {
+	Kind      string     `json:"kind"`
+	SegmentID idcodec.ID `json:"segment_id"`
+	Seq       int        `json:"seq"`
+	ClipID    string     `json:"clip_id"`
+}
+
+// DramaTimelineView 是对账后的时间线；Revision 为 0 表示还没保存过（默认时间线）。
+type DramaTimelineView struct {
+	Clips             []DramaTimelineClip   `json:"clips"`
+	Muted             bool                  `json:"muted"`
+	RemovedSegmentIDs []idcodec.ID          `json:"removed_segment_ids"`
+	Imports           []idcodec.ID          `json:"imports"`
+	Revision          int64                 `json:"revision"`
+	Changes           []DramaTimelineChange `json:"changes"`
+	// InvalidClipIDs 固定的版本或素材已不可用的段，合成前必须处理
+	InvalidClipIDs []string `json:"invalid_clip_ids"`
+	// Assets 素材段和「已导入」引用到的素材视图（只含当前用户仍可读的）
+	Assets []AssetView `json:"assets"`
+}
+
+// SaveDramaTimelineReq 带版本保存整份时间线；revision 为 0 表示第一次保存。
+type SaveDramaTimelineReq struct {
+	Revision          int64               `json:"revision" binding:"min=0" label:"版本"`
+	Clips             []DramaTimelineClip `json:"clips" binding:"max=200" label:"时间线"`
+	Muted             bool                `json:"muted"`
+	RemovedSegmentIDs []idcodec.ID        `json:"removed_segment_ids" binding:"max=500" label:"已删除片段"`
+	Imports           []idcodec.ID        `json:"imports" binding:"max=200" label:"已导入素材"`
+}
