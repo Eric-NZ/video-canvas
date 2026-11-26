@@ -24,7 +24,7 @@ func TestDramaPresetMigrationSeedsOriginalsAndDoesNotOverwriteEdits(t *testing.T
 		t.Fatal(err)
 	}
 	runReal(t, db)
-	svc := service.NewDramaService(service.DramaDeps{Presets: repository.NewDramaPresetRepository(db)})
+	svc := service.NewDramaService(service.DramaDeps{Presets: repository.NewDramaPromptPresetRepository(db)})
 	groups, err := svc.PromptPresetCatalog(ctx, true)
 	if err != nil || len(groups) != 6 {
 		t.Fatalf("groups=%+v err=%v", groups, err)
@@ -56,7 +56,7 @@ func TestDramaPresetMigrationSeedsOriginalsAndDoesNotOverwriteEdits(t *testing.T
 func TestDramaPresetConcurrentDefaultAndDisable(t *testing.T) {
 	db := isolatedDB(t)
 	runReal(t, db)
-	svc := service.NewDramaService(service.DramaDeps{Presets: repository.NewDramaPresetRepository(db)})
+	svc := service.NewDramaService(service.DramaDeps{Presets: repository.NewDramaPromptPresetRepository(db)})
 	ctx := context.Background()
 	item, err := svc.SavePromptPreset(ctx, 7, 0, "plan", model.SaveDramaPromptPresetReq{Name: "快节奏", Body: "写得紧凑"})
 	if err != nil || item.Status != "disabled" {

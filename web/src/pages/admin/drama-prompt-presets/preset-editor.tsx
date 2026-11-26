@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import type { AdminPreset, PresetInput } from "@/api/admin/drama-preset";
+import type { AdminPreset, PresetInput } from "@/api/admin/drama-prompt-preset";
 import { dramaErrorMessage } from "@/api/drama/errors";
 import type { PromptStep } from "@/api/drama/type";
 import {

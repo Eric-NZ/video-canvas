@@ -14,14 +14,14 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// DramaPresetRepo 支持一致读目录和在分类锁内写审计。
-type DramaPresetRepo interface {
+// DramaPromptPresetRepo 支持一致读目录和在分类锁内写审计。
+type DramaPromptPresetRepo interface {
 	// PresetRows 返回目录；仅管理员或默认模板正文查询会读取正文。
 	PresetRows(context.Context, bool, bool) ([]model.DramaPromptPresetRow, error)
 	// Preset 按分类和模板 ID 查询，不允许跨分类引用。
 	Preset(context.Context, string, uint64) (*model.DramaPromptPreset, error)
 	// WithTx 串联锁分类、修改和操作审计。
-	WithTx(context.Context, func(repository.DramaPresetTx) error) error
+	WithTx(context.Context, func(repository.DramaPromptPresetTx) error) error
 }
 
 // DramaPromptTemplateView 是现有个人编辑器读取的可替换正文，不含协议。
@@ -147,7 +147,7 @@ func (s *DramaService) SavePromptPreset(ctx context.Context, actor, id uint64, s
 	if err := validatePresetEdit(step, id, &req); err != nil {
 		return nil, err
 	}
-	return s.writePromptPreset(ctx, actor, id, step, func(tx repository.DramaPresetTx, _ *model.DramaPromptPresetGroup, row *model.DramaPromptPreset) (string, error) {
+	return s.writePromptPreset(ctx, actor, id, step, func(tx repository.DramaPromptPresetTx, _ *model.DramaPromptPresetGroup, row *model.DramaPromptPreset) (string, error) {
 		if row.Status == model.DramaPresetArchived {
 			return "", errcode.ErrDramaPresetInactive
 		}
@@ -188,7 +188,7 @@ func (s *DramaService) SetPromptPresetState(ctx context.Context, actor, id uint6
 	if id == 0 || req.Revision < 1 {
 		return nil, errcode.ErrInvalidParams
 	}
-	return s.writePromptPreset(ctx, actor, id, step, func(tx repository.DramaPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset) (string, error) {
+	return s.writePromptPreset(ctx, actor, id, step, func(tx repository.DramaPromptPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset) (string, error) {
 		if req.Action == "default" {
 			return switchPresetDefault(ctx, tx, group, row, req.Revision)
 		}
@@ -197,7 +197,7 @@ func (s *DramaService) SetPromptPresetState(ctx context.Context, actor, id uint6
 }
 
 // switchPresetDefault 用分类版本切换唯一默认，重放已达成的请求无副作用。
-func switchPresetDefault(ctx context.Context, tx repository.DramaPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset, revision int) (string, error) {
+func switchPresetDefault(ctx context.Context, tx repository.DramaPromptPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset, revision int) (string, error) {
 	if row.Status != model.DramaPresetEnabled {
 		return "", errcode.ErrDramaPresetInactive
 	}
@@ -213,7 +213,7 @@ func switchPresetDefault(ctx context.Context, tx repository.DramaPresetTx, group
 }
 
 // setPresetStatus 保护当前默认项，归档为终态。
-func setPresetStatus(ctx context.Context, tx repository.DramaPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset, req model.UpdateDramaPromptPresetStateReq) (string, error) {
+func setPresetStatus(ctx context.Context, tx repository.DramaPromptPresetTx, group *model.DramaPromptPresetGroup, row *model.DramaPromptPreset, req model.UpdateDramaPromptPresetStateReq) (string, error) {
 	statuses := map[string]string{"enable": model.DramaPresetEnabled, "disable": model.DramaPresetDisabled, "archive": model.DramaPresetArchived}
 	next, ok := statuses[req.Action]
 	if !ok {
@@ -236,7 +236,7 @@ func setPresetStatus(ctx context.Context, tx repository.DramaPresetTx, group *mo
 	return req.Action, tx.SavePreset(ctx, row)
 }
 
-type mutatePreset func(repository.DramaPresetTx, *model.DramaPromptPresetGroup, *model.DramaPromptPreset) (string, error)
+type mutatePreset func(repository.DramaPromptPresetTx, *model.DramaPromptPresetGroup, *model.DramaPromptPreset) (string, error)
 
 // writePromptPreset 锁住分类后加载目标，业务变更和审计同成同败。
 func (s *DramaService) writePromptPreset(ctx context.Context, actor, id uint64, step string, mutate mutatePreset) (*model.DramaPromptPresetView, error) {
@@ -244,10 +244,10 @@ func (s *DramaService) writePromptPreset(ctx context.Context, actor, id uint64, 
 		return nil, errcode.ErrInvalidParams
 	}
 	if s.presets == nil {
-		return nil, errcode.ErrDramaPresetNotFound
+		return nil, errcode.ErrDramaPromptPresetNotFound
 	}
 	var out model.DramaPromptPresetView
-	err := s.presets.WithTx(ctx, func(tx repository.DramaPresetTx) error {
+	err := s.presets.WithTx(ctx, func(tx repository.DramaPromptPresetTx) error {
 		group, err := tx.LockGroup(ctx, step)
 		if err != nil {
 			return err
@@ -275,7 +275,7 @@ func (s *DramaService) writePromptPreset(ctx context.Context, actor, id uint64, 
 		return tx.InsertAudit(ctx, presetAudit(actor, action, before, *row, defaultID, group.DefaultID))
 	})
 	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrDramaPresetNotFound
+		return nil, errcode.ErrDramaPromptPresetNotFound
 	}
 	if errors.Is(err, repository.ErrDuplicate) {
 		return nil, errcode.ErrDramaPromptInvalid

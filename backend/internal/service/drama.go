@@ -85,7 +85,7 @@ type DramaModelStreamer interface {
 // DramaDeps 短剧服务依赖，文本步骤用后台的 Agent 模型：Registry 选模型，Streamer 经 LLM 网关请求渠道，Secrets 取渠道 Key。
 type DramaDeps struct {
 	Settings     DramaSettingsRepo
-	Presets      DramaPresetRepo
+	Presets      DramaPromptPresetRepo
 	Skills       DramaSkills
 	Repo         DramaRepo
 	Registry     provider.Registry
@@ -106,7 +106,7 @@ type DramaDeps struct {
 // DramaService 短剧项目和固定流水线的业务入口。
 type DramaService struct {
 	settings     DramaSettingsRepo
-	presets      DramaPresetRepo
+	presets      DramaPromptPresetRepo
 	skills       DramaSkills
 	repo         DramaRepo
 	registry     provider.Registry
@@ -426,6 +426,8 @@ func (s *DramaService) resolveDramaSettingsPatch(ctx context.Context, userID, id
 // dramaProjectPatch 仅应用请求中出现的字段，风格始终按最终组合校验。
 func dramaProjectPatch(p *model.DramaProject, req *model.UpdateDramaReq) (map[string]any, error) {
 	fields := map[string]any{}
+	// 换画风要走「存在且启用」，没换则只要原来那条还存在（可能已被运营停用）
+	styleChanged := req.StyleKey != nil && *req.StyleKey != p.StyleKey
 	for key, value := range map[string]*string{"title": req.Title, "genre": req.Genre, "style_key": req.StyleKey, "style_custom": req.StyleCustom, "ratio": req.Ratio, "text_model": req.TextModel, "video_model": req.VideoModel, "outline_md": req.OutlineMD, "characters_md": req.CharactersMD} {
 		if value != nil {
 			fields[key] = *value
@@ -458,7 +460,11 @@ func dramaProjectPatch(p *model.DramaProject, req *model.UpdateDramaReq) (map[st
 	if req.StyleCustom != nil {
 		p.StyleCustom = *req.StyleCustom
 	}
-	if err := checkDramaStyle(p.StyleKey, p.StyleCustom); err != nil {
+	check := checkDramaStyleKept
+	if styleChanged {
+		check = checkDramaStyle
+	}
+	if err := check(p.StyleKey, p.StyleCustom); err != nil {
 		return nil, err
 	}
 	return fields, nil
@@ -484,7 +490,10 @@ func (s *DramaService) Delete(ctx context.Context, userID, id uint64) error {
 	}))
 }
 
-// checkDramaStyle 验证内置或自定义画风，拒绝无法应用的风格。
+// checkDramaStyle 校验新建或换画风时选的画风：自定义画风看描述，其它必须存在且启用。
+//
+// 停用的画风不在可选清单里，所以这里按「存在且启用」判定；已建项目的保存走 checkDramaStyleKept，
+// 见 dramaProjectPatch。
 func checkDramaStyle(key, custom string) error {
 	if key == "custom" {
 		if strings.TrimSpace(custom) == "" || utf8.RuneCountInString(custom) > 500 {
@@ -496,6 +505,20 @@ func checkDramaStyle(key, custom string) error {
 		if style.Key == key {
 			return nil
 		}
+	}
+	return errcode.ErrInvalidParams.WithMsg("画风不存在")
+}
+
+// checkDramaStyleKept 校验没有更换画风时的保存请求：画风还存在就放行，哪怕已被运营停用。
+//
+// 运营停掉一条画风后，所有引用它的老项目仍然要能改标题、改集数——把停用当成不存在，
+// 会让这些项目连标题都保存不了，这是必然会发生的线上事故。
+func checkDramaStyleKept(key, custom string) error {
+	if key == "custom" {
+		return checkDramaStyle(key, custom)
+	}
+	if drama.StyleKnown(key) {
+		return nil
 	}
 	return errcode.ErrInvalidParams.WithMsg("画风不存在")
 }

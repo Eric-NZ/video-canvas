@@ -161,7 +161,13 @@ export const mapDrama = (raw: BackendDramaView): Drama => ({
 
 export const mapStyles = (raw: BackendDramaStyles): DramaStyles => ({
   genres: raw.genres ?? [],
-  styles: raw.styles ?? [],
+  // 预览图地址由后台给（内置是静态相对路径，后台上传的是预览路由），前端不再按 key 拼路径
+  styles: (raw.styles ?? []).map((style) => ({
+    key: style.key,
+    name: style.name,
+    prompt: style.prompt,
+    previewUrl: style.preview_url ?? "",
+  })),
 });
 
 /** 片段（契约 §9.2）：takes 可能为 null，task_id 兼容数字 */

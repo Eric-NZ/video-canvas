@@ -226,7 +226,11 @@ export interface BackendDramaView {
 
 export interface BackendDramaStyles {
   genres: { key: string; name: string }[] | null;
-  styles: { key: string; name: string; prompt: string }[] | null;
+  /**
+   * 画风清单。preview_url 由后台维护：内置画风是前端静态相对路径（/drama-styles/<key>.webp），
+   * 后台上传的是公开预览路由地址（/api/v1/drama-presets/previews/<uuid>.webp）。
+   */
+  styles: { key: string; name: string; prompt: string; preview_url?: string | null }[] | null;
 }
 
 /** 列表项 */
@@ -371,7 +375,8 @@ export interface DramaEta {
 
 export interface DramaStyles {
   genres: { key: string; name: string }[];
-  styles: { key: string; name: string; prompt: string }[];
+  /** previewUrl 为空表示这条画风还没有预览图，选择器用渐变占位 */
+  styles: { key: string; name: string; prompt: string; previewUrl: string }[];
 }
 
 /** 分页列表（沿用 OKPage） */

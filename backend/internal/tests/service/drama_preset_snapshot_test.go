@@ -21,7 +21,7 @@ func TestDramaPresetDraftDoesNotReplaceFormattingProtocol(t *testing.T) {
 }
 
 type presetSnapshotStore struct {
-	service.DramaPresetRepo
+	service.DramaPromptPresetRepo
 	rows []model.DramaPromptPresetRow
 }
 

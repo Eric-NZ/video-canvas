@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 
-import type { AdminPresetGroup } from "@/api/admin/drama-preset";
-import type DramaPresetsPageType from "@/pages/admin/drama-presets";
+import type { AdminPresetGroup } from "@/api/admin/drama-prompt-preset";
+import type DramaPresetsPageType from "@/pages/admin/drama-prompt-presets";
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import service from "@/utils/requests/service";
 
@@ -9,7 +9,7 @@ let dom: DomEnv;
 let DramaPresetsPage: typeof DramaPresetsPageType;
 beforeAll(async () => {
   dom = await installDom();
-  DramaPresetsPage = (await import("@/pages/admin/drama-presets")).default;
+  DramaPresetsPage = (await import("@/pages/admin/drama-prompt-presets")).default;
 });
 afterAll(() => dom.restore());
 

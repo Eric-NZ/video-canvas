@@ -531,7 +531,7 @@ func toJSONList(v any) []any {
 	_ = json.Unmarshal(raw, &out)
 	return out
 }
-func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas, presets ...service.DramaPresetRepo) (*service.DramaService, *dramaRegistry) {
+func dramaTestService(r *dramaMemory, e *dramaTextStreamer, c *dramaPipelineCanvas, presets ...service.DramaPromptPresetRepo) (*service.DramaService, *dramaRegistry) {
 	snap := &provider.Snapshot{ModelRevisionID: 9, Channel: provider.ChannelSnapshot{Key: "chan", BaseURL: "https://llm.example"}, Model: provider.ModelSnapshot{Key: "text", Kind: "agent", UpstreamModel: "upstream-chat", APIFormat: "openai", Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 5}, Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 128000, Output: 5000}}}}
 	registry := &dramaRegistry{snap: snap, models: []provider.ModelInfo{{Key: "text", Kind: "agent"}}}
 	secrets := dramaSecrets{model.ChannelSecretName("chan"): "sk-test"}
