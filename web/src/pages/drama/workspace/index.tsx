@@ -18,7 +18,7 @@ import { BreakdownDialog } from "./breakdown-dialog";
 import { CommandPalette } from "./command-palette";
 import { DramaWorkspaceContext } from "./context";
 import { EpisodeRail } from "./episode-rail";
-import { FinalArea } from "./final-area";
+import { FinalArea } from "./final/final-area";
 import { OverviewArea } from "./overview-area";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { ScriptArea } from "./script-area";
