@@ -220,6 +220,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.GET("/asset-library/items", h.AssetLibrary.ListItems) // ?folder_id=root|<id>|all&kind=&q=&cursor=&limit=
 		auth.POST("/asset-library/items", h.AssetLibrary.AddItem)
 		auth.PATCH("/asset-library/items/:id", h.AssetLibrary.MoveItem)
+		auth.PATCH("/asset-library/items/:id/name", h.AssetLibrary.RenameItem)
 		auth.DELETE("/asset-library/items/:id", h.AssetLibrary.RemoveItem)
 
 		// 真人库（方舟虚拟人像库备案）：真人与图片的 id 是十六进制串；新建真人、加图返回 201；图片被角色卡使用时移除返回 409
