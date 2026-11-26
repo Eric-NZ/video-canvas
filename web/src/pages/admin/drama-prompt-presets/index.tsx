@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Copy, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +15,8 @@ import {
 import { DRAMA_ERR, isDramaError } from "@/api/drama/errors";
 import type { PromptStep } from "@/api/drama/type";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
+import { DataPage, DataPanel, DataPanelBody } from "@/components/admin-ui/data-panel";
+import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { LoadFailed } from "@/components/admin-ui/load-failed";
 import {
   PageHeader,
@@ -22,15 +24,14 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { Badge } from "@/components/ui/badge";
+import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
+import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
+import { StatusLabel } from "@/components/admin-ui/status-dot";
+import { TableSkeletonRows } from "@/components/admin-ui/table-skeleton-rows";
+import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
+import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -39,7 +40,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import { PROMPT_STEPS } from "@/utils/drama/prompts";
 
 import { PresetEditor, type PresetEdit } from "./preset-editor";
@@ -47,106 +47,121 @@ import { PresetEditor, type PresetEdit } from "./preset-editor";
 const statuses = { enabled: "已启用", disabled: "已停用", archived: "已归档" } as const;
 const actions = { enable: "启用", disable: "停用", archive: "归档", default: "设为默认" } as const;
 
+const statusOptions = [["", "全部状态"], ...Object.entries(statuses)] as const;
+const headClass = "text-muted-foreground px-3 text-xs";
+const columnCount = 5;
+
 function PresetTable({
-  group,
-  filter,
+  rows,
+  defaultId,
+  loading,
   onEdit,
   onAction,
+  emptyContent,
 }: {
-  group: AdminPresetGroup;
-  filter: PresetStatus | "all";
+  rows: AdminPreset[];
+  defaultId: string | undefined;
+  loading: boolean;
   onEdit: (edit: PresetEdit) => void;
   onAction: (row: AdminPreset, action: PresetAction) => void;
+  emptyContent: ReactNode;
 }) {
-  const rows = group.items.filter((item) => filter === "all" || item.status === filter);
-  if (!rows.length)
-    return (
-      <p className="text-muted-foreground py-14 text-center text-sm">
-        当前筛选没有提示词，请调整筛选条件。
-      </p>
-    );
-
   return (
-    <div className="overflow-x-auto rounded-xl border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>模板名称</TableHead>
-            <TableHead>用途</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>更新时间 / 操作者</TableHead>
-            <TableHead>操作</TableHead>
+    <Table aria-busy={loading}>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          <TableHead className={headClass}>模板名称</TableHead>
+          <TableHead className={headClass}>用途</TableHead>
+          <TableHead className={headClass}>状态</TableHead>
+          <TableHead className={headClass}>更新时间 / 操作者</TableHead>
+          <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {loading ? (
+          <TableSkeletonRows columns={columnCount} />
+        ) : rows.length === 0 ? (
+          <TableRow className="hover:bg-transparent">
+            <TableCell
+              colSpan={columnCount}
+              className="text-muted-foreground h-32 text-center text-sm"
+            >
+              {emptyContent}
+            </TableCell>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const isDefault = row.id === group.default_id;
+        ) : (
+          rows.map((row) => {
+            const isDefault = row.id === defaultId;
             const available = row.status !== "archived";
+            const enabled = row.status === "enabled";
             return (
               <TableRow key={row.id}>
-                <TableCell className="min-w-32 whitespace-normal font-medium">
-                  {row.name} {isDefault && <Badge>默认</Badge>}
+                <TableCell className="h-14 min-w-32 px-3 py-3 whitespace-normal font-medium">
+                  <div className="flex max-w-64 flex-wrap items-center gap-1.5">
+                    <span className="min-w-0 wrap-anywhere">{row.name}</span>
+                    {isDefault && <Tag tone="info">默认</Tag>}
+                  </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground min-w-32 max-w-72 whitespace-normal">
+                <TableCell className="text-muted-foreground min-w-32 max-w-72 px-3 py-3 text-xs wrap-anywhere whitespace-normal">
                   {row.description || "—"}
                 </TableCell>
-                <TableCell>
-                  <Badge variant="outline">{statuses[row.status]}</Badge>
+                <TableCell className="px-3 py-3">
+                  <StatusLabel tone={enabled ? "success" : "neutral"}>
+                    {statuses[row.status]}
+                  </StatusLabel>
                 </TableCell>
-                <TableCell className="text-muted-foreground text-xs">
-                  {new Date(row.updated_at).toLocaleString()}
-                  <br />
-                  {row.updated_by ? `管理员 ${row.updated_by}` : "系统"}
+                <TableCell className="text-muted-foreground px-3 py-3 text-xs tabular-nums">
+                  <time dateTime={row.updated_at}>{new Date(row.updated_at).toLocaleString()}</time>
+                  <div>{row.updated_by ? `管理员 ${row.updated_by}` : "系统"}</div>
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-0.5">
+                <TableCell className="px-3 py-3">
+                  <div className="flex items-center justify-end gap-1">
                     {available && (
-                      <Button size="xs" variant="ghost" onClick={() => onEdit({ row })}>
-                        编辑
-                      </Button>
+                      <RowIconAction label="编辑" target={row.name} onClick={() => onEdit({ row })}>
+                        <Pencil />
+                      </RowIconAction>
                     )}
-                    <Button size="xs" variant="ghost" onClick={() => onEdit({ row, copy: true })}>
-                      复制
-                    </Button>
+                    <RowIconAction
+                      label="复制"
+                      target={row.name}
+                      onClick={() => onEdit({ row, copy: true })}
+                    >
+                      <Copy />
+                    </RowIconAction>
                     {available && !isDefault && (
-                      <>
-                        {row.status === "enabled" && (
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => onAction(row, "default")}
-                          >
+                      <RowMoreMenu label={`${row.name}的更多操作`}>
+                        {enabled && (
+                          <DropdownMenuItem onClick={() => onAction(row, "default")}>
                             设为默认
-                          </Button>
+                          </DropdownMenuItem>
                         )}
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() =>
-                            onAction(row, row.status === "enabled" ? "disable" : "enable")
-                          }
+                        <DropdownMenuItem
+                          onClick={() => onAction(row, enabled ? "disable" : "enable")}
                         >
-                          {row.status === "enabled" ? "停用" : "启用"}
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={() => onAction(row, "archive")}>
+                          {enabled ? "停用" : "启用"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => onAction(row, "archive")}
+                        >
                           归档
-                        </Button>
-                      </>
+                        </DropdownMenuItem>
+                      </RowMoreMenu>
                     )}
                   </div>
                 </TableCell>
               </TableRow>
             );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+          })
+        )}
+      </TableBody>
+    </Table>
   );
 }
 
 export default function DramaPresetsPage() {
   const [step, setStep] = useState<PromptStep>("plan");
-  const [filter, setFilter] = useState<PresetStatus | "all">("all");
+  const [filter, setFilter] = useState<PresetStatus | "">("");
   const [edit, setEdit] = useState<PresetEdit | null>(null);
   const [request, setRequest] = useState(0);
   const [result, setResult] = useState<{ request: number; groups: AdminPresetGroup[] | null }>();
@@ -169,6 +184,10 @@ export default function DramaPresetsPage() {
 
   const loading = result?.request !== request;
   const group = result?.groups?.find((item) => item.step === step);
+  const rows =
+    !loading && group?.default_id
+      ? group.items.filter((item) => !filter || item.status === filter)
+      : [];
   const save = async (id: string | undefined, input: PresetInput) => {
     try {
       await saveAdminPreset(step, id, input);
@@ -213,7 +232,7 @@ export default function DramaPresetsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <DataPage>
       <PageHeader>
         <PageHeaderHeading>
           <PageHeaderTitle>短剧提示词</PageHeaderTitle>
@@ -234,60 +253,54 @@ export default function DramaPresetsPage() {
           </Button>
         </PageHeaderActions>
       </PageHeader>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="提示词分类" className="flex flex-wrap gap-1">
-          {PROMPT_STEPS.map(({ key, name }) => (
-            <Button
-              key={key}
-              size="sm"
-              variant="ghost"
-              aria-pressed={key === step}
-              className={cn("rounded-full", key === step && "bg-muted font-semibold")}
-              onClick={() => {
-                setStep(key);
-                setFilter("all");
-              }}
-            >
-              {name}
-            </Button>
-          ))}
-        </div>
-        <Select
-          value={filter}
-          onValueChange={(value) => setFilter(value as PresetStatus | "all")}
-          items={{ all: "全部状态", ...statuses }}
-        >
-          <SelectTrigger aria-label="筛选状态">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部状态</SelectItem>
-            {Object.entries(statuses).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {loading ? (
-        <div
-          role="status"
-          className="text-muted-foreground flex justify-center gap-2 py-14 text-sm"
-        >
-          <Loader2 className="size-4 animate-spin" />
-          正在加载提示词…
-        </div>
-      ) : !group ? (
-        <LoadFailed onRetry={reload} />
-      ) : !group.default_id ? (
-        <p role="status" className="text-muted-foreground py-14 text-center text-sm">
-          内置提示词管理暂未启用。
-        </p>
-      ) : (
-        <PresetTable group={group} filter={filter} onEdit={setEdit} onAction={onAction} />
-      )}
+      <DataPanel>
+        <TableToolbar>
+          <div className="max-w-full overflow-x-auto p-0.5">
+            <Segmented aria-label="提示词分类" className="whitespace-nowrap">
+              {PROMPT_STEPS.map(({ key, name }) => (
+                <SegmentedItem
+                  key={key}
+                  active={key === step}
+                  onClick={() => {
+                    setStep(key);
+                    setFilter("");
+                  }}
+                >
+                  {name}
+                </SegmentedItem>
+              ))}
+            </Segmented>
+          </div>
+          <FilterSelect
+            aria-label="筛选状态"
+            value={filter}
+            options={statusOptions}
+            onValueChange={(value) => setFilter(value as PresetStatus | "")}
+          />
+          {!loading && group?.default_id && (
+            <TableToolbarCount shown={rows.length} total={group.items.length} />
+          )}
+        </TableToolbar>
+        <DataPanelBody>
+          <PresetTable
+            rows={rows}
+            defaultId={group?.default_id}
+            loading={loading}
+            onEdit={setEdit}
+            onAction={onAction}
+            emptyContent={
+              !group ? (
+                <LoadFailed onRetry={reload} />
+              ) : !group.default_id ? (
+                <span role="status">内置提示词管理暂未启用。</span>
+              ) : (
+                "没有匹配的提示词"
+              )
+            }
+          />
+        </DataPanelBody>
+      </DataPanel>
       <PresetEditor step={step} edit={edit} onClose={() => setEdit(null)} onSave={save} />
-    </div>
+    </DataPage>
   );
 }

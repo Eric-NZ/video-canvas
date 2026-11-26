@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 import type { DramaPresetAdminItem } from "@/api/admin/drama-preset/type";
 import type { PresetDialog as PresetDialogType } from "@/pages/admin/drama-presets/preset-dialog";
@@ -35,19 +35,65 @@ describe("短剧预设卡片墙", () => {
   });
   afterAll(() => dom.restore());
 
+  test("画风弹窗的面板使用后台实色背景", async () => {
+    const { unmount } = await dom.mount(
+      <PresetDialog open kind="style" item={item()} onClose={() => {}} onSaved={() => {}} />,
+    );
+    try {
+      const popup = dom.win.document.querySelector('[data-slot="dialog-content"]');
+      expect(popup?.classList.contains("bg-popover")).toBe(true);
+      expect(popup?.className).not.toContain("backdrop-blur");
+    } finally {
+      await unmount();
+    }
+  });
+
   test("编辑画风省去字段说明，仍显示预览图操作和锁定的标识", async () => {
     const { unmount } = await dom.mount(
       <PresetDialog open kind="style" item={item()} onClose={() => {}} onSaved={() => {}} />,
     );
     try {
       const popup = dom.win.document.querySelector('[data-slot="dialog-content"]');
-      expect(popup?.textContent).toContain("替换图片");
+      expect(popup?.textContent).not.toContain("替换图片");
+      expect(popup?.textContent).not.toContain("保存时才会上传");
+      expect(popup?.querySelector('button[aria-label="替换预览图"] img')?.getAttribute("src")).toBe(
+        item().preview_url,
+      );
       expect(popup?.querySelector<HTMLInputElement>("#preset-key")?.disabled).toBe(true);
       expect(popup?.textContent).not.toContain("key 创建后不可改");
       expect(popup?.textContent).not.toContain("正向的视觉描述");
       expect(popup?.textContent).not.toContain("640×400");
     } finally {
       await unmount();
+    }
+  });
+
+  test("同一个预览框选图、显示本地图片和重新选图", async () => {
+    const { unmount } = await dom.mount(
+      <PresetDialog open kind="style" item={null} onClose={() => {}} onSaved={() => {}} />,
+    );
+    const objectUrl = spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+    try {
+      const popup = dom.win.document.querySelector('[data-slot="dialog-content"]')!;
+      const picker = popup.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const openPicker = spyOn(picker, "click").mockImplementation(() => {});
+      const tile = popup.querySelector('button[aria-label="选择预览图"]');
+      expect(tile).not.toBeNull();
+      await dom.click(tile);
+      expect(openPicker).toHaveBeenCalledTimes(1);
+
+      const file = new dom.win.File(["preview"], "preview.png", { type: "image/png" });
+      Object.defineProperty(picker, "files", { value: [file] });
+      await dom.act(async () => {
+        picker.dispatchEvent(new dom.win.Event("change", { bubbles: true }));
+      });
+      expect(tile?.querySelector("img")?.getAttribute("src")).toBe("blob:preview");
+      expect(tile?.getAttribute("aria-label")).toBe("替换预览图");
+      await dom.click(tile);
+      expect(openPicker).toHaveBeenCalledTimes(2);
+    } finally {
+      await unmount();
+      objectUrl.mockRestore();
     }
   });
 
@@ -95,7 +141,7 @@ describe("短剧预设卡片墙", () => {
     await m.unmount();
   });
 
-  test("停用的卡打「已停用」标；点编辑、新建各走各的回调", async () => {
+  test("停用的卡打「已停用」标；封面与铅笔都能打开编辑", async () => {
     const seen: string[] = [];
     const m = await dom.mount(
       <PresetGrid
@@ -110,11 +156,12 @@ describe("短剧预设卡片墙", () => {
     );
     expect(m.container.textContent).toContain("已停用");
 
-    m.container.querySelector<HTMLButtonElement>("[aria-label=编辑]")!.click();
+    await dom.click(m.container.querySelector('[aria-label="编辑画风 90年代日式动画"]'));
+    await dom.click(m.container.querySelector("[aria-label=编辑]"));
     [...m.container.querySelectorAll<HTMLButtonElement>("button")]
       .find((b) => b.textContent?.includes("新建画风"))!
       .click();
-    expect(seen).toEqual(["edit", "new"]);
+    expect(seen).toEqual(["edit", "edit", "new"]);
     await m.unmount();
   });
 

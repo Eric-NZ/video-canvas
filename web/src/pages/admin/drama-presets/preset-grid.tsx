@@ -14,8 +14,16 @@ import { KIND_LABEL } from "@/utils/admin/drama-preset";
 /** 卡片网格：媒体区按 16:10，最少 228px 一列，宽屏自动加列 */
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(228px,1fr))] gap-4";
 
-/** 卡片里名称下面那块媒体区：画风是预览图，题材没有图就用渐变底 + 首字 */
-function PresetMedia({ item }: { item: DramaPresetAdminItem }) {
+/** 卡片封面可打开编辑。画风显示预览图，题材用渐变底和首字。 */
+function PresetMedia({
+  item,
+  busy,
+  onEdit,
+}: {
+  item: DramaPresetAdminItem;
+  busy: boolean;
+  onEdit: () => void;
+}) {
   const glyph = Array.from(item.name)[0] ?? "·";
   return (
     <div className="bg-muted relative aspect-16/10 overflow-hidden">
@@ -40,6 +48,14 @@ function PresetMedia({ item }: { item: DramaPresetAdminItem }) {
       </DramaPoster>
       {/* 停用不该只是名字变灰：整块媒体压暗，一眼能扫出哪些不在开拍设置里 */}
       {!item.enabled && <div className="bg-background/55 absolute inset-0" />}
+      <button
+        type="button"
+        aria-label={`编辑${KIND_LABEL[item.kind]} ${item.name}`}
+        title="编辑"
+        disabled={busy}
+        onClick={onEdit}
+        className="focus-visible:ring-ring absolute inset-0 cursor-pointer hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none disabled:cursor-default"
+      />
     </div>
   );
 }
@@ -81,7 +97,7 @@ function PresetCard({
         busy && "pointer-events-none opacity-50",
       )}
     >
-      <PresetMedia item={item} />
+      <PresetMedia item={item} busy={busy} onEdit={onEdit} />
 
       <div className="absolute top-2 left-2 opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100">
         <button

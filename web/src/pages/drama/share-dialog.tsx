@@ -114,7 +114,10 @@ export function DramaShareDialog({
       }}
       onOpenChangeComplete={(next) => !next && onExited()}
     >
-      <DialogContent className="flex h-[min(90dvh,620px)] flex-col gap-0 overflow-hidden p-0 [corner-shape:squircle] sm:max-w-4xl">
+      <DialogContent
+        surface="glass"
+        className="flex h-[min(90dvh,620px)] flex-col gap-0 overflow-hidden p-0 [corner-shape:squircle] sm:max-w-4xl"
+      >
         <DialogHeader className="gap-1.5 px-6 pt-8 pb-6 sm:px-8">
           <DialogTitle className="truncate pr-8 text-xl font-semibold tracking-tight">
             {confirm ? "确认转移所有权" : `共享《${title}》`}

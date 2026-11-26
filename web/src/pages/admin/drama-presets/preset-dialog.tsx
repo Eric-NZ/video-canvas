@@ -17,7 +17,6 @@ import {
 } from "@/components/admin-ui/dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import { DialogSession } from "@/components/dialog-session";
-import { DramaPoster } from "@/components/drama/poster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -110,8 +109,10 @@ function DialogForm({
   const previewUrl = localUrl || form.previewUrl;
 
   const pickFile = (picked: File | null) => {
-    setFileError(picked ? validatePreviewFile(picked) : null);
-    setFile(picked && !validatePreviewFile(picked) ? picked : null);
+    if (!picked) return;
+    const error = validatePreviewFile(picked);
+    setFileError(error);
+    setFile(error ? null : picked);
   };
 
   const save = async () => {
@@ -227,43 +228,51 @@ function DialogForm({
               />
             </FormField>
 
-            <FormField label="预览图" error={fileError ?? undefined}>
-              <div className="flex items-start gap-3">
-                <DramaPoster seed={form.key || "preset"} className="aspect-16/10 w-32 rounded-lg">
-                  {previewUrl && (
+            <FormField
+              label="预览图"
+              htmlFor="preset-preview-picker"
+              error={fileError ?? undefined}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/webp,image/png,image/jpeg"
+                hidden
+                onChange={(event) => {
+                  pickFile(event.currentTarget.files?.[0] ?? null);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <Button
+                id="preset-preview-picker"
+                type="button"
+                variant="outline"
+                className="relative aspect-16/10 h-auto w-44 max-w-full flex-col overflow-hidden rounded-lg p-0"
+                aria-label={previewUrl ? "替换预览图" : "选择预览图"}
+                aria-invalid={!!fileError}
+                disabled={saving}
+                onClick={() => fileRef.current?.click()}
+              >
+                {previewUrl ? (
+                  <>
                     <img
                       src={previewUrl}
-                      alt="预览图"
+                      alt=""
                       width={640}
                       height={400}
                       className="absolute inset-0 size-full object-cover"
                     />
-                  )}
-                </DramaPoster>
-                <div className="flex min-w-0 flex-col gap-2">
-                  {/* 原生 file 输入藏起来，用按钮触发：Button 没有 asChild，套 label 容易和键盘操作打架 */}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/webp,image/png,image/jpeg"
-                    className="sr-only"
-                    onChange={(event) => pickFile(event.target.files?.[0] ?? null)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <ImagePlus />
-                    {previewUrl ? "替换图片" : "选择图片"}
-                  </Button>
-                  {file && <p className="text-muted-foreground truncate text-xs">{file.name}</p>}
-                  <p className="text-muted-foreground text-xs">
-                    保存时才会上传，图片会落到平台存储并生成长地址
-                  </p>
-                </div>
-              </div>
+                    <span className="pointer-events-none absolute inset-0 grid place-items-center bg-black/40 text-white opacity-0 group-hover/button:opacity-100 group-focus-visible/button:opacity-100">
+                      <ImagePlus aria-hidden className="size-5" />
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <ImagePlus aria-hidden className="size-5" />
+                    选择图片
+                  </>
+                )}
+              </Button>
             </FormField>
           </>
         )}
