@@ -19,6 +19,7 @@ func All() []any {
 	return []any{
 		&User{},
 		&CanvasProject{},
+		&CanvasViewer{}, &CanvasDelivery{}, &CanvasDeliveryStage{},
 		&GenerationTask{},
 		&GenerationTaskEvent{},
 		&WorkerInstance{},
