@@ -64,7 +64,6 @@ describe("后台导航", () => {
       ["drama-prompt-presets", "短剧提示词"],
       ["agent/runs", "运行记录"],
       ["agent/tokens", "分析令牌"],
-      ["cli", "命令行（CLI）"],
     ]);
     expect(ADMIN_NAV.some((item) => item.label === "Agent")).toBe(false);
   });
@@ -105,12 +104,9 @@ describe("后台导航", () => {
     expect(found?.item.label).toBe("短剧提示词");
   });
 
-  test("命令行页是独立入口：面包屑落在 AI 配置分组，图标不与其他菜单项重复", () => {
-    const found = findNav("/admin/cli");
-    expect(found?.group.label).toBe("AI 配置");
-    expect(found?.item.label).toBe("命令行（CLI）");
+  test("后台侧栏不显示命令行入口", () => {
     const items = ADMIN_NAV.flatMap((group) => group.items);
-    expect(items.filter((item) => item.icon === found?.item.icon)).toHaveLength(1);
+    expect(items.some((item) => item.to === "cli")).toBe(false);
   });
 
   test("分析令牌页的面包屑落在 AI 配置分组下", () => {

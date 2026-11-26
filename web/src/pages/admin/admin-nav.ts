@@ -16,7 +16,6 @@ import {
   Puzzle,
   RadioTower,
   ScrollText,
-  Terminal,
   UserPlus,
   Users,
   Wallet,
@@ -48,7 +47,6 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "drama-prompt-presets", label: "短剧提示词", icon: Clapperboard },
       { to: "agent/runs", label: "运行记录", icon: History },
       { to: "agent/tokens", label: "分析令牌", icon: KeyRound },
-      { to: "cli", label: "命令行（CLI）", icon: Terminal, badge: "beta" },
     ],
   },
   {
