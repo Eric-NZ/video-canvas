@@ -93,7 +93,7 @@ func TestDramaPresetKeyRules(t *testing.T) {
 				t.Fatalf("期望通过，得到错误：%v", err)
 			}
 			if !c.ok && !hasCode(err, errcode.ErrDramaPresetInvalid) {
-				t.Fatalf("期望 67032，得到 %v", err)
+				t.Fatalf("期望 67038，得到 %v", err)
 			}
 		})
 	}
@@ -143,7 +143,7 @@ func TestDramaPresetCreateRejectsDuplicateKey(t *testing.T) {
 		Kind: model.DramaPresetKindStyle, Key: "dup", Name: "新的",
 	})
 	if !hasCode(err, errcode.ErrDramaPresetInvalid) || !strings.Contains(err.Error(), "已经存在") {
-		t.Fatalf("重复 key 应返回 67032 且说明已存在，得到 %v", err)
+		t.Fatalf("重复 key 应返回 67038 且说明已存在，得到 %v", err)
 	}
 }
 
@@ -202,7 +202,7 @@ func TestDramaPresetDeleteBlockedWhenInUse(t *testing.T) {
 	env.repo.StyleUsage["used"] = 2
 	err := env.svc.Delete(context.Background(), presetActor, 1)
 	if !hasCode(err, errcode.ErrDramaPresetInUse) || !strings.Contains(err.Error(), "2 部") {
-		t.Fatalf("应返回 67033 且说明条数，得到 %v", err)
+		t.Fatalf("应返回 67039 且说明条数，得到 %v", err)
 	}
 	if _, err := env.repo.GetByID(context.Background(), 1); err != nil {
 		t.Fatalf("被引用时不该删除：%v", err)

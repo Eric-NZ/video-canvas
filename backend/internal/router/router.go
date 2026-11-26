@@ -298,6 +298,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		dramas.POST("/:id/episodes", h.Drama.CreateEpisode)
 		dramas.PATCH("/:id/episodes/:no", h.Drama.UpdateEpisode)
 		dramas.DELETE("/:id/episodes/:no", h.Drama.DeleteEpisode)
+		dramas.GET("/:id/episodes/:no/script", h.Drama.GetScript)
+		dramas.PUT("/:id/episodes/:no/script", h.Drama.PutScript)
+		dramas.POST("/:id/script/parse", h.Drama.ParseScript)
+		for path, kind := range map[string]string{"script-characters": "character", "script-locations": "location"} {
+			dramas.GET("/:id/"+path, h.Drama.ListScriptEntities(kind))
+			dramas.POST("/:id/"+path, h.Drama.CreateScriptEntity(kind))
+			dramas.PATCH("/:id/"+path+"/:eid", h.Drama.UpdateScriptEntity(kind))
+			dramas.DELETE("/:id/"+path+"/:eid", h.Drama.DeleteScriptEntity(kind))
+		}
 		dramas.POST("/:id/estimate", h.Drama.Estimate)
 		dramas.POST("/:id/jobs", h.Drama.CreateJob)
 		dramas.GET("/:id/jobs", h.Drama.ListJobs)

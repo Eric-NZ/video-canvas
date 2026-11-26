@@ -282,6 +282,9 @@ var (
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
+	ErrDramaScriptInvalid        = New(67043, "剧本结构不合法", http.StatusBadRequest)      // Msg 写明第几场第几行和原因
+	ErrDramaScriptRefs           = New(67044, "人物或地点仍被剧本引用", http.StatusConflict)    // Msg 写明引用它的集号
+	ErrDramaScriptNameTaken      = New(67045, "名字已存在", http.StatusConflict)          // 同一短剧内人物或地点重名（含别名）
 	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
 	ErrDramaPresetChanged        = New(67031, "提示词已移除或更新，请刷新后重新选择", http.StatusConflict)
 	ErrDramaPresetDefault        = New(67032, "请先把另一条已启用的提示词设为默认", http.StatusConflict)
