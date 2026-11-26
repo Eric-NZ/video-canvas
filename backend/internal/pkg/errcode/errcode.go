@@ -283,7 +283,22 @@ var (
 	ErrDramaAdaptMissing         = New(67027, "还没有这个格式的转写稿", http.StatusBadRequest)
 	ErrDramaModelCall            = New(67028, "文本模型调用失败", http.StatusBadGateway)     // Msg 换成上游返回的错误原文
 	ErrDramaContentFiltered      = New(67029, "内容触发了模型的安全过滤", http.StatusBadGateway) // 上游按安全策略截断输出；Msg 可点名被过滤的资产
+	ErrDramaScriptInvalid        = New(67043, "剧本结构不合法", http.StatusBadRequest)      // Msg 写明第几场第几行和原因
+	ErrDramaScriptRefs           = New(67044, "人物或地点仍被剧本引用", http.StatusConflict)    // Msg 写明引用它的集号
+	ErrDramaScriptNameTaken      = New(67045, "名字已存在", http.StatusConflict)          // 同一短剧内人物或地点重名（含别名）
 	ErrDramaOutputTruncated      = New(67030, "模型单次输出超过最大输出被截断，请在后台调大该模型的最大输出，或换用输出更长的模型", http.StatusBadGateway)
+	ErrDramaPresetChanged        = New(67031, "提示词已移除或更新，请刷新后重新选择", http.StatusConflict)
+	ErrDramaPresetDefault        = New(67032, "请先把另一条已启用的提示词设为默认", http.StatusConflict)
+	ErrDramaPromptPresetNotFound = New(67033, "内置提示词不存在", http.StatusNotFound)
+	ErrDramaPresetInactive       = New(67034, "仅已启用的提示词可以设为默认，已归档的提示词不可修改", http.StatusConflict)
+
+	// 开拍预设（后台维护的题材 / 画风目录）
+	ErrDramaPresetNotFound   = New(67037, "预设不存在", http.StatusNotFound)
+	ErrDramaPresetInvalid    = New(67038, "预设参数不合法", http.StatusBadRequest)             // 具体原因写进 Msg
+	ErrDramaPresetInUse      = New(67039, "预设仍被短剧使用，只能停用", http.StatusConflict)         // 具体条数写进 Msg
+	ErrDramaPresetOrderBad   = New(67040, "排序列表与现有预设不一致，请刷新后重试", http.StatusBadRequest) // 多了、少了或重复了条目
+	ErrDramaPresetFileFormat = New(67041, "预览图仅支持 WebP / PNG / JPEG", http.StatusBadRequest)
+	ErrDramaPresetFileLarge  = New(67042, "预览图不能超过 2MB", http.StatusRequestEntityTooLarge)
 )
 
 // 环节协议层（stepkit）与营销工作室 68xxx。68001–68011、68015、68016、68018 由营销业务使用（见 docs/design/营销工作室/接口契约.md §6），
