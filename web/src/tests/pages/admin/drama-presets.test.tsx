@@ -36,6 +36,8 @@ test("后台保护默认项，并可复制原内置为停用模板", async () =>
   const mounted = await dom.mount(<DramaPresetsPage />);
   try {
     await dom.flush();
+    expect(mounted.container.textContent).toContain("短剧提示词");
+    expect(mounted.container.textContent).not.toContain("管理开拍设置里的内置提示词");
     const action = (root: ParentNode, text: string) =>
       [...root.querySelectorAll("button")].find((button) => button.textContent?.trim() === text);
     const defaultRow = mounted.container.querySelector("tbody tr");

@@ -217,9 +217,6 @@ export default function DramaPresetsPage() {
       <PageHeader>
         <PageHeaderHeading>
           <PageHeaderTitle>短剧提示词</PageHeaderTitle>
-          <p className="text-muted-foreground mt-1 text-sm">
-            管理开拍设置里的内置提示词。每类保留一个已启用的默认项。
-          </p>
         </PageHeaderHeading>
         <PageHeaderActions>
           {group?.original_body && (
@@ -290,7 +287,7 @@ export default function DramaPresetsPage() {
       ) : (
         <PresetTable group={group} filter={filter} onEdit={setEdit} onAction={onAction} />
       )}
-      {edit && <PresetEditor step={step} edit={edit} onClose={() => setEdit(null)} onSave={save} />}
+      <PresetEditor step={step} edit={edit} onClose={() => setEdit(null)} onSave={save} />
     </div>
   );
 }

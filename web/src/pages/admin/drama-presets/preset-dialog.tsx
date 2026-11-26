@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/admin-ui/dialog";
 import { FormField } from "@/components/admin-ui/form-field";
+import { DialogSession } from "@/components/dialog-session";
 import { DramaPoster } from "@/components/drama/poster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,14 +62,15 @@ export function PresetDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="gap-0 p-0 sm:max-w-[520px]">
-        {/* 换一条预设或重新打开就换 key，表单状态整份重置 */}
-        <DialogForm
-          key={item?.id ?? `new-${kind}`}
-          item={item}
-          kind={item?.kind ?? kind}
-          onClose={onClose}
-          onSaved={onSaved}
-        />
+        <DialogSession open={open}>
+          <DialogForm
+            key={item?.id ?? `new-${kind}`}
+            item={item}
+            kind={item?.kind ?? kind}
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        </DialogSession>
       </DialogContent>
     </Dialog>
   );
@@ -167,11 +169,7 @@ function DialogForm({
           htmlFor="preset-key"
           required
           error={touched && !editing ? errors.key : undefined}
-          hint={
-            editing
-              ? "key 创建后不可改：已有短剧靠它关联这个预设"
-              : "小写字母、数字、下划线，最长 32 位；创建后不可改，已有短剧靠它关联这个预设"
-          }
+          hint={editing ? undefined : "小写字母、数字、下划线，最长 32 位"}
         >
           <Input
             id="preset-key"
@@ -219,7 +217,6 @@ function DialogForm({
               }
               htmlFor="preset-prompt"
               error={touched ? errors.prompt : undefined}
-              hint="正向的视觉描述，会注入各步骤的提示词；画幅、时长、口型同步这些属于开拍设置，不要写进来"
             >
               <Textarea
                 id="preset-prompt"
@@ -230,11 +227,7 @@ function DialogForm({
               />
             </FormField>
 
-            <FormField
-              label="预览图"
-              error={fileError ?? undefined}
-              hint="640×400 效果最好，只收 WebP / PNG / JPEG，2MB 以内"
-            >
+            <FormField label="预览图" error={fileError ?? undefined}>
               <div className="flex items-start gap-3">
                 <DramaPoster seed={form.key || "preset"} className="aspect-16/10 w-32 rounded-lg">
                   {previewUrl && (

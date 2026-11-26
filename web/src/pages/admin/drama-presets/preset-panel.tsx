@@ -20,7 +20,7 @@ import { PresetGrid, PresetGridSkeleton } from "./preset-grid";
 import { usePresetsAdmin } from "./use-presets-admin";
 
 /** 弹窗的状态：关闭、新建（item 为 null）、编辑某一条 */
-type EditorState = { open: false } | { open: true; item: DramaPresetAdminItem | null };
+type EditorState = { open: boolean; item: DramaPresetAdminItem | null };
 
 /**
  * 一个种类的预设卡片墙：加载、拖动排序、启停、编辑、删除 + 新建 / 编辑弹窗。
@@ -33,7 +33,7 @@ type EditorState = { open: false } | { open: true; item: DramaPresetAdminItem | 
  */
 export function PresetPanel({ kind }: { kind: DramaPresetKind }) {
   const admin = usePresetsAdmin(kind);
-  const [editor, setEditor] = useState<EditorState>({ open: false });
+  const [editor, setEditor] = useState<EditorState>({ open: false, item: null });
   const { items, status } = admin;
 
   const openNew = () => setEditor({ open: true, item: null });
@@ -72,9 +72,9 @@ export function PresetPanel({ kind }: { kind: DramaPresetKind }) {
 
       <PresetDialog
         open={editor.open}
-        item={editor.open ? editor.item : null}
+        item={editor.item}
         kind={kind}
-        onClose={() => setEditor({ open: false })}
+        onClose={() => setEditor((prev) => ({ ...prev, open: false }))}
         onSaved={() => void admin.reload()}
       />
     </>

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import type { DramaPresetAdminItem } from "@/api/admin/drama-preset/type";
+import type { PresetDialog as PresetDialogType } from "@/pages/admin/drama-presets/preset-dialog";
 import { installDom, type DomEnv } from "@/tests/helpers/dom";
 import type { PresetGrid as PresetGridType } from "@/pages/admin/drama-presets/preset-grid";
 
@@ -26,11 +27,29 @@ const item = (patch: Partial<DramaPresetAdminItem> = {}): DramaPresetAdminItem =
 describe("短剧预设卡片墙", () => {
   let dom: DomEnv;
   let PresetGrid: typeof PresetGridType;
+  let PresetDialog: typeof PresetDialogType;
   beforeAll(async () => {
     dom = await installDom();
     PresetGrid = (await import("@/pages/admin/drama-presets/preset-grid")).PresetGrid;
+    PresetDialog = (await import("@/pages/admin/drama-presets/preset-dialog")).PresetDialog;
   });
   afterAll(() => dom.restore());
+
+  test("编辑画风省去字段说明，仍显示预览图操作和锁定的标识", async () => {
+    const { unmount } = await dom.mount(
+      <PresetDialog open kind="style" item={item()} onClose={() => {}} onSaved={() => {}} />,
+    );
+    try {
+      const popup = dom.win.document.querySelector('[data-slot="dialog-content"]');
+      expect(popup?.textContent).toContain("替换图片");
+      expect(popup?.querySelector<HTMLInputElement>("#preset-key")?.disabled).toBe(true);
+      expect(popup?.textContent).not.toContain("key 创建后不可改");
+      expect(popup?.textContent).not.toContain("正向的视觉描述");
+      expect(popup?.textContent).not.toContain("640×400");
+    } finally {
+      await unmount();
+    }
+  });
 
   test("每张卡都带名称、key 与引用数，末尾一格是新建", async () => {
     const m = await dom.mount(
