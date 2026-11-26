@@ -2,7 +2,7 @@ import { memo } from "react";
 
 import type { ScriptElementType } from "@/api/drama/type";
 import { cn } from "@/lib/utils";
-import { ELEMENT_LABEL, type EditorElement } from "@/utils/drama/script-doc";
+import type { EditorElement } from "@/utils/drama/script-doc";
 
 import { EditableText } from "./editable-text";
 
@@ -17,47 +17,42 @@ const PLACEHOLDER: Partial<Record<ScriptElementType, string>> = {
   note: "备注，只有你看得到",
 };
 
-/** 各类型文字的版式（稿纸：剧本行业的排法，角色居中、对白收窄居中、括号再收窄、转场靠右） */
+/**
+ * 各类型文字的版式（参考 reveric 的剧本版式，左对齐）：动作前悬挂 △，括号灰色缩进，
+ * 对白缩进并带 └ 引线，转场靠右，字幕居中加粗。△ 和 └ 是行外的装饰元素，不在这里。
+ */
 const TEXT_CLASS: Partial<Record<ScriptElementType, string>> = {
-  action: "my-1",
+  action: "my-1 pl-[22px]",
   parenthetical:
-    "mx-auto w-[46%] text-center text-[14.5px] text-muted-foreground not-empty:before:content-['（'] not-empty:after:content-['）'] max-sm:w-[80%]",
-  dialogue: "mx-auto w-[60%] text-center max-sm:w-[86%]",
-  transition:
-    "text-right font-sans text-[13px] font-semibold tracking-[0.24em] text-muted-foreground",
-  subtitle:
-    "text-center font-sans text-[14px] text-status-info not-empty:before:text-muted-foreground not-empty:before:content-['字幕　']",
-  shot: "not-empty:before:font-sans not-empty:before:text-[13px] not-empty:before:text-muted-foreground not-empty:before:content-['空镜　']",
+    "pl-11 text-[14.5px] text-muted-foreground not-empty:before:content-['（'] not-empty:after:content-['）']",
+  dialogue: "pl-11",
+  transition: "mt-3 text-right text-[14px] font-bold tracking-[0.2em] text-muted-foreground",
+  subtitle: "my-3 text-center font-bold tracking-[0.2em] text-muted-foreground",
+  shot: "pl-[22px] not-empty:before:font-sans not-empty:before:text-[13px] not-empty:before:text-muted-foreground not-empty:before:content-['空镜　']",
   note: "my-1.5 rounded-none border-l-2 border-[oklch(0.76_0.12_305/0.3)] pl-3.5 font-sans text-[13px] leading-[1.8] text-[oklch(0.76_0.12_305)]",
 };
 
-/**
- * 页边的类型标签：贴在行的左侧页边外，悬停时淡出、光标在这一行时亮起，点开是类型菜单。
- * 按下时不抢走文字的焦点，改完类型光标还在这一行。
- */
-function TypeTag({
-  type,
-  onOpen,
-}: {
-  type: ScriptElementType;
-  onOpen: (anchor: HTMLElement) => void;
-}) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      data-type-menu
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={(e) => onOpen(e.currentTarget)}
-      className={cn(
-        "text-muted-foreground absolute top-[0.4em] right-[calc(100%+18px)] inline-flex h-[22px] items-center rounded-full px-2 font-sans text-[11.5px] leading-none font-medium whitespace-nowrap opacity-0 transition-[opacity,background-color] duration-150 group-hover/row:opacity-60",
-        "group-focus-within/row:bg-status-warning/15 group-focus-within/row:text-status-warning group-focus-within/row:opacity-100",
-        "max-sm:top-auto max-sm:right-0 max-sm:bottom-full max-sm:h-5 max-sm:group-hover/row:opacity-0 max-sm:group-focus-within/row:opacity-100",
-      )}
-    >
-      {ELEMENT_LABEL[type]}
-    </button>
-  );
+/** 行外的装饰：动作、空镜前悬挂的 △；对白前的 └ 折角引线。不是正文，不可选中 */
+function Decor({ type }: { type: ScriptElementType }) {
+  if (type === "action" || type === "shot") {
+    return (
+      <span
+        aria-hidden
+        className="text-muted-foreground/60 pointer-events-none absolute top-[0.9em] left-0 text-[11px] leading-none select-none"
+      >
+        △
+      </span>
+    );
+  }
+  if (type === "dialogue") {
+    return (
+      <span
+        aria-hidden
+        className="border-border pointer-events-none absolute top-[0.7em] left-[22px] h-[9px] w-2.5 rounded-bl-[3px] border-b border-l select-none"
+      />
+    );
+  }
+  return null;
 }
 
 /**
@@ -73,7 +68,6 @@ function TypeTag({
  * @param onText 文字变化
  * @param onPick 打开人物选择，anchor 是被点的按钮
  * @param onExtension 切换画外音标记
- * @param onTypeMenu 点页边的类型标签，anchor 是被点的标签；不传（只读）就不显示标签
  */
 export const ElementRow = memo(function ElementRow({
   el,
@@ -86,7 +80,6 @@ export const ElementRow = memo(function ElementRow({
   onText,
   onPick,
   onExtension,
-  onTypeMenu,
 }: {
   el: EditorElement;
   sceneKey: string;
@@ -98,13 +91,10 @@ export const ElementRow = memo(function ElementRow({
   onText: (sceneKey: string, elKey: string, text: string) => void;
   onPick: (sceneKey: string, elKey: string, anchor: HTMLElement) => void;
   onExtension: (sceneKey: string, elKey: string) => void;
-  onTypeMenu?: (sceneKey: string, elKey: string, anchor: HTMLElement) => void;
 }) {
-  const tag = onTypeMenu && (
-    <TypeTag type={el.type} onOpen={(anchor) => onTypeMenu(sceneKey, el.key, anchor)} />
-  );
   const wrap = cn(
-    "group/row relative rounded-md transition-colors",
+    // 光标所在的行左侧亮一根细的定位线
+    "relative rounded-md transition-colors after:pointer-events-none after:absolute after:inset-y-0.5 after:-left-5 after:w-0.5 after:rounded-full after:bg-primary after:opacity-0 after:transition-opacity focus-within:after:opacity-100 max-sm:after:-left-3",
     highlighted && "bg-status-warning/15",
     invalid && "bg-destructive/10 ring-destructive ring-1",
   );
@@ -112,21 +102,25 @@ export const ElementRow = memo(function ElementRow({
 
   if (el.type === "character") {
     return (
-      <div {...common} className={cn(wrap, "mt-5 flex items-center justify-center gap-1")}>
-        {tag}
+      <div {...common} className={cn(wrap, "mt-5 flex items-baseline gap-1")}>
         <button
           type="button"
           data-pick
           disabled={!editable}
           onClick={(e) => onPick(sceneKey, el.key, e.currentTarget)}
           className={cn(
-            "hover:bg-chrome-hover focus-visible:bg-chrome-hover rounded-md py-0.5 pr-1 pl-2.5 font-sans text-[14px] font-semibold tracking-[0.32em] outline-none disabled:cursor-default disabled:hover:bg-transparent",
-            !characterName && "text-muted-foreground/70 px-2 tracking-[0.1em] font-medium",
+            "hover:bg-chrome-hover focus-visible:bg-chrome-hover -ml-1.5 rounded-md px-1.5 font-bold outline-none disabled:cursor-default disabled:hover:bg-transparent",
+            !characterName && "text-muted-foreground/70 font-normal",
           )}
         >
           {characterName ?? "选择人物"}
         </button>
-        {unconfirmed && <span className="bg-status-info size-1.5 rounded-full" title="待确认" />}
+        <span aria-hidden className="-ml-1 font-bold select-none">
+          ：
+        </span>
+        {unconfirmed && (
+          <span className="bg-status-info size-1.5 self-center rounded-full" title="待确认" />
+        )}
         {(editable || el.extension) && (
           <button
             type="button"
@@ -163,7 +157,7 @@ export const ElementRow = memo(function ElementRow({
 
   return (
     <div {...common} className={wrap}>
-      {tag}
+      <Decor type={el.type} />
       <EditableText
         value={el.text}
         editable={editable}

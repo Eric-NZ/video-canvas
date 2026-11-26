@@ -311,16 +311,7 @@ function EpisodeDoc({ no, onGenerate }: { no: number; onGenerate: (no: number) =
                 </motion.div>
               )}
             </AnimatePresence>
-            <div
-              ref={paperRef}
-              className={cn(
-                // 稿纸：宋体正文、宽行距，左右留出页边给光标所在行的类型标签
-                "bg-paper text-paper-foreground ring-border font-display relative min-w-0 flex-1 rounded-t-md rounded-b-[20px] px-[clamp(20px,7vw,88px)] pt-16 pb-24 text-[16px] leading-[2.05] shadow-[0_30px_60px_-30px_rgb(0_0_0/0.6)] ring-1 transition-[filter] duration-200",
-                summary.locked && "saturate-[.7]",
-              )}
-            >
-              <ScriptEditor editor={editor} no={no} />
-            </div>
+            <ScriptEditor editor={editor} no={no} paperRef={paperRef} />
           </div>
         )}
       </div>

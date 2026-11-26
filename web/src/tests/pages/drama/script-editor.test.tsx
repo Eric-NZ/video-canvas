@@ -105,16 +105,10 @@ async function until(check: () => boolean, ms = 3000) {
   }
 }
 
-/** 点某一行页边的类型标签，等类型菜单弹出，返回菜单里的选项 */
-async function openTypeMenu(row: HTMLElement) {
-  await dom.click(row.querySelector<HTMLButtonElement>("[data-type-menu]"));
-  let items: HTMLButtonElement[] = [];
-  await until(() => {
-    items = [...dom.win.document.querySelectorAll<HTMLButtonElement>("[role=menu] button")];
-    return items.length > 0;
-  });
-  return items;
-}
+/** 编辑区上方那一行元素类型条里的按钮 */
+const bar = (c: HTMLElement) => [...c.querySelectorAll<HTMLButtonElement>("[role=toolbar] button")];
+const barButton = (c: HTMLElement, label: string) =>
+  bar(c).find((b) => b.textContent === label) as HTMLButtonElement;
 
 const rows = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("[data-el]")];
 const textRow = (c: HTMLElement, text: string) =>
@@ -150,16 +144,27 @@ describe("结构化剧本编辑器", () => {
     expect(m.container.textContent).toContain("城西老码头");
     expect(m.container.querySelector("[data-pick]")?.textContent).toBe("林骁");
     expect(textRow(m.container, "走。")).toBeTruthy();
-    // 稿纸上没有常驻工具条；每行页边的类型标签写着这一行的类型，点开是类型菜单
-    expect(m.container.querySelector("[role=toolbar]")).toBeNull();
-    const first = rows(m.container)[0];
-    expect(first.querySelector("[data-type-menu]")?.textContent).toBe("动作");
-    // 动作行不能直接改成对白，原因写在悬停提示里
-    const items = await openTypeMenu(first);
-    const dialogue = items.find((b) => b.textContent === "对白");
-    expect(dialogue?.disabled).toBe(true);
-    expect(dialogue?.title).toBe("前面要先有角色行");
-    expect(items.some((b) => b.textContent?.includes("新建一场"))).toBe(true);
+    // 场次标题下面是只读的「出场人物」一行（说话的人加在场不说话的人）
+    expect(m.container.querySelector("[data-scene-cast]")?.textContent).toBe("出场人物：林骁");
+    // 编辑区上方一行元素类型条：光标还没进任何行时按第一行算，动作行不能直接改成对白
+    expect(barButton(m.container, "动作").getAttribute("aria-pressed")).toBe("true");
+    const dialogue = barButton(m.container, "对白");
+    expect(dialogue.disabled).toBe(true);
+    expect(dialogue.title).toBe("前面要先有角色行");
+    // 场次、闪回也在这一行里；页边没有类型标签
+    expect(barButton(m.container, "场次")).toBeTruthy();
+    expect(barButton(m.container, "闪回")).toBeTruthy();
+    expect(m.container.querySelector("[data-type-menu]")).toBeNull();
+    await m.unmount();
+  });
+
+  test("类型条跟着光标：点进对白行，「对白」高亮；对白行上「括号」可选", async () => {
+    const m = await dom.mount(<Harness />);
+    await until(() => rows(m.container).length === 3);
+    await focusEnd(textRow(m.container, "走。"));
+    expect(barButton(m.container, "对白").getAttribute("aria-pressed")).toBe("true");
+    expect(barButton(m.container, "动作").getAttribute("aria-pressed")).toBe("false");
+    expect(barButton(m.container, "括号").disabled).toBe(false);
     await m.unmount();
   });
 
@@ -192,8 +197,7 @@ describe("结构化剧本编辑器", () => {
     await until(() => rows(m.container).length === 3);
     const action = textRow(m.container, "雨。");
     await focusEnd(action);
-    const items = await openTypeMenu(action.closest<HTMLElement>("[data-el]")!);
-    await dom.click(items.find((b) => b.textContent === "角色"));
+    await dom.click(barButton(m.container, "角色"));
     // 动作行有文字：变成角色行，原来的文字落到后面新建的对白里，所以多一行
     await until(() => rows(m.container).length === 4);
     await until(() => !!m.container.querySelector("[role=alert]"), 4000);
@@ -210,8 +214,8 @@ describe("结构化剧本编辑器", () => {
     expect(dialogue.getAttribute("contenteditable")).toBe("false");
     await press(dialogue, "Enter");
     expect(rows(m.container)).toHaveLength(3);
-    // 锁定时没有类型标签；场次标题是纯文字，不出现下拉和占位词
-    expect(m.container.querySelector("[data-type-menu]")).toBeNull();
+    // 锁定时没有类型条；场次标题是纯文字，不出现下拉和占位词
+    expect(m.container.querySelector("[role=toolbar]")).toBeNull();
     expect(m.container.querySelector("[data-scene-heading] select")).toBeNull();
     expect(m.container.querySelector("[data-scene-heading]")?.textContent).not.toContain(
       "选择地点",
